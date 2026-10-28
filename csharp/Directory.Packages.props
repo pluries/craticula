@@ -6,7 +6,7 @@
 
   <ItemGroup>
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.12" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.13" />
     <!-- #1646: Craticula.Dapper's one runtime dependency. Moved to 2.1.89 by #3031 (the newest release at least two weeks old
          on 2026-10-25, published 2026-09-23). -->
     <PackageVersion Include="Dapper" Version="2.1.89" />
@@ -15,7 +15,7 @@
          adapter under test never references a provider itself). Pinned to the same 10.0.12 family as
          the EF Core packages above (#3031: 10.0.13 was 11 days old on 2026-10-25) rather than the bare package's own latest, since this repo already
          targets that release line for net10.0. -->
-    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.13" />
     <!-- #1647: Craticula.MongoDB.Driver's one runtime dependency. Moved to 3.13.0 by #3031, a recorded exception to the
          two-week rule (published 2026-10-22, 3 days old on 2026-10-25): 3.13.0 fixes CVE-2026-114643 to -114654, which 3.12.0 and
          earlier carry and which NVD had not yet matched to a CPE (maker's decision, 2026-10-25; the Pkcs pin below is the same kind
@@ -63,7 +63,7 @@
          Microsoft.NET.Test.Sdk 18.10.1 (18.11.0 was 11 days old), xunit.runner.visualstudio 4.0.1. Each was tried alone against the offline suite;
          scripts/coverage.sh gave the same line coverage per assembly as with coverlet 6.0.4. xunit stays 2.9.3 (the v3 move is out of scope). -->
     <PackageVersion Include="coverlet.collector" Version="10.1.0" />
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
   </ItemGroup>
