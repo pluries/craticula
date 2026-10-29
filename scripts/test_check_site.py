@@ -38,31 +38,31 @@ class Stub(BaseHTTPRequestHandler):
     """Behaviour is read from the server: server.mode, server.cookie, server.https_port."""
 
     def log_message(self, *args):
-        pass
+        """Silences the stub's request log."""
 
     def _target(self):
         return self.requestline.split()[1]   # self.path may collapse a leading //
 
-    def _answer(self):
+    def _decide(self, host_header, path):
         mode = self.server.mode
-        host_header = self.headers.get("Host", "")
         host = host_header.split(":")[0]
-        path = self._target()
         base = f"https://{PRIMARY}:{self.server.https_port}"
-        status, location = 200, None
         if host == PRIMARY and self.server.plain:
-            status, location = (301 if mode == "wrong301" else 308), base + ("/" if mode == "path_lost" else path)
-        elif host in REDIRECTORS:
-            status, location = (301 if mode == "wrong301" else 302), base + path
-        elif host == PRIMARY:
-            pass
-        elif mode == "open_host":
-            status, location = 302, f"https://{host_header}{path}"
-        else:
-            status = 404
-        if status in (301, 302, 308) and host in (PRIMARY, *REDIRECTORS):
-            if mode == "open_path" and path[:2] in ("//", "/\\", "/h"):
-                location = path[1:] if path.startswith("/h") else path
+            return (301 if mode == "wrong301" else 308), self._open_path(path, base + ("/" if mode == "path_lost" else path))
+        if host in REDIRECTORS:
+            return (301 if mode == "wrong301" else 302), self._open_path(path, base + path)
+        if host == PRIMARY:
+            return 200, None
+        if mode == "open_host":
+            return 302, f"https://{host_header}{path}"
+        return 404, None
+
+    def _open_path(self, path, location):
+        if self.server.mode == "open_path" and path[:2] in ("//", "/\\", "/h"):
+            return path[1:] if path.startswith("/h") else path
+        return location
+
+    def _send(self, status, location):
         self.send_response(status)
         if location:
             self.send_header("Location", location)
@@ -70,6 +70,10 @@ class Stub(BaseHTTPRequestHandler):
             self.send_header("Set-Cookie", f"session={COOKIE_VALUE}; HttpOnly")
         self.send_header("Content-Length", "0")
         self.end_headers()
+
+    def _answer(self):
+        status, location = self._decide(self.headers.get("Host", ""), self._target())
+        self._send(status, location)
 
     do_GET = do_HEAD = do_POST = _answer
 
@@ -97,7 +101,8 @@ class CheckSiteTests(unittest.TestCase):
         cert, key = self.certs[days]
         plain = ThreadingHTTPServer(("127.0.0.1", 0), Stub)
         secure = ThreadingHTTPServer(("127.0.0.1", 0), Stub)
-        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
         context.load_cert_chain(str(cert), str(key))
         secure.socket = context.wrap_socket(secure.socket, server_side=True)
         for server, is_plain in ((plain, True), (secure, False)):
