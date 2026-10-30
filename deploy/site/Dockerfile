@@ -11,4 +11,6 @@ RUN python3 scripts/build_site.py --out /out
 FROM nginxinc/nginx-unprivileged@sha256:5d8bb9437d74a600ec5dbf90c035451c724dc33eac8d3a71078f6f8612c345f6
 COPY deploy/site/nginx.conf /etc/nginx/nginx.conf
 COPY --from=build /out /usr/share/nginx/html
+# The base image's own unprivileged user (uid 101, set here so no scanner has to guess); the cluster runs it as 10001.
+USER 101
 EXPOSE 8080
