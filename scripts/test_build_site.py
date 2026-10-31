@@ -696,8 +696,9 @@ class SiteDesign(unittest.TestCase):
                 self.assertNotIn("<script", page)
                 for tag in re.findall(r"<link\b[^>]*>", page):
                     self.assertNotRegex(tag, r"href=\"https?://")
-                for url in re.findall(r"(?:href|src)=\"(https?://[^\"]*)\"", page):
-                    self.assertTrue(url.startswith("https://github.com/pluries/craticula"), url)
+                for tag in re.findall(r"<(?:img|source|iframe|video|audio|embed|object)\b[^>]*>", page):
+                    self.assertNotRegex(tag, r"\bsrc=\"(?:https?:)?//")
+                self.assertNotRegex(page, r"\bsrc=\"(?:https?:)?//")
 
     def test_T1_the_stylesheet_loads_nothing_from_another_host(self):
         built = (self.out / "style.css").read_text(encoding="utf-8")
@@ -785,6 +786,72 @@ class SiteDesign(unittest.TestCase):
         self.assertEqual(page.count('aria-current="page"'), 1)
         self.assertIn("side-group", page)
         self.assertIn("side-title", page)
+
+class RemoteImages(unittest.TestCase):
+    """NFR-13, task #3475: an image on another host is never emitted as <img>; its alt text stands in for it."""
+
+    BADGE = "https://img.shields.io/badge/coverage-90-green.svg"
+
+    def render(self, markdown: str) -> str:
+        return bs.render_markdown(markdown).html
+
+    def test_a_remote_image_becomes_its_alt_text_in_a_span(self):
+        out = self.render(f"![build status]({self.BADGE})\n")
+        self.assertIn('<span class="img-alt">build status</span>', out)
+        self.assertNotIn("<img", out)
+        self.assertNotIn('src="http', out)
+
+    def test_a_wrapped_badge_keeps_its_link_around_the_span(self):
+        url = "https://github.com/pluries/craticula/actions/workflows/ci.yml"
+        out = self.render(f"[![coverage gate]({self.BADGE})]({url})\n")
+        self.assertIn(f'<a href="{url}"><span class="img-alt">coverage gate</span></a>', out)
+        self.assertNotIn("<img", out)
+
+    def test_a_remote_image_with_an_empty_alt_renders_nothing(self):
+        out = self.render(f"before ![]({self.BADGE}) after\n")
+        self.assertNotIn("<img", out)
+        self.assertNotIn("img-alt", out)
+        self.assertNotIn("shields.io", out)
+        self.assertIn("before", out)
+        self.assertIn("after", out)
+
+    def test_the_alt_text_is_escaped(self):
+        out = self.render(f"![a <b> & c]({self.BADGE})\n")
+        self.assertIn('<span class="img-alt">a &lt;b&gt; &amp; c</span>', out)
+        self.assertNotIn("<b>", out)
+
+    def test_an_http_image_is_remote_too(self):
+        out = self.render("![plain](http://example.test/a.png)\n")
+        self.assertIn('<span class="img-alt">plain</span>', out)
+        self.assertNotIn("<img", out)
+
+    def test_a_remote_image_in_a_table_cell_behaves_the_same(self):
+        out = self.render(f"| a | b |\n|---|---|\n| x | ![in cell]({self.BADGE}) |\n")
+        self.assertIn('<td><span class="img-alt">in cell</span></td>', out)
+        self.assertNotIn("<img", out)
+
+    def test_a_remote_image_in_a_list_item_behaves_the_same(self):
+        out = self.render(f"- item ![in list]({self.BADGE})\n")
+        self.assertIn('<span class="img-alt">in list</span>', out)
+        self.assertNotIn("<img", out)
+
+    def test_a_local_image_is_still_an_img(self):
+        out = self.render("![local](img/a.png)\n")
+        self.assertIn('<img alt="local" src="img/a.png">', out)
+        self.assertNotIn("img-alt", out)
+
+    def test_a_local_image_that_resolves_to_a_repository_url_is_remote(self):
+        out = bs.render_markdown("![shot](img/a.png)\n", resolve=lambda href, image=False: "https://example.test/r/raw/main/" + href).html
+        self.assertIn('<span class="img-alt">shot</span>', out)
+        self.assertNotIn("<img", out)
+
+    def test_a_built_page_holds_no_remote_img_and_keeps_the_badge_link(self):
+        files = {"index.md": f"# Home\n\n[![coverage gate]({self.BADGE})](https://github.com/pluries/craticula/actions)\n"}
+        errors, out = run_build(files, [INDEX])
+        self.assertEqual(errors, [])
+        page = (out / "index.html").read_text(encoding="utf-8")
+        self.assertNotIn("<img", page)
+        self.assertIn('<a href="https://github.com/pluries/craticula/actions"><span class="img-alt">coverage gate</span></a>', page)
 
 
 class Cli(unittest.TestCase):
