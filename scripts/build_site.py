@@ -91,7 +91,7 @@ class Rendered:
     anchors: set[str] = field(default_factory=set)
     links: list[tuple[int, str]] = field(default_factory=list)  # (source line, href)
     title: str = ""
-    headings: list[tuple[int, str, str]] = field(default_factory=list)  # (level, text, anchor); FR-32, task #3474
+    headings: list[tuple[int, str, str]] = field(default_factory=list)  # level, text and anchor of each heading, in order; FR-32, task #3474
 
 
 _INLINE_CODE = re.compile(r"(`+)(.+?)\1", re.S)
@@ -671,6 +671,11 @@ def resolve_link(href: str, source: str, pages_by_source: dict[str, Page], root:
     return f"{config['repo'].rstrip('/')}/{kind}/{config['branch']}/{target.rstrip('/')}" + (f"#{fragment}" if fragment else "")
 
 
+def fill_template(template: str, values: dict[str, str]) -> str:
+    """One pass: a value that itself contains {{...}} (page content may) is never substituted again."""
+    return re.sub(r"\{\{(\w+)\}\}", lambda m: values.get(m.group(1), m.group(0)), template)
+
+
 def build(root: Path, out_dir: Path) -> list[str]:
     """Build the site; returns the list of errors (empty when every link resolves and every rule id exists)."""
     config = load_config(root)
@@ -778,8 +783,7 @@ def build(root: Path, out_dir: Path) -> list[str]:
             "source": html.escape(page.source),
             "source_url": html.escape(f"{config['repo'].rstrip('/')}/blob/{config['branch']}/{page.source}"),
         }
-        # One pass: a value that itself contains {{...}} (page content may) is never substituted again.
-        page_html = re.sub(r"\{\{(\w+)\}\}", lambda m: values.get(m.group(1), m.group(0)), templates[page.template or "site/template.html"])
+        page_html = fill_template(templates[page.template or "site/template.html"], values)
         (out_dir / f"{page.slug}.html").write_text(page_html, encoding="utf-8")
 
     if config["ruleSource"]:
