@@ -647,6 +647,145 @@ class NoInjection(unittest.TestCase):
         self.assertEqual(built.count("<aside>"), 1)
         self.assertIn("{{sidebar}}", built)
 
+FONT_FILES = ["bricolage-grotesque-latin-700-normal.woff2", "bricolage-grotesque-latin-800-normal.woff2",
+              "instrument-sans-latin-400-normal.woff2", "instrument-sans-latin-500-normal.woff2",
+              "instrument-sans-latin-600-normal.woff2", "jetbrains-mono-latin-400-normal.woff2",
+              "jetbrains-mono-latin-500-normal.woff2"]
+FAMILIES = ["Bricolage Grotesque", "Instrument Sans", "JetBrains Mono"]
+GENERIC = ("sans-serif", "serif", "monospace", "system-ui")
+
+
+def luminance(hex_colour: str) -> float:
+    digits = hex_colour.lstrip("#")
+    if len(digits) == 3:
+        digits = "".join(c * 2 for c in digits)
+    channels = [int(digits[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+    lin = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
+    return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+
+
+def contrast(a: str, b: str) -> float:
+    hi, lo = sorted((luminance(a), luminance(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+class SiteDesign(unittest.TestCase):
+    """The approved redesign of this repository's own site (FR-32, NFR-13, task #3475): T1..T6 of that task."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.out = Path(tempfile.mkdtemp()) / "out"
+        bs.build(ROOT, cls.out)
+        cls.pages = {f.stem: f.read_text(encoding="utf-8") for f in cls.out.glob("*.html")}
+        cls.css_path = ROOT / "site" / "style.css"
+        cls.css = cls.css_path.read_text(encoding="utf-8")
+
+    def root_vars(self) -> dict[str, str]:
+        found: dict[str, str] = {}
+        for block in re.findall(r":root\s*{([^}]*)}", self.css):
+            found.update(re.findall(r"(--[\w-]+)\s*:\s*(#[0-9a-fA-F]{3,6})\s*;", block))
+        return found
+
+    def test_T1_no_source_line_no_script_no_foreign_resource_in_any_built_page(self):
+        self.assertIn("index", self.pages)
+        for slug, page in self.pages.items():
+            with self.subTest(page=slug):
+                self.assertNotIn("Source:", page)
+                self.assertNotIn("fonts.googleapis.com", page)
+                self.assertNotIn("fonts.gstatic.com", page)
+                self.assertNotIn("<script", page)
+                for tag in re.findall(r"<link\b[^>]*>", page):
+                    self.assertNotRegex(tag, r"href=\"https?://")
+                for url in re.findall(r"(?:href|src)=\"(https?://[^\"]*)\"", page):
+                    self.assertTrue(url.startswith("https://github.com/pluries/craticula"), url)
+
+    def test_T1_the_stylesheet_loads_nothing_from_another_host(self):
+        built = (self.out / "style.css").read_text(encoding="utf-8")
+        for text in (self.css, built):
+            self.assertNotIn("@import", text)
+            self.assertNotIn("url(http", text)
+            self.assertNotIn("googleapis", text)
+
+    def test_T2_home_page_shows_the_request_the_statement_and_the_links(self):
+        text = " ".join(html.unescape(re.sub(r"<[^>]+>", " ", self.pages["index"])).split())
+        for needle in ('SELECT * FROM "orders"', "Field allowlist check failed", '"filter": "acme"', "Safe queries out."):
+            self.assertIn(needle, text)
+        for slug in ("quickstart-csharp", "index-guidance", "overview", "spec", "semantics", "rules", "grid-schema",
+                     "ir-schema", "odata-migration"):
+            self.assertIn(f'href="{slug}.html"', self.pages["index"], slug)
+
+    def test_T2_only_the_index_page_names_a_template(self):
+        pages = json.loads((ROOT / "site" / "site.json").read_text(encoding="utf-8"))["pages"]
+        self.assertEqual({p["slug"]: p.get("template") for p in pages if p.get("template")}, {"index": "site/home.html"})
+
+    def test_T3_the_font_files_are_in_the_repository_with_their_licences(self):
+        fonts = ROOT / "site" / "fonts"
+        for name in FONT_FILES:
+            with self.subTest(font=name):
+                data = (fonts / name).read_bytes()
+                self.assertEqual(data[:4], b"wOF2")
+                self.assertLess(len(data), 60 * 1024)
+        licences = (fonts / "LICENSES.md").read_text(encoding="utf-8")
+        self.assertIn("SIL Open Font License", licences)
+        for family in FAMILIES:
+            self.assertIn(family, licences)
+
+    def test_T3_the_build_copies_the_fonts_folder(self):
+        built = sorted(f.name for f in (self.out / "fonts").glob("*"))
+        self.assertEqual(built, sorted(FONT_FILES + ["LICENSES.md"]))
+
+    def test_T3_each_font_file_has_a_relative_font_face_and_exists_in_the_output(self):
+        urls = re.findall(r"@font-face\s*{[^}]*?url\(\s*['\"]?([^)'\"]+)['\"]?\s*\)", self.css)
+        self.assertEqual(sorted(urls), sorted(f"fonts/{name}" for name in FONT_FILES))
+        for url in urls:
+            self.assertTrue((self.out / url).is_file(), url)
+
+    def test_T3_every_font_family_is_ours_followed_by_a_generic_fallback(self):
+        css = re.sub(r"@font-face\s*{[^}]*}", "", self.css)
+        declared = re.findall(r"font-family\s*:\s*([^;}]+)", css)
+        self.assertTrue(declared, "the stylesheet names no font-family")
+        for value in declared:
+            parts = [x.strip().strip("'\"") for x in value.split(",")]
+            self.assertIn(parts[0], FAMILIES, value)
+            self.assertIn(parts[-1], GENERIC, value)
+        self.assertEqual({v.split(",")[0].strip().strip("'\"") for v in declared}, set(FAMILIES))
+
+    def test_T5_the_colour_contract_is_declared_in_root(self):
+        colours = self.root_vars()
+        for name in ("--bg", "--surface", "--text", "--muted", "--faint", "--accent", "--accent-ink"):
+            self.assertIn(name, colours)
+
+    def test_T5_text_colours_reach_4_5_on_both_backgrounds_and_accent_ink_on_accent(self):
+        colours = self.root_vars()
+        for name in ("--text", "--muted", "--faint", "--accent"):
+            for ground in ("--bg", "--surface"):
+                with self.subTest(colour=name, ground=ground):
+                    self.assertGreaterEqual(contrast(colours[name], colours[ground]), 4.5)
+        self.assertGreaterEqual(contrast(colours["--accent-ink"], colours["--accent"]), 4.5)
+
+    def test_T5_the_site_is_dark_only(self):
+        self.assertNotIn("prefers-color-scheme: light", self.css)
+        self.assertNotIn("prefers-color-scheme:light", self.css)
+
+    def test_T5_the_contrast_helper_matches_known_ratios(self):
+        self.assertAlmostEqual(contrast("#000000", "#ffffff"), 21.0, places=1)
+        self.assertAlmostEqual(contrast("#777777", "#ffffff"), 4.48, places=2)
+
+    def test_T6_the_stylesheet_stacks_at_phone_width_and_scrolls_code_sideways(self):
+        self.assertRegex(self.css, r"@media\s*\(max-width:")
+        self.assertRegex(self.css, r"overflow-x:\s*auto")
+        self.assertRegex(self.css, r"pre\b[^{]*{[^}]*overflow-x:\s*auto")
+        self.assertIn('<meta name="viewport"', self.pages["quickstart-csharp"])
+
+    def test_T6_a_docs_page_has_the_sidebar_the_toc_and_one_current_link(self):
+        page = self.pages["quickstart-csharp"]
+        self.assertIn("<aside", page)
+        self.assertIn('class="toc"', page)
+        self.assertIn("On this page", page)
+        self.assertEqual(page.count('aria-current="page"'), 1)
+        self.assertIn("side-group", page)
+        self.assertIn("side-title", page)
+
 
 class Cli(unittest.TestCase):
     def run_main(self, root: Path):
