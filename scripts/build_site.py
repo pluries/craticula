@@ -134,7 +134,7 @@ def _inline(text: str, line: int, out: Rendered, resolve, holes: list[str] | Non
         if bang:
             out.links.append((line, href))
             href = resolve(href, True)
-            if re.match(r"(?:https?:)?//", href):  # NFR-13: a visitor's browser loads nothing from another host, so a remote image is its alt text
+            if re.match(r"[A-Za-z][A-Za-z0-9+.-]+:|[/\\]{2}", href):  # NFR-13: a browser loads nothing from another host, so a remote image (any scheme or spelling: HTTP:, https:/h, \\h) is its alt text; a one-letter "scheme" is a drive letter, not a fetch
                 alt = re.sub(r"<[^>]+>", "", restore(label_html)).strip()
                 return hold(f'<span class="img-alt">{alt}</span>' if alt else "")
             return hold(f'<img alt="{html.escape(re.sub(r"<[^>]+>", "", restore(label_html)))}" src="{html.escape(href)}">')
@@ -364,10 +364,11 @@ def render_sidebar(pages: list["Page"], current_slug: str) -> str:
     groups: dict[str, list[Page]] = {}
     for page in pages:
         groups.setdefault(page.group or "", []).append(page)
+    current = ' aria-current="page"'  # not inline in the f-string: a backslash there needs Python 3.12 (the floor is 3.10)
     blocks = []
     for name, members in groups.items():
         items = "".join(
-            f'<li><a href="{html.escape(p.slug)}.html"{" aria-current=\"page\"" if p.slug == current_slug else ""}>{html.escape(p.title)}</a></li>'
+            f'<li><a href="{html.escape(p.slug)}.html"{current if p.slug == current_slug else ""}>{html.escape(p.title)}</a></li>'
             for p in members)
         blocks.append(f'<div class="side-group"><p class="side-title">{html.escape(name)}</p><ul>{items}</ul></div>')
     return "".join(blocks)

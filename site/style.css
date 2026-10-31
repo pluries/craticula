@@ -73,6 +73,8 @@ blockquote { margin: 0 0 1.3em; padding: 14px 20px; border: 1px solid #6B4A22; b
 blockquote p { margin: 0; color: inherit; }
 hr { border: 0; border-top: 1px solid var(--line); margin: 2em 0; }
 
+.img-alt { display: inline-block; margin: 0 6px 6px 0; padding: 1px 10px; border: 1px solid var(--line-strong); border-radius: 999px; font-size: 0.8125rem; line-height: 1.6; }
+
 /* Footer */
 .foot { border-top: 1px solid var(--line); margin-top: 32px; font-size: 0.875rem; color: var(--muted); }
 .foot > .wrap-wide { display: flex; flex-wrap: wrap; gap: 12px 32px; align-items: center; justify-content: space-between; padding-top: 32px; padding-bottom: 48px; }
