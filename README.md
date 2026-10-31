@@ -108,7 +108,7 @@ The spec version is the one in [`spec/VERSION`](spec/VERSION); every package sta
 How versions are chosen is written in [VERSIONING.md](VERSIONING.md).
 The packages declare version ranges for the libraries they wrap, never one exact version.
 
-Latest release: 1.0.0 <!-- x-release-please-version -->
+Latest release: 1.1.0 <!-- x-release-please-version -->
 
 ## License
 

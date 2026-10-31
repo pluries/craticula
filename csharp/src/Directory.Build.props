@@ -2,7 +2,7 @@
 
   <!-- The shared settings first: MSBuild stops at the nearest Directory.Build.props, so this file must import
        csharp/Directory.Build.props (target framework, nullable, NuGetAudit) or the src projects would lose them. -->
-  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))"/>
 
   <!-- #1660 (TRD P-3, SAST): the SDK's Roslyn security rules on the shipped libraries only. The analyzers ship with
        the .NET SDK (Microsoft.CodeAnalysis.NetAnalyzers), so this adds no package. Test projects and tools import
@@ -22,7 +22,7 @@
        tests keep IsPackable=false from csharp/Directory.Build.props; only src projects import this file's settings. -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
     <Authors>Christian Stephan</Authors>
     <Company>Pluries</Company>
     <Copyright>Copyright (c) Christian Stephan</Copyright>
@@ -53,7 +53,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="README.md" Pack="true" PackagePath="/" />
+    <None Include="README.md" Pack="true" PackagePath="/"/>
   </ItemGroup>
 
 </Project>
