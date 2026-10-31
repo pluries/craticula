@@ -69,7 +69,7 @@ pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
 table { border-collapse: collapse; display: block; overflow-x: auto; margin: 0 0 1.3em; font-size: 0.9375rem; }
 th, td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; vertical-align: top; }
 th { background: var(--surface); color: var(--text); }
-blockquote { margin: 0 0 1.3em; padding: 14px 20px; border: 1px solid #6B4A22; border-radius: 12px; background: rgba(245, 184, 61, 0.08); color: #E8D9B8; }
+blockquote { margin: 0 0 1.3em; padding: 14px 20px; border: 1px solid #6B4A22; border-radius: 12px; background: #261F14; color: #E8D9B8; }
 blockquote p { margin: 0; color: inherit; }
 hr { border: 0; border-top: 1px solid var(--line); margin: 2em 0; }
 
