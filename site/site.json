@@ -17,69 +17,82 @@
     {
       "slug": "index",
       "title": "Home",
-      "source": "site/pages/index.md"
+      "source": "site/pages/index.md",
+      "group": "Start here"
     },
     {
       "slug": "quickstart-csharp",
       "title": "Quickstart: C#",
-      "source": "site/pages/quickstart-csharp.md"
+      "source": "site/pages/quickstart-csharp.md",
+      "group": "Start here"
     },
     {
       "slug": "quickstart-typescript",
       "title": "TypeScript",
-      "source": "site/pages/quickstart-typescript.md"
+      "source": "site/pages/quickstart-typescript.md",
+      "group": "Start here"
     },
     {
       "slug": "quickstart-python",
       "title": "Python",
-      "source": "site/pages/quickstart-python.md"
+      "source": "site/pages/quickstart-python.md",
+      "group": "Start here"
     },
     {
       "slug": "quickstart-go",
       "title": "Go",
-      "source": "site/pages/quickstart-go.md"
+      "source": "site/pages/quickstart-go.md",
+      "group": "Start here"
     },
     {
       "slug": "index-guidance",
       "title": "Index guidance",
-      "source": "site/pages/index-guidance.md"
+      "source": "site/pages/index-guidance.md",
+      "group": "Start here"
     },
     {
       "slug": "odata-migration",
       "title": "Migrating from OData",
-      "source": "site/pages/odata-migration.md"
+      "source": "site/pages/odata-migration.md",
+      "group": "Start here"
     },
     {
       "slug": "overview",
       "title": "Overview",
-      "source": "README.md"
+      "source": "README.md",
+      "group": "Specification"
     },
     {
       "slug": "spec",
       "title": "The spec",
-      "source": "spec/README.md"
+      "source": "spec/README.md",
+      "group": "Specification"
     },
     {
       "slug": "semantics",
       "title": "Semantics",
-      "source": "spec/semantics.md"
+      "source": "spec/semantics.md",
+      "group": "Specification"
     },
     {
       "slug": "rules",
       "title": "Rule index",
-      "generator": "rules-index"
+      "generator": "rules-index",
+      "group": "Specification"
     },
     {
       "slug": "grid-schema",
       "title": "GridSchema reference",
       "generator": "schema-reference",
-      "schema": "spec/grid-schema.schema.json"
+      "schema": "spec/grid-schema.schema.json",
+      "group": "Specification"
     },
     {
       "slug": "ir-schema",
       "title": "IR reference",
       "generator": "schema-reference",
-      "schema": "spec/ir.schema.json"
+      "schema": "spec/ir.schema.json",
+      "group": "Specification"
     }
   ]
 }

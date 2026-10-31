@@ -91,6 +91,7 @@ class Rendered:
     anchors: set[str] = field(default_factory=set)
     links: list[tuple[int, str]] = field(default_factory=list)  # (source line, href)
     title: str = ""
+    headings: list[tuple[int, str, str]] = field(default_factory=list)  # (level, text, anchor); FR-32, task #3474
 
 
 _INLINE_CODE = re.compile(r"(`+)(.+?)\1", re.S)
@@ -206,8 +207,10 @@ def render_markdown(source: str, resolve=lambda href, image=False: href) -> Rend
         heading = _HEADING.match(line)
         if heading:
             level, text = len(heading.group(1)), heading.group(2)
-            anchor = slugs(re.sub(r"[`*]", "", re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)))
+            plain = re.sub(r"[`*]", "", re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text))
+            anchor = slugs(plain)
             out.anchors.add(anchor)
+            out.headings.append((level, plain, anchor))
             alias = ""
             rule = _RULE_HEADING.match(text)
             if rule:  # `## SEM-1. Case sensitivity` is also reachable as `#sem-1`
@@ -349,6 +352,28 @@ class Page:
     source: str  # repository-relative file the page reads (for a generated page: the file it is generated from)
     generator: str | None = None
     rendered: Rendered | None = None
+    group: str | None = None  # FR-32, task #3474
+    template: str | None = None  # FR-32, task #3474
+
+
+def render_sidebar(pages: list["Page"], current_slug: str) -> str:
+    """FR-32, task #3474: one block per group in first-appearance order, the current page marked aria-current."""
+    groups: dict[str, list[Page]] = {}
+    for page in pages:
+        groups.setdefault(page.group or "", []).append(page)
+    blocks = []
+    for name, members in groups.items():
+        items = "".join(
+            f'<li><a href="{html.escape(p.slug)}.html"{" aria-current=\"page\"" if p.slug == current_slug else ""}>{html.escape(p.title)}</a></li>'
+            for p in members)
+        blocks.append(f'<div class="side-group"><p class="side-title">{html.escape(name)}</p><ul>{items}</ul></div>')
+    return "".join(blocks)
+
+
+def render_toc(rendered: Rendered) -> str:
+    """FR-32, task #3474: the 'On this page' block of the level-2 headings, or '' when there are none."""
+    links = "".join(f'<li><a href="#{html.escape(anchor)}">{html.escape(text)}</a></li>' for level, text, anchor in rendered.headings if level == 2)
+    return f'<p class="side-title">On this page</p><ul>{links}</ul>' if links else ""
 
 
 GENERATORS = ("schema-reference", "rules-index")
@@ -379,6 +404,15 @@ def load_config(root: Path) -> dict:
             raise BuildError(f"{path}: page '{entry['slug']}' needs a string 'source' (or the 'schema' / 'ruleSource' its generator reads)")
         if not SLUG.match(entry["slug"]):
             raise BuildError(f"{path}: page slug '{entry['slug']}' must match [a-z0-9][a-z0-9-]*")
+        if not isinstance(entry.get("group"), str) or not entry["group"].strip():
+            raise BuildError(f"{path}: page '{entry['slug']}' needs a non-empty string 'group' (the sidebar block it belongs to)")
+        template = entry.get("template")
+        if template is not None:
+            norm = os.path.normpath(template).replace(os.sep, "/") if isinstance(template, str) else ""
+            if not norm or os.path.isabs(template) or norm.startswith("../") or norm == ".." or _is_private(norm):
+                raise BuildError(f"{path}: page '{entry['slug']}': template {template!r} must be a public file inside the repository")
+            if not (root / norm).is_file():
+                raise BuildError(f"{path}: page '{entry['slug']}': template '{template}' does not exist")
         source = entry["source"]
         normal = os.path.normpath(source).replace(os.sep, "/")
         if os.path.isabs(source) or normal.startswith("../") or normal == ".." or _is_private(normal):
@@ -636,7 +670,7 @@ def resolve_link(href: str, source: str, pages_by_source: dict[str, Page], root:
 def build(root: Path, out_dir: Path) -> list[str]:
     """Build the site; returns the list of errors (empty when every link resolves and every rule id exists)."""
     config = load_config(root)
-    pages = [Page(p["slug"], p["title"], p["source"], p.get("generator")) for p in config["pages"]]
+    pages = [Page(p["slug"], p["title"], p["source"], p.get("generator"), group=p["group"], template=p.get("template")) for p in config["pages"]]
     pages_by_slug = {p.slug: p for p in pages}
     pages_by_source = {p.source: p for p in pages if p.generator is None}
     page_of_file = {os.path.basename(p.source): p.slug for p in pages if p.generator == "schema-reference"}
@@ -686,7 +720,7 @@ def build(root: Path, out_dir: Path) -> list[str]:
                 file_anchor_cache[rel] = set()
         return file_anchor_cache[rel]
 
-    template = read("site/template.html")
+    templates = {rel: read(rel) for rel in {"site/template.html", *(p.template for p in pages if p.template)}}
     style = read("site/style.css")
     out_dir.mkdir(parents=True, exist_ok=True)
     for stale in out_dir.glob("*.html"):  # a page removed from site.json must not linger in the output
@@ -724,12 +758,14 @@ def build(root: Path, out_dir: Path) -> list[str]:
             "site_title": html.escape(config["title"]),
             "page_title": html.escape(page.title),
             "nav": nav,
+            "sidebar": render_sidebar(pages, page.slug),
+            "toc": render_toc(rendered),
             "content": rendered.html,
             "source": html.escape(page.source),
             "source_url": html.escape(f"{config['repo'].rstrip('/')}/blob/{config['branch']}/{page.source}"),
         }
         # One pass: a value that itself contains {{...}} (page content may) is never substituted again.
-        page_html = re.sub(r"\{\{(\w+)\}\}", lambda m: values.get(m.group(1), m.group(0)), template)
+        page_html = re.sub(r"\{\{(\w+)\}\}", lambda m: values.get(m.group(1), m.group(0)), templates[page.template or "site/template.html"])
         (out_dir / f"{page.slug}.html").write_text(page_html, encoding="utf-8")
 
     if config["ruleSource"]:
