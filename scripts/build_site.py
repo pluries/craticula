@@ -134,6 +134,9 @@ def _inline(text: str, line: int, out: Rendered, resolve, holes: list[str] | Non
         if bang:
             out.links.append((line, href))
             href = resolve(href, True)
+            if re.match(r"(?:https?:)?//", href):  # NFR-13: a visitor's browser loads nothing from another host, so a remote image is its alt text
+                alt = re.sub(r"<[^>]+>", "", restore(label_html)).strip()
+                return hold(f'<span class="img-alt">{alt}</span>' if alt else "")
             return hold(f'<img alt="{html.escape(re.sub(r"<[^>]+>", "", restore(label_html)))}" src="{html.escape(href)}">')
         out.links.append((line, href))
         return hold(f'<a href="{html.escape(resolve(href))}">{label_html}</a>')
@@ -726,6 +729,16 @@ def build(root: Path, out_dir: Path) -> list[str]:
     for stale in out_dir.glob("*.html"):  # a page removed from site.json must not linger in the output
         stale.unlink()
     (out_dir / "style.css").write_text(style, encoding="utf-8")
+    fonts_in, fonts_out = root / "site" / "fonts", out_dir / "fonts"
+    if fonts_out.is_dir():  # a font removed from site/fonts must not linger in the output
+        for stale_font in fonts_out.iterdir():
+            if stale_font.is_file():
+                stale_font.unlink()
+    if fonts_in.is_dir():
+        fonts_out.mkdir(exist_ok=True)
+        for font in sorted(fonts_in.iterdir()):
+            if font.is_file():
+                (fonts_out / font.name).write_bytes(font.read_bytes())
 
     nav = "".join(f'<li><a href="{html.escape(p.slug)}.html">{html.escape(p.title)}</a></li>' for p in pages)
     texts: dict[str, str] = {}

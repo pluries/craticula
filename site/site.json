@@ -18,7 +18,8 @@
       "slug": "index",
       "title": "Home",
       "source": "site/pages/index.md",
-      "group": "Start here"
+      "group": "Start here",
+      "template": "site/home.html"
     },
     {
       "slug": "quickstart-csharp",
