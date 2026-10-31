@@ -459,7 +459,10 @@ class LinkCheck(unittest.TestCase):
         self.assertEqual(len(errors), 2)
         self.assertIn("dead link 'img/b.png'", errors[0])
         self.assertIn("private part", errors[1])
-        self.assertIn('src="https://example.test/r/raw/main/img/a.png"', (out / "index.html").read_text(encoding="utf-8"))
+        # NFR-13: the resolved raw address is another host, so the image is its alt text, not an <img>.
+        page = (out / "index.html").read_text(encoding="utf-8")
+        self.assertIn('<span class="img-alt">ok</span>', page)
+        self.assertNotIn("raw/main/img/a.png", page)
 
     def test_page_content_cannot_inject_into_the_template(self):
         _, out = run_build({"index.md": "# Home\n\n`{{source}}` and {{nav}} and {{content}}\n"}, [INDEX])
