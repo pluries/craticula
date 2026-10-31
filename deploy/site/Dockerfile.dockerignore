@@ -1,0 +1,8 @@
+# Build context of deploy/site/Dockerfile (the repository root): build output and VCS data the site build never reads.
+# The private paths of scripts/publish-github.sh are deliberately not listed (a copy of that list would drift): they stay in the
+# build stage, which is never pushed; only /out reaches the image, and build_site.py refuses a link or an include into them.
+.git
+**/bin
+**/obj
+**/node_modules
+site/_build
