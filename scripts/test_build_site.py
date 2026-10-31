@@ -775,6 +775,55 @@ class SiteDesign(unittest.TestCase):
         self.assertAlmostEqual(contrast("#000000", "#ffffff"), 21.0, places=1)
         self.assertAlmostEqual(contrast("#777777", "#ffffff"), 4.48, places=2)
 
+    def test_T1_the_stylesheet_has_no_import_no_foreign_url_and_only_relative_font_urls(self):
+        built = (self.out / "style.css").read_text(encoding="utf-8")
+        for text in (self.css, built):
+            self.assertNotRegex(text, r"(?i)@import")
+            self.assertNotRegex(text, r"(?i)url\(\s*['\"]?\s*(?:(?!data:)[a-z][a-z0-9+.-]*:|[/\\]{2})")
+            self.assertNotRegex(text, r"(?i)gstatic|googleapis")
+            urls = re.findall(r"url\(\s*['\"]?([^)'\"]*)['\"]?\s*\)", text)
+            self.assertTrue(urls)
+            for url in urls:
+                self.assertRegex(url, r"^fonts/[\w.-]+$")
+
+    def test_T1_no_tag_but_a_loads_or_points_to_another_host(self):
+        for slug, page in self.pages.items():
+            for tag in re.findall(r"<(?!a(?![a-z0-9]))[a-z][^>]*>", page, re.I):
+                for name, value in re.findall(r"""\b(src|srcset|poster|data|href)\s*=\s*["']([^"']*)["']""", tag, re.I):
+                    with self.subTest(page=slug, tag=tag[:60]):
+                        self.assertNotRegex(value, r"(?i)^\s*(?:[a-z][a-z0-9+.-]*:|[/\\]{2})", f"{name} in {tag[:80]}")
+
+    def test_FR32_a_docs_page_has_both_group_names_and_one_toc_link_per_level_2_heading(self):
+        page = self.pages["quickstart-csharp"]
+        side = re.search(r"<aside\b.*?</aside>", page, re.S).group(0)
+        self.assertIn("Start here", side)
+        self.assertIn("Specification", side)
+        main = re.search(r"<main\b.*?</main>", page, re.S).group(0)
+        toc = re.search(r'<nav class="toc"[^>]*>(.*?)</nav>', page, re.S).group(1)
+        self.assertGreater(main.count("<h2"), 0)
+        self.assertEqual(len(re.findall(r'<a href="#', toc)), main.count("<h2"))
+
+    def test_T5_the_literal_text_colours_of_the_prose_rules_reach_4_5_on_their_ground(self):
+        colours = self.root_vars()
+        grounds = {".prose p": ["--bg", "--surface"], ".lead": ["--bg", "--surface"], ".muted": ["--bg", "--surface"],
+                   "code": ["--code"], "blockquote": ["--bg"], ".card p": ["--surface"], ".panel pre": ["--surface"],
+                   ".p": ["--surface"], ".c": ["--surface"]}
+        found: dict[str, str] = {}
+        for selectors, body in re.findall(r"([^{}]+)\{([^{}]*)\}", re.sub(r"/\*.*?\*/", "", self.css, flags=re.S)):
+            declared = re.search(r"(?<![-\w])color\s*:\s*(#[0-9a-fA-F]{3,6}|var\(\s*(--[\w-]+)\s*\))", body)
+            if not declared:
+                continue
+            value = declared.group(1) if declared.group(2) is None else colours[declared.group(2)]
+            for selector in (x.strip() for x in selectors.split(",")):
+                if selector in grounds:
+                    found[selector] = value
+        for needed in (".prose p", ".lead", ".muted", "code", "blockquote", ".card p", ".p", ".c"):
+            self.assertIn(needed, found)
+        for selector, value in found.items():
+            for ground in grounds[selector]:
+                with self.subTest(selector=selector, ground=ground):
+                    self.assertGreaterEqual(contrast(value, colours[ground]), 4.5)
+
     def test_T6_the_stylesheet_stacks_at_phone_width_and_scrolls_code_sideways(self):
         self.assertRegex(self.css, r"@media\s*\(max-width:")
         self.assertRegex(self.css, r"overflow-x:\s*auto")
@@ -847,6 +896,30 @@ class RemoteImages(unittest.TestCase):
         out = bs.render_markdown("![shot](img/a.png)\n", resolve=lambda href, image=False: "https://example.test/r/raw/main/" + href).html
         self.assertIn('<span class="img-alt">shot</span>', out)
         self.assertNotIn("<img", out)
+
+    FOREIGN_SOURCES = [
+        "HTTP://evil.example/a.png", "Https://evil.example/b.png", "https:/evil.example/c.png", "http:evil.example/d.png",
+        "https:\\\\evil.example\\e.png"]
+    ERRORING_SOURCES = ["//evil.example/f.png", "\\\\evil.example\\g.png"]
+
+    def test_an_image_with_any_scheme_or_a_double_slash_is_remote_however_it_is_spelled(self):
+        for source in self.FOREIGN_SOURCES:
+            with self.subTest(source=source):
+                errors, out = run_build({"index.md": f"# Home\n\n![a]({source})\n"}, [INDEX])
+                self.assertEqual(errors, [])
+                written = "".join(f.read_text(encoding="utf-8") for f in out.glob("*.html"))
+                self.assertIn('<span class="img-alt">a</span>', written)
+                self.assertNotIn("<img", written)
+                self.assertNotIn("src=", written)
+                self.assertNotIn("evil.example", written)
+
+    def test_a_double_slash_image_the_build_already_reports_still_writes_no_img_and_no_src(self):
+        for source in self.ERRORING_SOURCES:
+            with self.subTest(source=source):
+                _, out = run_build({"index.md": f"# Home\n\n![a]({source})\n"}, [INDEX])
+                written = "".join(f.read_text(encoding="utf-8") for f in out.glob("*.html"))
+                self.assertNotIn("<img", written)
+                self.assertNotIn("src=", written)
 
     def test_a_built_page_holds_no_remote_img_and_keeps_the_badge_link(self):
         files = {"index.md": f"# Home\n\n[![coverage gate]({self.BADGE})](https://github.com/pluries/craticula/actions)\n"}
