@@ -22,8 +22,11 @@ ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE = "<html><title>{{page_title}}</title><nav>{{nav}}</nav>{{content}}<a href=\"{{source_url}}\">{{source}}</a></html>"
 
 
-def make_repo(files: dict[str, str], pages: list[dict], **extra) -> Path:
-    """A scratch repository: the site files, the given pages' sources and any other file."""
+def make_repo(files: dict[str, str], pages: list[dict], default_group: bool = True, **extra) -> Path:
+    """A scratch repository: the site files, the given pages' sources and any other file. FR-32 makes `group` required, so a
+    page without the key gets "Docs" unless the caller opts out with `default_group=False` (the T2 refusal tests)."""
+    if default_group:
+        pages = [p if not isinstance(p, dict) or "group" in p else {**p, "group": "Docs"} for p in pages]
     root = Path(tempfile.mkdtemp())
     config = {"title": "T", "repo": "https://example.test/r", "branch": "main", "pages": pages, **extra}
     everything = {"site/site.json": json.dumps(config), "site/template.html": TEMPLATE, "site/style.css": "body{}", **files}
@@ -34,7 +37,7 @@ def make_repo(files: dict[str, str], pages: list[dict], **extra) -> Path:
     return root
 
 
-INDEX = {"slug": "index", "title": "Home", "source": "index.md"}
+INDEX = {"slug": "index", "title": "Home", "source": "index.md", "group": "Docs"}
 
 
 def run_build(files: dict[str, str], pages: list[dict], **extra):
@@ -487,6 +490,162 @@ class LinkCheck(unittest.TestCase):
         errors, _ = run_build({}, [INDEX])
         self.assertEqual(len(errors), 1)
         self.assertIn("cannot read index.md", errors[0])
+
+SIDE_TEMPLATE = "<html><aside>{{sidebar}}</aside><div class=\"toc\">{{toc}}</div>{{content}}</html>"
+
+
+def grouped(slug: str, group: str | None, title: str | None = None, **extra) -> dict:
+    page = {"slug": slug, "title": title or slug.title(), "source": f"{slug}.md", **extra}
+    if group is not None:
+        page["group"] = group
+    return page
+
+
+def build_side(files: dict[str, str], pages: list[dict]) -> dict[str, str]:
+    root = make_repo({"site/template.html": SIDE_TEMPLATE, **files}, pages)
+    errors = bs.build(root, root / "_out")
+    assert errors == [], errors
+    return {f.stem: f.read_text(encoding="utf-8") for f in (root / "_out").glob("*.html")}
+
+
+def run_cli(root: Path):
+    err = io.StringIO()
+    with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+        code = bs.main(["--root", str(root), "--out", str(root / "_out")])
+    return code, err.getvalue()
+
+
+class Sidebar(unittest.TestCase):
+    """FR-32, task #3474: T1 and T2."""
+
+    PAGES = [grouped("index", "Start here", "Home"), grouped("spec", "Specification", "The spec"), grouped("intro", "Start here", "Intro")]
+    FILES = {"index.md": "# Home\n", "spec.md": "# Spec\n", "intro.md": "# Intro\n"}
+
+    def test_T1_one_list_per_group_in_first_appearance_order_pages_in_config_order(self):
+        side = re.search(r"<aside>(.*)</aside>", build_side(self.FILES, self.PAGES)["index"], re.S).group(1)
+        self.assertLess(side.index("Start here"), side.index("Specification"))
+        self.assertEqual(side.count("Start here"), 1)
+        start = side[:side.index("Specification")]
+        self.assertLess(start.index('href="index.html"'), start.index('href="intro.html"'))
+        self.assertNotIn("spec.html", start)
+        self.assertIn(">The spec</a>", side[side.index("Specification"):])
+
+    def test_T1_the_current_page_alone_is_marked_aria_current(self):
+        built = build_side(self.FILES, self.PAGES)
+        marked = re.findall(r'<a [^>]*aria-current="page"[^>]*>', built["spec"])
+        self.assertEqual(len(marked), 1)
+        self.assertIn('href="spec.html"', marked[0])
+        self.assertNotIn("aria-current", built["index"].split("spec.html")[1].split("</a>")[0])
+
+    def test_T1_a_group_is_a_single_block_even_when_its_pages_are_not_adjacent(self):
+        side = build_side(self.FILES, self.PAGES)["intro"]
+        self.assertEqual(side.count("Start here"), 1)
+
+    def test_T1_a_single_group_renders_no_other_group(self):
+        built = build_side({"index.md": "# Home\n"}, [grouped("index", "Only", "Home")])
+        self.assertEqual(built["index"].count("Only"), 1)
+        self.assertIn('aria-current="page"', built["index"])
+
+    def test_T1_group_and_title_are_escaped(self):
+        built = build_side({"index.md": "# Home\n"}, [grouped("index", "A & <b>", "T <i>")])
+        self.assertIn("A &amp; &lt;b&gt;", built["index"])
+        self.assertIn("T &lt;i&gt;", built["index"])
+
+    def test_T1_render_sidebar_marks_the_current_page(self):
+        pages = [bs.Page("index", "Home", "index.md", group="G"), bs.Page("b", "B", "b.md", group="G")]
+        side = bs.render_sidebar(pages, "b")
+        self.assertEqual(side.count('aria-current="page"'), 1)
+
+    def test_T2_a_page_without_a_group_is_refused_with_exit_2_naming_the_slug(self):
+        root = make_repo({"index.md": "# Home\n", "spec.md": "# S\n"}, [grouped("index", "G"), grouped("spec", None)], default_group=False)
+        code, err = run_cli(root)
+        self.assertEqual(code, 2)
+        self.assertIn("spec", err)
+
+    def test_T2_an_empty_or_non_string_group_is_refused(self):
+        for bad in ("", 3, None):
+            with self.subTest(bad=bad):
+                page = grouped("index", "G")
+                page["group"] = bad
+                code, err = run_cli(make_repo({"index.md": "# Home\n"}, [page]))
+                self.assertEqual(code, 2)
+                self.assertIn("index", err)
+
+
+class Toc(unittest.TestCase):
+    """FR-32, task #3474: T3 and T4."""
+
+    def toc_of(self, markdown: str) -> str:
+        built = build_side({"index.md": markdown}, [grouped("index", "G", "Home")])
+        return re.search(r'<div class="toc">(.*?)</div>', built["index"], re.S).group(1)
+
+    def test_T3_three_level_2_headings_give_three_links_in_order(self):
+        toc = self.toc_of("# Home\n\n## Alpha\n\n### Deep\n\n## Beta\n\n## Gamma\n")
+        self.assertIn("On this page", toc)
+        self.assertEqual(re.findall(r'<a href="#([^"]+)">([^<]*)</a>', toc), [("alpha", "Alpha"), ("beta", "Beta"), ("gamma", "Gamma")])
+
+    def test_T3_a_page_without_level_2_headings_has_no_toc_at_all(self):
+        self.assertEqual(self.toc_of("# Home\n\n### Only deep\n\ntext\n").strip(), "")
+
+    def test_T3_duplicate_headings_link_to_their_own_suffixed_anchors(self):
+        toc = self.toc_of("# Home\n\n## Same\n\n## Same\n")
+        self.assertEqual(re.findall(r'href="#([^"]+)"', toc), ["same", "same-1"])
+
+    def test_T3_render_toc_of_a_rendered_page(self):
+        self.assertEqual(bs.render_toc(bs.render_markdown("# T\n")), "")
+
+    def test_T4_markup_in_a_heading_is_escaped_and_the_anchor_is_the_headings_own(self):
+        built = build_side({"index.md": "# Home\n\n## a <b> & c\n"}, [grouped("index", "G", "Home")])["index"]
+        toc = re.search(r'<div class="toc">(.*?)</div>', built, re.S).group(1)
+        href, text = re.search(r'<a href="#([^"]+)">([^<]*)</a>', toc).groups()
+        self.assertIn("a &lt;b&gt; &amp; c", text)
+        self.assertNotIn("<b>", toc)
+        self.assertIn(f'<h2 id="{href}">', built)
+
+    def test_T4_a_rule_id_heading_links_to_its_heading_anchor(self):
+        built = build_side({"index.md": "# Home\n\n## SEM-1. Title\n"}, [grouped("index", "G", "Home")])["index"]
+        href = re.search(r'<div class="toc">.*?href="#([^"]+)"', built, re.S).group(1)
+        self.assertEqual(href, "sem-1-title")
+        self.assertIn(f'<h2 id="{href}">', built)
+
+
+class PerPageTemplate(unittest.TestCase):
+    """FR-32, task #3474: T5."""
+
+    def test_T5_a_page_with_a_template_key_uses_that_file(self):
+        files = {"index.md": "# Home\n", "two.md": "# Two\n", "site/home.html": "<html>HOME-TEMPLATE {{content}}</html>"}
+        built = build_side(files, [grouped("index", "G", "Home", template="site/home.html"), grouped("two", "G", "Two")])
+        self.assertIn("HOME-TEMPLATE", built["index"])
+        self.assertIn("<h1", built["index"])
+        self.assertNotIn("HOME-TEMPLATE", built["two"])
+        self.assertIn("<aside>", built["two"])
+
+    def test_T5_a_missing_template_file_is_exit_2_naming_the_path(self):
+        root = make_repo({"index.md": "# Home\n"}, [grouped("index", "G", "Home", template="site/nope.html")])
+        code, err = run_cli(root)
+        self.assertEqual(code, 2)
+        self.assertIn("site/nope.html", err)
+
+    def test_T5_a_template_that_is_not_a_string_is_exit_2(self):
+        code, _ = run_cli(make_repo({"index.md": "# Home\n"}, [grouped("index", "G", "Home", template=7)]))
+        self.assertEqual(code, 2)
+
+
+class NoInjection(unittest.TestCase):
+    """FR-32, task #3474: T6."""
+
+    def test_T6_sidebar_and_toc_placeholders_in_content_are_printed_as_text(self):
+        built = build_side({"index.md": "# Home\n\n## Part\n\n`{{sidebar}}` and {{toc}} here\n"}, [grouped("index", "G", "Home")])["index"]
+        self.assertIn("<code>{{sidebar}}</code>", built)
+        self.assertIn("{{toc}} here", built)
+        self.assertEqual(built.count("<aside>"), 1)
+        self.assertEqual(built.count("On this page"), 1)
+
+    def test_T6_a_heading_that_holds_a_placeholder_does_not_expand_in_the_toc(self):
+        built = build_side({"index.md": "# Home\n\n## About {{sidebar}}\n"}, [grouped("index", "G", "Home")])["index"]
+        self.assertIn('href="index.html"', built)
+        self.assertEqual(built.count("<aside>"), 1)
+        self.assertIn("{{sidebar}}", built)
 
 
 class Cli(unittest.TestCase):
