@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{site_title}}: AG Grid requests in, safe queries out</title>
+<meta name="description" content="Craticula turns AG Grid server-side requests into native, injection-safe SQL, MongoDB and OpenSearch queries. It compiles the query and never runs it.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="home">
+<a class="skip" href="#main">Skip to content</a>
+<header class="top"><div class="wrap-wide">
+<a class="brand" href="index.html"><svg width="30" height="30" viewBox="0 0 28 28" aria-hidden="true"><rect x="1.5" y="1.5" width="25" height="25" rx="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 6v16M14 6v16M19 6v16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>{{site_title}}</a>
+<nav class="top-nav" aria-label="Main"><a href="quickstart-csharp.html">Quickstart</a><a href="spec.html">Spec</a><a href="rules.html">Rules</a><a href="grid-schema.html">Reference</a><a href="odata-migration.html">From OData</a></nav>
+<a class="btn-ghost" href="https://github.com/pluries/craticula">GitHub</a>
+</div></header>
+
+<main id="main">
+<section class="hero"><div class="wrap-wide hero-inner">
+<p class="pill"><span class="dot"></span>Pre-release: build from source, no package published yet</p>
+<h1>AG Grid requests in.<br><span class="accent">Safe queries out.</span></h1>
+<p class="lead">Craticula turns AG Grid server-side requests into native, injection-safe SQL, MongoDB and OpenSearch queries. It compiles the query and never runs it; you run it with your own driver.</p>
+<div class="cta">
+<a class="btn" href="quickstart-csharp.html">Read the quickstart</a>
+<a class="btn-ghost" href="https://github.com/pluries/craticula">View on GitHub</a>
+<span class="fine">Apache-2.0 · .NET 10 · TypeScript, Python and Go planned after the spec freezes</span>
+</div>
+<div class="demo">
+<div class="panel"><div class="panel-title">AG Grid request</div>
+<pre><code><span class="p">{</span>
+  "startRow": <span class="n">0</span>, "endRow": <span class="n">50</span>,
+  "filterModel": <span class="p">{</span>
+    "customer": <span class="p">{</span> "type": <span class="s">"contains"</span>, "filter": <span class="s">"acme"</span> <span class="p">}</span>,
+    "amount": <span class="p">{</span> "type": <span class="s">"greaterThan"</span>, "filter": <span class="n">100</span> <span class="p">}</span>
+  <span class="p">}</span>,
+  "sortModel": [ <span class="p">{</span> "colId": <span class="s">"amount"</span>, "sort": <span class="s">"desc"</span> <span class="p">}</span> ]
+<span class="p">}</span></code></pre></div>
+<div class="arrow" aria-hidden="true"><svg width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="21" fill="#1C1916" stroke="#3A342D"/><path d="M13 22h17M24 15l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+<div class="panel"><div class="panel-title">PostgreSQL, compiled</div>
+<pre><code><span class="k">SELECT</span> * <span class="k">FROM</span> "orders"
+<span class="k">WHERE</span> ("customer" <span class="k">ILIKE</span> <span class="s">'%'</span> || <span class="n">$1</span> || <span class="s">'%'</span> <span class="k">ESCAPE</span> <span class="s">'\'</span>
+   <span class="k">AND</span> "amount" &gt; <span class="n">$2</span>::numeric)
+<span class="k">ORDER BY</span> "amount" <span class="k">DESC NULLS FIRST</span>, "id" <span class="k">ASC NULLS LAST</span>
+<span class="k">LIMIT</span> <span class="n">$3</span> <span class="k">OFFSET</span> <span class="n">$4</span>
+
+<span class="c">-- parameters:</span> <span class="s">'acme'</span>, <span class="s">'100'</span>, <span class="n">50</span>, <span class="n">0</span></code></pre></div>
+</div>
+<div class="refused"><span class="refused-label">Refused</span><code>UnknownFieldException: Field allowlist check failed (SC-1/SC-2) for 1 colId(s): password</code></div>
+</div></section>
+
+<section class="band wrap-wide">
+<p class="eyebrow">One request, your database</p>
+<h2>The same request, in each database's own language</h2>
+<p class="muted">Each compiler follows the same normative rules, so the statements for two databases agree on which rows they return.</p>
+<div class="cards">
+<div class="card"><h3>SQL</h3><p>Parameterized statements for PostgreSQL and SQL Server, with values carried as parameters and never part of the text.</p></div>
+<div class="card"><h3>MongoDB</h3><p>Native filters and aggregation pipelines from the same request, behind the same schema allowlist.</p></div>
+<div class="card"><h3>OpenSearch</h3><p>The OpenSearch and Elasticsearch query DSL, compiled and never executed by the library.</p></div>
+</div>
+</section>
+
+<section class="band wrap-wide principles">
+<div><h3>Compile only</h3><p>No connection, no driver, no side effects. You get a statement and its parameters and run them where you choose.</p></div>
+<div><h3>Allowlisted by schema</h3><p>A request for a column the schema does not list is refused before any compiler sees it.</p></div>
+<div><h3>Spec first</h3><p>A language-neutral spec is the source of truth, and every implementation conforms to it.</p></div>
+</section>
+
+<section class="band wrap-wide">
+<h2>From grid request to query in four steps</h2>
+<div class="cards steps">
+<div class="card"><p class="num">01</p><h3>Declare a schema</h3><p>List the columns a grid may touch. Everything else is refused.</p></div>
+<div class="card"><p class="num">02</p><h3>Parse the request</h3><p>AG Grid's JSON becomes the canonical intermediate representation.</p></div>
+<div class="card"><p class="num">03</p><h3>Compile it</h3><p>Pick the compiler for your database and get a statement plus parameters.</p></div>
+<div class="card"><p class="num">04</p><h3>Run it your way</h3><p>Use your own driver, or an adapter for Dapper, Entity Framework Core, MongoDB or OpenSearch.</p></div>
+</div>
+</section>
+
+<section class="band wrap-wide home-docs">
+{{content}}
+</section>
+</main>
+
+<footer class="foot"><div class="wrap-wide"><span>Craticula · Apache-2.0 · built from the repository's own documents, so it cannot drift from them.</span><a href="https://github.com/pluries/craticula">github.com/pluries/craticula</a></div></footer>
+</body>
+</html>

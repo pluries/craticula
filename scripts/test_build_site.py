@@ -22,8 +22,11 @@ ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE = "<html><title>{{page_title}}</title><nav>{{nav}}</nav>{{content}}<a href=\"{{source_url}}\">{{source}}</a></html>"
 
 
-def make_repo(files: dict[str, str], pages: list[dict], **extra) -> Path:
-    """A scratch repository: the site files, the given pages' sources and any other file."""
+def make_repo(files: dict[str, str], pages: list[dict], default_group: bool = True, **extra) -> Path:
+    """A scratch repository: the site files, the given pages' sources and any other file. FR-32 makes `group` required, so a
+    page without the key gets "Docs" unless the caller opts out with `default_group=False` (the T2 refusal tests)."""
+    if default_group:
+        pages = [p if not isinstance(p, dict) or "group" in p else {**p, "group": "Docs"} for p in pages]
     root = Path(tempfile.mkdtemp())
     config = {"title": "T", "repo": "https://example.test/r", "branch": "main", "pages": pages, **extra}
     everything = {"site/site.json": json.dumps(config), "site/template.html": TEMPLATE, "site/style.css": "body{}", **files}
@@ -34,7 +37,7 @@ def make_repo(files: dict[str, str], pages: list[dict], **extra) -> Path:
     return root
 
 
-INDEX = {"slug": "index", "title": "Home", "source": "index.md"}
+INDEX = {"slug": "index", "title": "Home", "source": "index.md", "group": "Docs"}
 
 
 def run_build(files: dict[str, str], pages: list[dict], **extra):
@@ -456,7 +459,10 @@ class LinkCheck(unittest.TestCase):
         self.assertEqual(len(errors), 2)
         self.assertIn("dead link 'img/b.png'", errors[0])
         self.assertIn("private part", errors[1])
-        self.assertIn('src="https://example.test/r/raw/main/img/a.png"', (out / "index.html").read_text(encoding="utf-8"))
+        # NFR-13: the resolved raw address is another host, so the image is its alt text, not an <img>.
+        page = (out / "index.html").read_text(encoding="utf-8")
+        self.assertIn('<span class="img-alt">ok</span>', page)
+        self.assertNotIn("raw/main/img/a.png", page)
 
     def test_page_content_cannot_inject_into_the_template(self):
         _, out = run_build({"index.md": "# Home\n\n`{{source}}` and {{nav}} and {{content}}\n"}, [INDEX])
@@ -487,6 +493,441 @@ class LinkCheck(unittest.TestCase):
         errors, _ = run_build({}, [INDEX])
         self.assertEqual(len(errors), 1)
         self.assertIn("cannot read index.md", errors[0])
+
+SIDE_TEMPLATE = "<html><aside>{{sidebar}}</aside><div class=\"toc\">{{toc}}</div>{{content}}</html>"
+
+
+def grouped(slug: str, group: str | None, title: str | None = None, **extra) -> dict:
+    page = {"slug": slug, "title": title or slug.title(), "source": f"{slug}.md", **extra}
+    if group is not None:
+        page["group"] = group
+    return page
+
+
+def build_side(files: dict[str, str], pages: list[dict]) -> dict[str, str]:
+    root = make_repo({"site/template.html": SIDE_TEMPLATE, **files}, pages)
+    errors = bs.build(root, root / "_out")
+    assert errors == [], errors
+    return {f.stem: f.read_text(encoding="utf-8") for f in (root / "_out").glob("*.html")}
+
+
+def run_cli(root: Path):
+    err = io.StringIO()
+    with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+        code = bs.main(["--root", str(root), "--out", str(root / "_out")])
+    return code, err.getvalue()
+
+
+class Sidebar(unittest.TestCase):
+    """FR-32, task #3474: T1 and T2."""
+
+    PAGES = [grouped("index", "Start here", "Home"), grouped("spec", "Specification", "The spec"), grouped("intro", "Start here", "Intro")]
+    FILES = {"index.md": "# Home\n", "spec.md": "# Spec\n", "intro.md": "# Intro\n"}
+
+    def test_T1_one_list_per_group_in_first_appearance_order_pages_in_config_order(self):
+        side = re.search(r"<aside>(.*)</aside>", build_side(self.FILES, self.PAGES)["index"], re.S).group(1)
+        self.assertLess(side.index("Start here"), side.index("Specification"))
+        self.assertEqual(side.count("Start here"), 1)
+        start = side[:side.index("Specification")]
+        self.assertLess(start.index('href="index.html"'), start.index('href="intro.html"'))
+        self.assertNotIn("spec.html", start)
+        self.assertIn(">The spec</a>", side[side.index("Specification"):])
+
+    def test_T1_the_current_page_alone_is_marked_aria_current(self):
+        built = build_side(self.FILES, self.PAGES)
+        marked = re.findall(r'<a [^>]*aria-current="page"[^>]*>', built["spec"])
+        self.assertEqual(len(marked), 1)
+        self.assertIn('href="spec.html"', marked[0])
+        self.assertNotIn("aria-current", built["index"].split("spec.html")[1].split("</a>")[0])
+
+    def test_T1_a_group_is_a_single_block_even_when_its_pages_are_not_adjacent(self):
+        side = build_side(self.FILES, self.PAGES)["intro"]
+        self.assertEqual(side.count("Start here"), 1)
+
+    def test_T1_a_single_group_renders_no_other_group(self):
+        built = build_side({"index.md": "# Home\n"}, [grouped("index", "Only", "Home")])
+        self.assertEqual(built["index"].count("Only"), 1)
+        self.assertIn('aria-current="page"', built["index"])
+
+    def test_T1_group_and_title_are_escaped(self):
+        built = build_side({"index.md": "# Home\n"}, [grouped("index", "A & <b>", "T <i>")])
+        self.assertIn("A &amp; &lt;b&gt;", built["index"])
+        self.assertIn("T &lt;i&gt;", built["index"])
+
+    def test_T1_render_sidebar_marks_the_current_page(self):
+        pages = [bs.Page("index", "Home", "index.md", group="G"), bs.Page("b", "B", "b.md", group="G")]
+        side = bs.render_sidebar(pages, "b")
+        self.assertEqual(side.count('aria-current="page"'), 1)
+
+    def test_T2_a_page_without_a_group_is_refused_with_exit_2_naming_the_slug(self):
+        root = make_repo({"index.md": "# Home\n", "spec.md": "# S\n"}, [grouped("index", "G"), grouped("spec", None)], default_group=False)
+        code, err = run_cli(root)
+        self.assertEqual(code, 2)
+        self.assertIn("spec", err)
+
+    def test_T2_an_empty_or_non_string_group_is_refused(self):
+        for bad in ("", 3, None):
+            with self.subTest(bad=bad):
+                page = grouped("index", "G")
+                page["group"] = bad
+                code, err = run_cli(make_repo({"index.md": "# Home\n"}, [page]))
+                self.assertEqual(code, 2)
+                self.assertIn("index", err)
+
+
+class Toc(unittest.TestCase):
+    """FR-32, task #3474: T3 and T4."""
+
+    def toc_of(self, markdown: str) -> str:
+        built = build_side({"index.md": markdown}, [grouped("index", "G", "Home")])
+        return re.search(r'<div class="toc">(.*?)</div>', built["index"], re.S).group(1)
+
+    def test_T3_three_level_2_headings_give_three_links_in_order(self):
+        toc = self.toc_of("# Home\n\n## Alpha\n\n### Deep\n\n## Beta\n\n## Gamma\n")
+        self.assertIn("On this page", toc)
+        self.assertEqual(re.findall(r'<a href="#([^"]+)">([^<]*)</a>', toc), [("alpha", "Alpha"), ("beta", "Beta"), ("gamma", "Gamma")])
+
+    def test_T3_a_page_without_level_2_headings_has_no_toc_at_all(self):
+        self.assertEqual(self.toc_of("# Home\n\n### Only deep\n\ntext\n").strip(), "")
+
+    def test_T3_duplicate_headings_link_to_their_own_suffixed_anchors(self):
+        toc = self.toc_of("# Home\n\n## Same\n\n## Same\n")
+        self.assertEqual(re.findall(r'href="#([^"]+)"', toc), ["same", "same-1"])
+
+    def test_T3_render_toc_of_a_rendered_page(self):
+        self.assertEqual(bs.render_toc(bs.render_markdown("# T\n")), "")
+
+    def test_T4_markup_in_a_heading_is_escaped_and_the_anchor_is_the_headings_own(self):
+        built = build_side({"index.md": "# Home\n\n## a <b> & c\n"}, [grouped("index", "G", "Home")])["index"]
+        toc = re.search(r'<div class="toc">(.*?)</div>', built, re.S).group(1)
+        href, text = re.search(r'<a href="#([^"]+)">([^<]*)</a>', toc).groups()
+        self.assertIn("a &lt;b&gt; &amp; c", text)
+        self.assertNotIn("<b>", toc)
+        self.assertIn(f'<h2 id="{href}">', built)
+
+    def test_T4_a_rule_id_heading_links_to_its_heading_anchor(self):
+        built = build_side({"index.md": "# Home\n\n## SEM-1. Title\n"}, [grouped("index", "G", "Home")])["index"]
+        href = re.search(r'<div class="toc">.*?href="#([^"]+)"', built, re.S).group(1)
+        self.assertEqual(href, "sem-1-title")
+        self.assertIn(f'<h2 id="{href}">', built)
+
+
+class PerPageTemplate(unittest.TestCase):
+    """FR-32, task #3474: T5."""
+
+    def test_T5_a_page_with_a_template_key_uses_that_file(self):
+        files = {"index.md": "# Home\n", "two.md": "# Two\n", "site/home.html": "<html>HOME-TEMPLATE {{content}}</html>"}
+        built = build_side(files, [grouped("index", "G", "Home", template="site/home.html"), grouped("two", "G", "Two")])
+        self.assertIn("HOME-TEMPLATE", built["index"])
+        self.assertIn("<h1", built["index"])
+        self.assertNotIn("HOME-TEMPLATE", built["two"])
+        self.assertIn("<aside>", built["two"])
+
+    def test_T5_a_missing_template_file_is_exit_2_naming_the_path(self):
+        root = make_repo({"index.md": "# Home\n"}, [grouped("index", "G", "Home", template="site/nope.html")])
+        code, err = run_cli(root)
+        self.assertEqual(code, 2)
+        self.assertIn("site/nope.html", err)
+
+    def test_T5_a_template_that_is_not_a_string_is_exit_2(self):
+        code, _ = run_cli(make_repo({"index.md": "# Home\n"}, [grouped("index", "G", "Home", template=7)]))
+        self.assertEqual(code, 2)
+
+
+class NoInjection(unittest.TestCase):
+    """FR-32, task #3474: T6."""
+
+    def test_T6_sidebar_and_toc_placeholders_in_content_are_printed_as_text(self):
+        built = build_side({"index.md": "# Home\n\n## Part\n\n`{{sidebar}}` and {{toc}} here\n"}, [grouped("index", "G", "Home")])["index"]
+        self.assertIn("<code>{{sidebar}}</code>", built)
+        self.assertIn("{{toc}} here", built)
+        self.assertEqual(built.count("<aside>"), 1)
+        self.assertEqual(built.count("On this page"), 1)
+
+    def test_T6_a_heading_that_holds_a_placeholder_does_not_expand_in_the_toc(self):
+        built = build_side({"index.md": "# Home\n\n## About {{sidebar}}\n"}, [grouped("index", "G", "Home")])["index"]
+        self.assertIn('href="index.html"', built)
+        self.assertEqual(built.count("<aside>"), 1)
+        self.assertIn("{{sidebar}}", built)
+
+FONT_FILES = ["bricolage-grotesque-latin-700-normal.woff2", "bricolage-grotesque-latin-800-normal.woff2",
+              "instrument-sans-latin-400-normal.woff2", "instrument-sans-latin-500-normal.woff2",
+              "instrument-sans-latin-600-normal.woff2", "jetbrains-mono-latin-400-normal.woff2",
+              "jetbrains-mono-latin-500-normal.woff2"]
+FAMILIES = ["Bricolage Grotesque", "Instrument Sans", "JetBrains Mono"]
+GENERIC = ("sans-serif", "serif", "monospace", "system-ui")
+
+
+def luminance(hex_colour: str) -> float:
+    digits = hex_colour.lstrip("#")
+    if len(digits) == 3:
+        digits = "".join(c * 2 for c in digits)
+    channels = [int(digits[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+    lin = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
+    return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+
+
+def contrast(a: str, b: str) -> float:
+    hi, lo = sorted((luminance(a), luminance(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+class SiteDesign(unittest.TestCase):
+    """The approved redesign of this repository's own site (FR-32, NFR-13, task #3475): T1..T6 of that task."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.out = Path(tempfile.mkdtemp()) / "out"
+        bs.build(ROOT, cls.out)
+        cls.pages = {f.stem: f.read_text(encoding="utf-8") for f in cls.out.glob("*.html")}
+        cls.css_path = ROOT / "site" / "style.css"
+        cls.css = cls.css_path.read_text(encoding="utf-8")
+
+    def root_vars(self) -> dict[str, str]:
+        found: dict[str, str] = {}
+        for block in re.findall(r":root\s*{([^}]*)}", self.css):
+            found.update(re.findall(r"(--[\w-]+)\s*:\s*(#[0-9a-fA-F]{3,6})\s*;", block))
+        return found
+
+    def test_T1_no_source_line_no_script_no_foreign_resource_in_any_built_page(self):
+        self.assertIn("index", self.pages)
+        for slug, page in self.pages.items():
+            with self.subTest(page=slug):
+                self.assertNotIn("Source:", page)
+                self.assertNotIn("fonts.googleapis.com", page)
+                self.assertNotIn("fonts.gstatic.com", page)
+                self.assertNotIn("<script", page)
+                for tag in re.findall(r"<link\b[^>]*>", page):
+                    self.assertNotRegex(tag, r"href=\"https?://")
+                for tag in re.findall(r"<(?:img|source|iframe|video|audio|embed|object)\b[^>]*>", page):
+                    self.assertNotRegex(tag, r"\bsrc=\"(?:https?:)?//")
+                self.assertNotRegex(page, r"\bsrc=\"(?:https?:)?//")
+
+    def test_T1_the_stylesheet_loads_nothing_from_another_host(self):
+        built = (self.out / "style.css").read_text(encoding="utf-8")
+        for text in (self.css, built):
+            self.assertNotIn("@import", text)
+            self.assertNotIn("url(http", text)
+            self.assertNotIn("googleapis", text)
+
+    def test_T2_home_page_shows_the_request_the_statement_and_the_links(self):
+        text = " ".join(html.unescape(re.sub(r"<[^>]+>", " ", self.pages["index"])).split())
+        for needle in ('SELECT * FROM "orders"', "Field allowlist check failed", '"filter": "acme"', "Safe queries out."):
+            self.assertIn(needle, text)
+        for slug in ("quickstart-csharp", "index-guidance", "overview", "spec", "semantics", "rules", "grid-schema",
+                     "ir-schema", "odata-migration"):
+            self.assertIn(f'href="{slug}.html"', self.pages["index"], slug)
+
+    def test_T2_only_the_index_page_names_a_template(self):
+        pages = json.loads((ROOT / "site" / "site.json").read_text(encoding="utf-8"))["pages"]
+        self.assertEqual({p["slug"]: p.get("template") for p in pages if p.get("template")}, {"index": "site/home.html"})
+
+    def test_T3_the_font_files_are_in_the_repository_with_their_licences(self):
+        fonts = ROOT / "site" / "fonts"
+        for name in FONT_FILES:
+            with self.subTest(font=name):
+                data = (fonts / name).read_bytes()
+                self.assertEqual(data[:4], b"wOF2")
+                self.assertLess(len(data), 60 * 1024)
+        licences = (fonts / "LICENSES.md").read_text(encoding="utf-8")
+        self.assertIn("SIL Open Font License", licences)
+        for family in FAMILIES:
+            self.assertIn(family, licences)
+
+    def test_T3_the_build_copies_the_fonts_folder(self):
+        built = sorted(f.name for f in (self.out / "fonts").glob("*"))
+        self.assertEqual(built, sorted(FONT_FILES + ["LICENSES.md"]))
+
+    def test_T3_each_font_file_has_a_relative_font_face_and_exists_in_the_output(self):
+        urls = re.findall(r"@font-face\s*{[^}]*?url\(\s*['\"]?([^)'\"]+)['\"]?\s*\)", self.css)
+        self.assertEqual(sorted(urls), sorted(f"fonts/{name}" for name in FONT_FILES))
+        for url in urls:
+            self.assertTrue((self.out / url).is_file(), url)
+
+    def test_T3_every_font_family_is_ours_followed_by_a_generic_fallback(self):
+        css = re.sub(r"@font-face\s*{[^}]*}", "", self.css)
+        declared = re.findall(r"font-family\s*:\s*([^;}]+)", css)
+        self.assertTrue(declared, "the stylesheet names no font-family")
+        for value in declared:
+            parts = [x.strip().strip("'\"") for x in value.split(",")]
+            self.assertIn(parts[0], FAMILIES, value)
+            self.assertIn(parts[-1], GENERIC, value)
+        self.assertEqual({v.split(",")[0].strip().strip("'\"") for v in declared}, set(FAMILIES))
+
+    def test_T5_the_colour_contract_is_declared_in_root(self):
+        colours = self.root_vars()
+        for name in ("--bg", "--surface", "--text", "--muted", "--faint", "--accent", "--accent-ink"):
+            self.assertIn(name, colours)
+
+    def test_T5_text_colours_reach_4_5_on_both_backgrounds_and_accent_ink_on_accent(self):
+        colours = self.root_vars()
+        for name in ("--text", "--muted", "--faint", "--accent"):
+            for ground in ("--bg", "--surface"):
+                with self.subTest(colour=name, ground=ground):
+                    self.assertGreaterEqual(contrast(colours[name], colours[ground]), 4.5)
+        self.assertGreaterEqual(contrast(colours["--accent-ink"], colours["--accent"]), 4.5)
+
+    def test_T5_the_site_is_dark_only(self):
+        self.assertNotIn("prefers-color-scheme: light", self.css)
+        self.assertNotIn("prefers-color-scheme:light", self.css)
+
+    def test_T5_the_contrast_helper_matches_known_ratios(self):
+        self.assertAlmostEqual(contrast("#000000", "#ffffff"), 21.0, places=1)
+        self.assertAlmostEqual(contrast("#777777", "#ffffff"), 4.48, places=2)
+
+    def test_T1_the_stylesheet_has_no_import_no_foreign_url_and_only_relative_font_urls(self):
+        built = (self.out / "style.css").read_text(encoding="utf-8")
+        for text in (self.css, built):
+            self.assertNotRegex(text, r"(?i)@import")
+            self.assertNotRegex(text, r"(?i)url\(\s*['\"]?\s*(?:(?!data:)[a-z][a-z0-9+.-]*:|[/\\]{2})")
+            self.assertNotRegex(text, r"(?i)gstatic|googleapis")
+            urls = re.findall(r"url\(\s*['\"]?([^)'\"]*)['\"]?\s*\)", text)
+            self.assertTrue(urls)
+            for url in urls:
+                self.assertRegex(url, r"^fonts/[\w.-]+$")
+
+    def test_T1_no_tag_but_a_loads_or_points_to_another_host(self):
+        for slug, page in self.pages.items():
+            for tag in re.findall(r"<(?!a(?![a-z0-9]))[a-z][^>]*>", page, re.I):
+                for name, value in re.findall(r"""\b(src|srcset|poster|data|href)\s*=\s*["']([^"']*)["']""", tag, re.I):
+                    with self.subTest(page=slug, tag=tag[:60]):
+                        self.assertNotRegex(value, r"(?i)^\s*(?:[a-z][a-z0-9+.-]*:|[/\\]{2})", f"{name} in {tag[:80]}")
+
+    def test_FR32_a_docs_page_has_both_group_names_and_one_toc_link_per_level_2_heading(self):
+        page = self.pages["quickstart-csharp"]
+        side = re.search(r"<aside\b.*?</aside>", page, re.S).group(0)
+        self.assertIn("Start here", side)
+        self.assertIn("Specification", side)
+        main = re.search(r"<main\b.*?</main>", page, re.S).group(0)
+        toc = re.search(r'<nav class="toc"[^>]*>(.*?)</nav>', page, re.S).group(1)
+        self.assertGreater(main.count("<h2"), 0)
+        self.assertEqual(len(re.findall(r'<a href="#', toc)), main.count("<h2"))
+
+    def test_T5_the_literal_text_colours_of_the_prose_rules_reach_4_5_on_their_ground(self):
+        colours = self.root_vars()
+        grounds = {".prose p": ["--bg", "--surface"], ".lead": ["--bg", "--surface"], ".muted": ["--bg", "--surface"],
+                   "code": ["--code"], "blockquote": ["--bg"], ".card p": ["--surface"], ".panel pre": ["--surface"],
+                   ".p": ["--surface"], ".c": ["--surface"]}
+        found: dict[str, str] = {}
+        for selectors, body in re.findall(r"([^{}]+)\{([^{}]*)\}", re.sub(r"/\*.*?\*/", "", self.css, flags=re.S)):
+            declared = re.search(r"(?<![-\w])color\s*:\s*(#[0-9a-fA-F]{3,6}|var\(\s*(--[\w-]+)\s*\))", body)
+            if not declared:
+                continue
+            value = declared.group(1) if declared.group(2) is None else colours[declared.group(2)]
+            for selector in (x.strip() for x in selectors.split(",")):
+                if selector in grounds:
+                    found[selector] = value
+        for needed in (".prose p", ".lead", ".muted", "code", "blockquote", ".card p", ".p", ".c"):
+            self.assertIn(needed, found)
+        for selector, value in found.items():
+            for ground in grounds[selector]:
+                with self.subTest(selector=selector, ground=ground):
+                    self.assertGreaterEqual(contrast(value, colours[ground]), 4.5)
+
+    def test_T6_the_stylesheet_stacks_at_phone_width_and_scrolls_code_sideways(self):
+        self.assertRegex(self.css, r"@media\s*\(max-width:")
+        self.assertRegex(self.css, r"overflow-x:\s*auto")
+        self.assertRegex(self.css, r"pre\b[^{]*{[^}]*overflow-x:\s*auto")
+        self.assertIn('<meta name="viewport"', self.pages["quickstart-csharp"])
+
+    def test_T6_a_docs_page_has_the_sidebar_the_toc_and_one_current_link(self):
+        page = self.pages["quickstart-csharp"]
+        self.assertIn("<aside", page)
+        self.assertIn('class="toc"', page)
+        self.assertIn("On this page", page)
+        self.assertEqual(page.count('aria-current="page"'), 1)
+        self.assertIn("side-group", page)
+        self.assertIn("side-title", page)
+
+class RemoteImages(unittest.TestCase):
+    """NFR-13, task #3475: an image on another host is never emitted as <img>; its alt text stands in for it."""
+
+    BADGE = "https://img.shields.io/badge/coverage-90-green.svg"
+
+    def render(self, markdown: str) -> str:
+        return bs.render_markdown(markdown).html
+
+    def test_a_remote_image_becomes_its_alt_text_in_a_span(self):
+        out = self.render(f"![build status]({self.BADGE})\n")
+        self.assertIn('<span class="img-alt">build status</span>', out)
+        self.assertNotIn("<img", out)
+        self.assertNotIn('src="http', out)
+
+    def test_a_wrapped_badge_keeps_its_link_around_the_span(self):
+        url = "https://github.com/pluries/craticula/actions/workflows/ci.yml"
+        out = self.render(f"[![coverage gate]({self.BADGE})]({url})\n")
+        self.assertIn(f'<a href="{url}"><span class="img-alt">coverage gate</span></a>', out)
+        self.assertNotIn("<img", out)
+
+    def test_a_remote_image_with_an_empty_alt_renders_nothing(self):
+        out = self.render(f"before ![]({self.BADGE}) after\n")
+        self.assertNotIn("<img", out)
+        self.assertNotIn("img-alt", out)
+        self.assertNotIn("shields.io", out)
+        self.assertIn("before", out)
+        self.assertIn("after", out)
+
+    def test_the_alt_text_is_escaped(self):
+        out = self.render(f"![a <b> & c]({self.BADGE})\n")
+        self.assertIn('<span class="img-alt">a &lt;b&gt; &amp; c</span>', out)
+        self.assertNotIn("<b>", out)
+
+    def test_an_http_image_is_remote_too(self):
+        out = self.render("![plain](http://example.test/a.png)\n")
+        self.assertIn('<span class="img-alt">plain</span>', out)
+        self.assertNotIn("<img", out)
+
+    def test_a_remote_image_in_a_table_cell_behaves_the_same(self):
+        out = self.render(f"| a | b |\n|---|---|\n| x | ![in cell]({self.BADGE}) |\n")
+        self.assertIn('<td><span class="img-alt">in cell</span></td>', out)
+        self.assertNotIn("<img", out)
+
+    def test_a_remote_image_in_a_list_item_behaves_the_same(self):
+        out = self.render(f"- item ![in list]({self.BADGE})\n")
+        self.assertIn('<span class="img-alt">in list</span>', out)
+        self.assertNotIn("<img", out)
+
+    def test_a_local_image_is_still_an_img(self):
+        out = self.render("![local](img/a.png)\n")
+        self.assertIn('<img alt="local" src="img/a.png">', out)
+        self.assertNotIn("img-alt", out)
+
+    def test_a_local_image_that_resolves_to_a_repository_url_is_remote(self):
+        out = bs.render_markdown("![shot](img/a.png)\n", resolve=lambda href, image=False: "https://example.test/r/raw/main/" + href).html
+        self.assertIn('<span class="img-alt">shot</span>', out)
+        self.assertNotIn("<img", out)
+
+    FOREIGN_SOURCES = [
+        "HTTP://evil.example/a.png", "Https://evil.example/b.png", "https:/evil.example/c.png", "http:evil.example/d.png",
+        "https:\\\\evil.example\\e.png"]
+    ERRORING_SOURCES = ["//evil.example/f.png", "\\\\evil.example\\g.png"]
+
+    def test_an_image_with_any_scheme_or_a_double_slash_is_remote_however_it_is_spelled(self):
+        for source in self.FOREIGN_SOURCES:
+            with self.subTest(source=source):
+                errors, out = run_build({"index.md": f"# Home\n\n![a]({source})\n"}, [INDEX])
+                self.assertEqual(errors, [])
+                written = "".join(f.read_text(encoding="utf-8") for f in out.glob("*.html"))
+                self.assertIn('<span class="img-alt">a</span>', written)
+                self.assertNotIn("<img", written)
+                self.assertNotIn("src=", written)
+                self.assertNotIn("evil.example", written)
+
+    def test_a_double_slash_image_the_build_already_reports_still_writes_no_img_and_no_src(self):
+        for source in self.ERRORING_SOURCES:
+            with self.subTest(source=source):
+                _, out = run_build({"index.md": f"# Home\n\n![a]({source})\n"}, [INDEX])
+                written = "".join(f.read_text(encoding="utf-8") for f in out.glob("*.html"))
+                self.assertNotIn("<img", written)
+                self.assertNotIn("src=", written)
+
+    def test_a_built_page_holds_no_remote_img_and_keeps_the_badge_link(self):
+        files = {"index.md": f"# Home\n\n[![coverage gate]({self.BADGE})](https://github.com/pluries/craticula/actions)\n"}
+        errors, out = run_build(files, [INDEX])
+        self.assertEqual(errors, [])
+        page = (out / "index.html").read_text(encoding="utf-8")
+        self.assertNotIn("<img", page)
+        self.assertIn('<a href="https://github.com/pluries/craticula/actions"><span class="img-alt">coverage gate</span></a>', page)
 
 
 class Cli(unittest.TestCase):

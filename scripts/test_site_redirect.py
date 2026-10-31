@@ -65,6 +65,20 @@ class NginxConfTests(unittest.TestCase):
         self.assertRegex(site[0], r"listen\s+8080\s+default_server\s*;")
         self.assertIn("try_files", site[0])
 
+    def _location_block(self, path_regex):
+        match = re.search(r"location\s+(?:\^~\s+)?" + path_regex + r"\s*{([^}]*)}", self.conf)
+        self.assertIsNotNone(match, f"no location block for {path_regex} in nginx.conf")
+        return match.group(1)
+
+    def test_fonts_are_cached_for_a_year_as_immutable_and_keep_the_security_headers(self):
+        block = self._location_block(r"/fonts/")
+        self.assertIn('add_header Cache-Control "public, max-age=31536000, immutable"', block)
+        self.assertRegex(block, r"add_header\s+X-Content-Type-Options\s+nosniff\s+always\s*;")
+        self.assertRegex(block, r"add_header\s+Referrer-Policy\s+strict-origin-when-cross-origin\s+always\s*;")
+
+    def test_the_stylesheet_keeps_its_one_hour_cache(self):
+        self.assertIn('add_header Cache-Control "public, max-age=3600"', self._location_block(r"=\s*/style\.css"))
+
 
 @unittest.skipUnless(INGRESS.exists(), "the GitOps manifest is private (docs/ is stripped from the mirror)")
 class RedirectIngressTests(unittest.TestCase):
@@ -103,8 +117,13 @@ class LiveRedirectTests(unittest.TestCase):
             raise unittest.SkipTest("no pinned nginx image in the Dockerfile")
         cls.site = tempfile.mkdtemp(prefix="site-redirect-")
         Path(cls.site, "index.html").write_text("<h1>site</h1>\n")
+        Path(cls.site, "style.css").write_text("body{}\n")
+        Path(cls.site, "fonts").mkdir()
+        Path(cls.site, "fonts", "x.woff2").write_bytes(b"wOF2")
         Path(cls.site).chmod(0o755)
-        Path(cls.site, "index.html").chmod(0o644)
+        Path(cls.site, "fonts").chmod(0o755)
+        for name in ("index.html", "style.css", "fonts/x.woff2"):
+            Path(cls.site, name).chmod(0o644)
         run = subprocess.run(
             ["docker", "run", "-d", "--rm", "-p", f"127.0.0.1:{cls.port}:8080",
              "-v", f"{NGINX_CONF}:/etc/nginx/nginx.conf:ro", "-v", f"{cls.site}:/usr/share/nginx/html:ro", image],
@@ -138,6 +157,22 @@ class LiveRedirectTests(unittest.TestCase):
                 return r.status, r.headers.get("Location"), r.read()
         except urllib.error.HTTPError as e:
             return e.code, e.headers.get("Location"), e.read()
+
+    def _headers(self, path):
+        with urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{self.port}{path}", headers={"Host": PRIMARY}), timeout=5) as r:
+            return r.status, r.headers
+
+    def test_a_font_is_served_with_the_immutable_year_cache_and_the_security_headers(self):
+        status, headers = self._headers("/fonts/x.woff2")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get("Cache-Control"), "public, max-age=31536000, immutable")
+        self.assertEqual(headers.get("X-Content-Type-Options"), "nosniff")
+
+    def test_the_stylesheet_keeps_the_one_hour_cache(self):
+        self.assertEqual(self._headers("/style.css")[1].get("Cache-Control"), "public, max-age=3600")
+
+    def test_a_page_is_not_cached_for_a_year(self):
+        self.assertNotIn("31536000", self._headers("/")[1].get("Cache-Control") or "")
 
     def test_redirect_hosts_answer_302_keeping_path_and_query(self):
         for host in REDIRECTORS:
