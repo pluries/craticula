@@ -14,7 +14,7 @@ PACKAGES = pack_smoke.PACKAGES
 
 
 def load_certificate(path, today):
-    """Returns (fingerprint, valid_until) or raises ValueError naming the problem (empty, unparsable, bad fingerprint, expired)."""
+    """Reads the certificate file (FR-33: `sha256`, `validUntil`, `subject`); returns (sha256, valid_until) or raises ValueError naming the problem (empty, unparsable, bad sha256 fingerprint, expired)."""
     raise NotImplementedError
 
 

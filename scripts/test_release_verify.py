@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pins scripts/release-verify.py (story #3321, spec FR-01 to FR-04 and FR-33, task #3484, cases T1 to T7 of docs/feat/3484/plan.md).
 The packages are tiny zips built here; `dotnet` is the synthetic scripts/release-verify-fixtures/dotnet-stub.py, behaviour per package
-from a JSON sidecar. Fingerprints, certificates and markers are invented. Dates are fixed with --today.
+from a JSON sidecar. The certificate file has the FR-33 fields sha256, validUntil and subject. Fingerprints, certificates and markers are invented. Dates are fixed with --today.
 Run: python3 scripts/test_release_verify.py
 """
 import json
