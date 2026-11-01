@@ -42,7 +42,7 @@ Accepting this record is the maintainer's decision. It was written for readers o
   registration of its certificate on nuget.org and the fit with the project's build system were not verified. Not chosen; it can be
   revisited.
 - **No author certificate.** The packages stay signed by nuget.org and carry a build attestation, but show no author name. Rejected
-  by the project's goal of a signed release (success criterion SC-01 of the launch specification).
+  by the project's goal of a release whose packages carry the author's signature.
 
 ## Consequences
 
@@ -63,6 +63,8 @@ On 2026-11-01 the three Certum product pages were read (prices, key storage, req
 "out of stock"). Microsoft's trusted-CA list (the CCADB export of that day, 550 rows) shows the Certum roots Certum CA, Certum EC-384 CA,
 Certum Trusted Network CA, Certum Trusted Network CA 2 and Certum Trusted Root CA as included with the Code Signing purpose. Which root
 the issued certificate chains to is not known until it is issued, and nuget.org's acceptance is unverified: the probe tests it.
+The same five roots are in the .NET SDK's own code-signing trust bundle (313 roots, SDK 10.0.114), so a local `dotnet nuget verify` can trust a
+Certum chain; the oldest of them, Certum CA, expires on 2027-06-11.
 Prices come from public pages and resellers, none is a quote.
 
 ## Compliance
