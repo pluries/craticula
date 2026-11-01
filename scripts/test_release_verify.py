@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """Pins scripts/release-verify.py (story #3321, spec FR-01 to FR-04 and FR-33, task #3484, cases T1 to T7 of docs/feat/3484/plan.md).
 The packages are tiny zips built here; `dotnet` is the synthetic scripts/release-verify-fixtures/dotnet-stub.py, behaviour per package
-from a JSON sidecar. The certificate file has the FR-33 fields sha256, validUntil and subject. Fingerprints, certificates and markers are invented. Dates are fixed with --today.
+from a JSON sidecar. The certificate file has the FR-33 fields sha256, validUntil and subject. Fingerprints, certificates and markers are invented.
+The script takes no date option: the fixtures expire in 2000 or in 2099.
 Run: python3 scripts/test_release_verify.py
 """
+import hashlib
 import json
 import re
 import subprocess
 import sys
 import tempfile
 import unittest
+import warnings
 import zipfile
 from pathlib import Path
 
@@ -23,7 +26,6 @@ STUB = FIXTURES / "dotnet-stub.py"
 VALID = FIXTURES / "release-certificate.valid.json"
 FINGERPRINT = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 VERSION = "1.0.0"
-TODAY = "2026-11-01"
 SECRET_MARKER = "SYNTHETIC-SECRET-MARKER-7731"
 SIGNATURE = ".signature.p7s"
 
@@ -59,12 +61,12 @@ class Workspace:
             write_zip(self.unsigned / f"{package_id}.{version}.nupkg", files)
             write_zip(self.signed / f"{package_id}.{version}.nupkg", {**files, SIGNATURE: b"synthetic signature " + package_id.encode()})
 
-    def run(self, certificate=VALID, extra_env=None, dotnet=None, version=VERSION, signed=None, unsigned=None):
+    def run(self, certificate=VALID, extra_env=None, dotnet=None, version=VERSION, signed=None, unsigned=None, extra_args=()):
         self.config_path.write_text(json.dumps({"expectedFingerprint": FINGERPRINT, "modes": self.modes, "default": "ok", "log": str(self.log)}), encoding="utf-8")
         env = {"PATH": "/usr/bin:/bin", "RELEASE_VERIFY_STUB_CONFIG": str(self.config_path)}
         env.update(extra_env or {})
         args = [sys.executable, str(SCRIPT), "--version", version, "--unsigned", str(unsigned or self.unsigned), "--signed", str(signed or self.signed),
-                "--certificate", str(certificate), "--dotnet", str(dotnet or STUB), "--today", TODAY]
+                "--certificate", str(certificate), "--dotnet", str(dotnet or STUB), *extra_args]
         return subprocess.run(args, capture_output=True, text=True, env=env, timeout=120)
 
     def rewrite_signed(self, package_id, mutate):
@@ -73,6 +75,28 @@ class Workspace:
             files = {name: archive.read(name) for name in archive.namelist()}
         path.unlink()
         write_zip(path, mutate(files))
+
+
+def make_certificate(directory, **overrides):
+    fields = {"sha256": FINGERPRINT, "validUntil": "2099-12-31", "subject": "CN=Synthetic Test, O=Open Source Developer"}
+    fields.update(overrides)
+    path = Path(directory) / "certificate.json"
+    path.write_text(json.dumps(fields), encoding="utf-8")
+    return path
+
+
+def patch_zip(path, flag_bits=0, method=None):
+    """Rewrites the general-purpose flag and/or the compression method in every local and central header of a zip."""
+    data = bytearray(path.read_bytes())
+    for signature, flag_offset in ((b"PK\x03\x04", 6), (b"PK\x01\x02", 8)):
+        position = data.find(signature)
+        while position != -1:
+            flags = int.from_bytes(data[position + flag_offset:position + flag_offset + 2], "little") | flag_bits
+            data[position + flag_offset:position + flag_offset + 2] = flags.to_bytes(2, "little")
+            if method is not None:
+                data[position + flag_offset + 2:position + flag_offset + 4] = method.to_bytes(2, "little")
+            position = data.find(signature, position + 4)
+    path.write_bytes(bytes(data))
 
 
 def out(result):
@@ -106,10 +130,13 @@ class AllPassT1(unittest.TestCase):
             ws = Workspace(tmp)
             result = ws.run()
             self.assertEqual(result.returncode, 0, out(result))
-            calls = [json.loads(line) for line in ws.log.read_text(encoding="utf-8").splitlines()]
-            self.assertEqual(len(calls), 10)
-            for call in calls:
+            records = [json.loads(line) for line in ws.log.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(len(records), 10)
+            for record in records:
+                call = record["argv"]
                 self.assertEqual(call[:3], ["nuget", "verify", "--all"])
+                self.assertEqual(call[3:5], ["-v", "detailed"], call)
+                self.assertEqual(record["invariant"], "1")
                 self.assertEqual(call[call.index("--certificate-fingerprint") + 1], FINGERPRINT)
                 self.assertTrue(Path(call[-1]).is_relative_to(ws.signed), call)
 
@@ -143,7 +170,20 @@ class SignatureT2T3T5(unittest.TestCase):
         result = self.failing("no-timestamp")
         self.assertEqual(result.returncode, 1, out(result))
         line = next((l for l in out(result).splitlines() if l.startswith("Craticula.Sql ")), "")
-        self.assertRegex(line, r"(?i)timestamp FAIL|NU3027")
+        self.assertIn("timestamp FAIL", line)
+
+    def test_T5_a_package_whose_output_names_no_timestamp_at_all_fails_the_timestamp_check(self):
+        result = self.failing("silent-no-timestamp")
+        self.assertEqual(result.returncode, 1, out(result))
+        line = next((l for l in out(result).splitlines() if l.startswith("Craticula.Sql ")), "")
+        self.assertIn("timestamp FAIL", line)
+
+    def test_T8_an_untrusted_root_exits_1_with_a_signature_failure(self):
+        # characterization: already satisfied by the exit code of dotnet
+        result = self.failing("untrusted-root")
+        self.assertEqual(result.returncode, 1, out(result))
+        line = next((l for l in out(result).splitlines() if l.startswith("Craticula.Sql ")), "")
+        self.assertIn("signature FAIL", line)
 
 
 class ContentT4(unittest.TestCase):
@@ -257,6 +297,133 @@ class InputsT6(unittest.TestCase):
                     result = ws.run()
                     self.assertIn(result.returncode, (1, 2), out(result))
                     self.assertRegex(out(result), r"(?i)line break|newline|control character")
+
+
+class SignedFolderS1(unittest.TestCase):
+    def assert_unexpected(self, prepare):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Workspace(tmp)
+            prepare(ws.signed)
+            result = ws.run()
+            self.assertEqual(result.returncode, 1, out(result))
+            self.assertIn("unexpected", out(result).lower())
+
+    def test_S1_a_snupkg_next_to_the_packages(self):
+        self.assert_unexpected(lambda d: (d / f"Craticula.Sql.{VERSION}.snupkg").write_bytes(b"x"))
+
+    def test_S1_an_upper_case_extension(self):
+        self.assert_unexpected(lambda d: (d / f"Craticula.Sql.{VERSION}.NUPKG").write_bytes(b"x"))
+
+    def test_S1_a_package_in_a_subdirectory(self):
+        def prepare(d):
+            (d / "sub").mkdir()
+            (d / "sub" / f"Craticula.Sql.{VERSION}.nupkg").write_bytes(b"x")
+        self.assert_unexpected(prepare)
+
+    def test_S1_an_empty_subdirectory(self):
+        self.assert_unexpected(lambda d: (d / "sub").mkdir())
+
+    def test_S1_a_stray_text_file(self):
+        self.assert_unexpected(lambda d: (d / "notes.txt").write_text("x", encoding="utf-8"))
+
+    def test_S1_an_eleventh_well_formed_package(self):
+        self.assert_unexpected(lambda d: write_zip(d / f"Craticula.Other.{VERSION}.nupkg", entries("Craticula.Other")))
+
+
+class RobustnessT10T11N2(unittest.TestCase):
+    def assert_core_fails_cleanly(self, result):
+        self.assertEqual(result.returncode, 1, out(result))
+        self.assertNotIn("Traceback", out(result))
+        reported = {l.split(" ")[0] for l in result.stdout.splitlines() if l.startswith("Craticula.")}
+        self.assertEqual(reported, set(pack_smoke.PACKAGES))
+        line = next((l for l in result.stdout.splitlines() if l.startswith("Craticula.Core ")), "")
+        self.assertIn("content FAIL", line)
+        self.assertRegex(result.stdout, r"(?m)^FAIL")
+
+    def test_T10_a_signed_zip_with_a_duplicated_entry_name_fails_the_content_check(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Workspace(tmp)
+            path = ws.signed / f"Craticula.Core.{VERSION}.nupkg"
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                with zipfile.ZipFile(path, "a") as archive:
+                    archive.writestr("lib/net10.0/Craticula.Core.dll", b"MZ synthetic Craticula.Core")
+            result = ws.run()
+            self.assert_core_fails_cleanly(result)
+            self.assertRegex(result.stdout, r"(?i)duplicate")
+
+    def test_T11_an_unsigned_package_that_holds_a_signature_entry_fails_the_content_check(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Workspace(tmp)
+            path = ws.unsigned / f"Craticula.Core.{VERSION}.nupkg"
+            write_zip(path, {**entries("Craticula.Core"), SIGNATURE: b"synthetic signature Craticula.Core"})
+            self.assert_core_fails_cleanly(ws.run())
+
+    def test_N2_a_signed_file_of_garbage_bytes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Workspace(tmp)
+            (ws.signed / f"Craticula.Core.{VERSION}.nupkg").write_bytes(b"this is not a zip " * 20)
+            self.assert_core_fails_cleanly(ws.run())
+
+    def test_N2_a_zip_entry_with_an_unsupported_compression_method(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Workspace(tmp)
+            patch_zip(ws.signed / f"Craticula.Core.{VERSION}.nupkg", method=99)
+            self.assert_core_fails_cleanly(ws.run())
+
+    def test_N2_a_zip_entry_with_the_encrypted_flag(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Workspace(tmp)
+            patch_zip(ws.signed / f"Craticula.Core.{VERSION}.nupkg", flag_bits=0x1)
+            self.assert_core_fails_cleanly(ws.run())
+
+
+class CertificateAndVersionN1N3N4(unittest.TestCase):
+    def test_N1_a_sha256_with_a_trailing_newline_exits_2(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result = Workspace(tmp).run(certificate=make_certificate(tmp, sha256=FINGERPRINT + "\n"))
+            self.assertEqual(result.returncode, 2, out(result))
+            self.assertRegex(out(result), r"(?i)fingerprint")
+
+    def test_N4_a_valid_until_without_dashes_exits_2(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result = Workspace(tmp).run(certificate=make_certificate(tmp, validUntil="20991231"))
+            self.assertEqual(result.returncode, 2, out(result))
+            self.assertRegex(out(result), r"(?i)validUntil")
+
+    def test_N3_a_version_that_is_not_semver_exits_2(self):
+        for version in ("*", "1.0", "1.0.0/../x", "1.0.0 ", ""):
+            with self.subTest(version=version):
+                with tempfile.TemporaryDirectory() as tmp:
+                    result = Workspace(tmp).run(version=version)
+                    self.assertEqual(result.returncode, 2, out(result))
+                    self.assertRegex(out(result), r"(?i)version")
+
+    def test_N3_a_prerelease_version_with_build_metadata_stays_valid(self):
+        # characterization: already satisfied
+        version = "1.0.0-rc.1+build5"
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Workspace(tmp, version=version)
+            result = ws.run(version=version)
+            self.assertEqual(result.returncode, 0, out(result))
+
+    def test_S3_the_today_option_no_longer_exists(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result = Workspace(tmp).run(extra_args=("--today", "2026-01-01"))
+            self.assertEqual(result.returncode, 2, out(result))
+            self.assertRegex(out(result), r"(?i)unrecognized|unknown")
+
+
+class ReportN5(unittest.TestCase):
+    def test_N5_each_passing_line_carries_the_sha256_of_the_signed_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Workspace(tmp)
+            result = ws.run()
+            self.assertEqual(result.returncode, 0, out(result))
+            for package_id in pack_smoke.PACKAGES:
+                digest = hashlib.sha256((ws.signed / f"{package_id}.{VERSION}.nupkg").read_bytes()).hexdigest()
+                line = next(l for l in result.stdout.splitlines() if l.startswith(f"{package_id} {VERSION}:"))
+                self.assertIn(f"sha256 {digest}", line)
 
 
 class NoSecretsT7(unittest.TestCase):
