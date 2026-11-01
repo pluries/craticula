@@ -28,7 +28,8 @@ SIGNATURE_ENTRY = ".signature.p7s"
 SECRET_NAME = re.compile(r"(?i)key|token|password|secret|otp|credential")
 SHA256_HEX = re.compile(r"[0-9a-fA-F]{64}")
 ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
-SEMVER = re.compile(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?")
+SEMVER_CORE = re.compile(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)")
+SEMVER_IDENTIFIERS = re.compile(r"[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*")
 TIMESTAMP_LINE = re.compile(r"^\s*Verifying author primary signature's timestamp with timestamping service certificate:", re.MULTILINE)
 BREAK = re.compile(r"[\r\n]")
 VERIFY_TIMEOUT_SECONDS = 120
@@ -36,6 +37,14 @@ VERIFY_TIMEOUT_SECONDS = 120
 
 class EnvironmentProblem(Exception):
     """A usage or environment error: exit 2."""
+
+
+def is_semver(text):
+    rest, plus, build = text.partition("+")
+    core, dash, prerelease = rest.partition("-")
+    return (SEMVER_CORE.fullmatch(core) is not None
+            and (not dash or SEMVER_IDENTIFIERS.fullmatch(prerelease) is not None)
+            and (not plus or SEMVER_IDENTIFIERS.fullmatch(build) is not None))
 
 
 def printable(text):
@@ -91,7 +100,7 @@ def read_entries(path):
             if len(names) != len(set(names)):
                 raise ValueError("duplicate entry names")
             return {name: archive.read(name) for name in names}
-    except (zipfile.BadZipFile, NotImplementedError, RuntimeError, zlib.error, EOFError, OSError):
+    except (zipfile.BadZipFile, RuntimeError, zlib.error, EOFError, OSError):
         raise ValueError("not a readable zip")
 
 
@@ -205,7 +214,7 @@ def parse_args(argv):
 
 
 def run(args):
-    if not SEMVER.fullmatch(args.version):
+    if not is_semver(args.version):
         raise EnvironmentProblem("--version is not a SemVer version")
     try:
         fingerprint, _ = load_certificate(args.certificate, datetime.date.today())
