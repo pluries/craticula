@@ -56,6 +56,11 @@ def make_stub(directory, body):
     return env
 
 
+def assert_probe_folder_untouched(case):
+    # an SDK quoting bug turns a quote in --artifacts-path into a junk folder inside the project
+    case.assertEqual(sorted(p.name for p in PROBE_DIR.iterdir()), ["Craticula.SigningProbe.csproj", "ProbeMarker.cs", "README.md"])
+
+
 PACKING_STUB = """
 while [ $# -gt 0 ]; do
   if [ "$1" = "--artifacts-path" ]; then dir="$2"; shift; fi
@@ -136,6 +141,7 @@ class PackT2(unittest.TestCase):
             self.assertEqual([n for n in names if not allowed.search(n)], [])
         for d in ("bin", "obj"):
             self.assertFalse((PROBE_DIR / d).exists(), f"{d} left in the project folder")
+        assert_probe_folder_untouched(self)
 
 
 @unittest.skipUnless(shutil.which("dotnet"), "dotnet SDK not on PATH")
@@ -150,6 +156,7 @@ class PackContentT2(unittest.TestCase):
             self.assertNotIn(".pdb".encode("utf-16-le"), dll)
             nuspec = archive.read(next(n for n in archive.namelist() if n.endswith(".nuspec"))).decode("utf-8")
             self.assertNotIn("<repository", nuspec)
+        assert_probe_folder_untouched(self)
 
 
 class PackScriptDefectsT3(unittest.TestCase):
@@ -174,6 +181,7 @@ class PackScriptDefectsT3(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertEqual(len(list(out.glob("*.nupkg"))), 1)
             self.assertEqual(list(out.glob(".build.*")), [])
+        assert_probe_folder_untouched(self)
 
     def test_T3_option_like_first_argument_exits_2_with_usage_and_creates_nothing(self):
         with tempfile.TemporaryDirectory() as tmp:
