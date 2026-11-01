@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Story #3320, spec FR-05: a throwaway package the maker signs with the author certificate to prove that nuget.org accepts it.
+       Not one of the ten packages: it lives outside csharp/src, is not in Craticula.sln and not in scripts/pack_smoke.py. The
+       default of csharp/Directory.Build.props is IsPackable=false, hence the override. -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>Craticula.SigningProbe</PackageId>
+    <Version>0.0.1</Version>
+    <Authors>pluries</Authors>
+    <Description>Signing probe, not for use</Description>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/pluries/craticula</PackageProjectUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+</Project>
