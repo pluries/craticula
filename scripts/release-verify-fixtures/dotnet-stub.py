@@ -5,7 +5,6 @@ The output texts imitate the SDK's NU3004 / NU3018 / NU3027 lines and, for a tim
 prints; nothing here is real output or key material. The log gets one JSON object per call: the full argv and the invariant-culture variable."""
 import json
 import os
-import re
 import sys
 
 config = json.loads(open(os.environ["RELEASE_VERIFY_STUB_CONFIG"], encoding="utf-8").read())
@@ -14,8 +13,14 @@ if config.get("log"):
     with open(config["log"], "a", encoding="utf-8") as log:
         log.write(json.dumps({"argv": args, "invariant": os.environ.get("DOTNET_SYSTEM_GLOBALIZATION_INVARIANT", "unset")}) + "\n")
 package = args[-1]
-match = re.match(r"^(.*?)\.\d+\.\d+\.\d+.*\.nupkg$", os.path.basename(package))
-package_id = match.group(1) if match else os.path.basename(package)
+basename = os.path.basename(package)
+package_id = basename
+if basename.endswith(".nupkg"):
+    parts = basename[:-len(".nupkg")].split(".")
+    for i in range(len(parts) - 2):
+        if parts[i].isdigit() and parts[i + 1].isdigit() and parts[i + 2][:1].isdigit():
+            package_id = ".".join(parts[:i])
+            break
 mode = config.get("modes", {}).get(package_id, config.get("default", "ok"))
 fingerprint = args[args.index("--certificate-fingerprint") + 1] if "--certificate-fingerprint" in args else ""
 if mode == "ok" and fingerprint.lower() != config.get("expectedFingerprint", "").lower():
