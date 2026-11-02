@@ -841,9 +841,18 @@ class SiteDesign(unittest.TestCase):
 
     def css_rules(self) -> list[tuple[list[str], dict[str, str]]]:
         """Flat list of (selectors, declarations) in source order; comments dropped, at-rule wrappers ignored."""
-        text = re.sub(r"/\*.*?\*/", "", self.css, flags=re.S)
+        text = self.css
+        start = text.find("/*")
+        while start != -1:
+            end = text.find("*/", start + 2)
+            text = text[:start] if end == -1 else text[:start] + text[end + 2:]
+            start = text.find("/*")
         rules = []
-        for selectors, body in re.findall(r"([^{}]+)\{([^{}]*)\}", text):
+        for chunk in text.split("}"):
+            head, brace, body = chunk.rpartition("{")
+            if not brace:
+                continue
+            selectors = head.rpartition("{")[2]
             declarations = {}
             for declaration in body.split(";"):
                 name, colon, value = declaration.partition(":")
