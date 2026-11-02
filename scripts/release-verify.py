@@ -29,7 +29,7 @@ SECRET_NAME = re.compile(r"(?i)key|token|password|secret|otp|credential")
 SHA256_HEX = re.compile(r"[0-9a-fA-F]{64}")
 ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 SEMVER_CORE = re.compile(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)")
-SEMVER_IDENTIFIERS = re.compile(r"[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*")
+SEMVER_PRERELEASE_IDENTIFIER = re.compile(r"0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*")
 TIMESTAMP_LINE = re.compile(r"^\s*Verifying author primary signature's timestamp with timestamping service certificate:", re.MULTILINE)
 BREAK = re.compile(r"[\r\n]")
 VERIFY_TIMEOUT_SECONDS = 120
@@ -40,11 +40,10 @@ class EnvironmentProblem(Exception):
 
 
 def is_semver(text):
-    rest, plus, build = text.partition("+")
-    core, dash, prerelease = rest.partition("-")
-    return (SEMVER_CORE.fullmatch(core) is not None
-            and (not dash or SEMVER_IDENTIFIERS.fullmatch(prerelease) is not None)
-            and (not plus or SEMVER_IDENTIFIERS.fullmatch(build) is not None))
+    """SemVer without build metadata (NuGet drops it from the package file name) and without leading zeros in numeric prerelease identifiers."""
+    core, dash, prerelease = text.partition("-")
+    return SEMVER_CORE.fullmatch(core) is not None and (
+        not dash or all(SEMVER_PRERELEASE_IDENTIFIER.fullmatch(part) for part in prerelease.split(".")))
 
 
 def printable(text):
