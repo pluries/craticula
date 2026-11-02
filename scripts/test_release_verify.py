@@ -399,9 +399,18 @@ class CertificateAndVersionN1N3N4(unittest.TestCase):
                     self.assertEqual(result.returncode, 2, out(result))
                     self.assertRegex(out(result), r"(?i)version")
 
-    def test_N3_a_prerelease_version_with_build_metadata_stays_valid(self):
-        # characterization: already satisfied
-        version = "1.0.0-rc.1+build5"
+    def test_N3_a_version_with_build_metadata_or_a_leading_zero_prerelease_exits_2(self):
+        # Spec change (#3485): the package file name drops build metadata, so the signed file would not be found; a
+        # numeric prerelease identifier with a leading zero is not SemVer. Replaces the former "build metadata stays valid".
+        for version in ("1.0.0-rc.1+build5", "1.0.0+build5", "1.0.0-rc.01"):
+            with self.subTest(version=version):
+                with tempfile.TemporaryDirectory() as tmp:
+                    result = Workspace(tmp).run(version=version)
+                    self.assertEqual(result.returncode, 2, out(result))
+                    self.assertRegex(out(result), r"(?i)version")
+
+    def test_N3_a_prerelease_version_stays_valid(self):
+        version = "1.0.0-rc.1"
         with tempfile.TemporaryDirectory() as tmp:
             ws = Workspace(tmp, version=version)
             result = ws.run(version=version)
