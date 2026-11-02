@@ -839,6 +839,58 @@ class SiteDesign(unittest.TestCase):
         self.assertIn("side-group", page)
         self.assertIn("side-title", page)
 
+    def css_rules(self) -> list[tuple[list[str], dict[str, str]]]:
+        """Flat list of (selectors, declarations) in source order; comments dropped, at-rule wrappers ignored."""
+        text = re.sub(r"/\*.*?\*/", "", self.css, flags=re.S)
+        rules = []
+        for selectors, body in re.findall(r"([^{}]+)\{([^{}]*)\}", text):
+            declarations = {}
+            for declaration in body.split(";"):
+                name, colon, value = declaration.partition(":")
+                if colon:
+                    declarations[name.strip()] = value.strip()
+            rules.append(([s.strip() for s in selectors.split(",")], declarations))
+        return rules
+
+    def declared(self, selector: str, prop: str) -> str | None:
+        """Last value that a rule naming exactly this selector gives the property."""
+        value = None
+        for selectors, declarations in self.css_rules():
+            if selector in selectors and prop in declarations:
+                value = declarations[prop]
+        return value
+
+    def effective_in_prose(self, tag: str, prop: str, initial: str) -> str:
+        """What a cell inside .prose computes: its own rule (source order wins), else inherited from .prose."""
+        own = None
+        for selectors, declarations in self.css_rules():
+            for selector in selectors:
+                parts = selector.split()
+                if parts and parts[-1] == tag and parts[0] in (tag, ".prose", "table") and prop in declarations:
+                    own = declarations[prop]
+        if own is not None:
+            return own
+        return self.declared(".prose", prop) or initial
+
+    def test_T1_cells_inside_prose_break_only_when_a_word_cannot_fit(self):
+        for tag in ("td", "th"):
+            with self.subTest(cell=tag):
+                effective = self.effective_in_prose(tag, "overflow-wrap", "normal")
+                self.assertEqual(effective, "break-word")
+                self.assertNotEqual(effective, "anywhere")
+
+    def test_T2_header_cells_never_wrap(self):
+        self.assertEqual(self.effective_in_prose("th", "white-space", "normal"), "nowrap")
+
+    def test_T3_characterization_prose_and_the_link_lists_keep_overflow_wrap_anywhere(self):
+        for selector in (".prose", ".side li a", ".toc a"):
+            with self.subTest(selector=selector):
+                self.assertEqual(self.declared(selector, "overflow-wrap"), "anywhere")
+
+    def test_T3_the_built_stylesheet_is_the_source_stylesheet(self):
+        built = (self.out / "style.css").read_text(encoding="utf-8")
+        self.assertEqual(built, self.css)
+
 class RemoteImages(unittest.TestCase):
     """NFR-13, task #3475: an image on another host is never emitted as <img>; its alt text stands in for it."""
 
