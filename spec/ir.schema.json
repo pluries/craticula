@@ -21,7 +21,7 @@
     },
     "group": {
       "$ref": "#/$defs/groupSpec",
-      "description": "The row-group spec for the AG Grid server-side row model drill-down protocol. When absent, the request is not grouped.",
+      "description": "Which group columns are active and which groups the user has expanded. When absent, the query is not grouped.",
       "$comment": "Row-group spec for the AG Grid SSRM drill-down protocol (AR-8). Absent means the request is not grouped."
     },
     "aggregations": {
@@ -111,7 +111,7 @@
     },
 
     "unaryComparisonNode": {
-      "description": "Comparison operators that take no value: the null and blank checks, and the boolean-filter shorthand operators.",
+      "description": "Comparisons that take no value: `blank` and `notBlank` (is or is not null or empty), and `true` and `false` (the field is true or false).",
       "$comment": "Comparison operators that take no value: null/blank checks (SEM-2) and the boolean-filter shorthand ops (AR-6).",
       "type": "object",
       "additionalProperties": false,
@@ -189,7 +189,7 @@
 
     "unaryOperator": {
       "enum": ["blank", "notBlank", "true", "false"],
-      "description": "The no-value part of the closed operator set.",
+      "description": "Comparisons that take no value: `blank` and `notBlank` (is or is not null or empty), and `true` and `false` (the field is true or false).",
       "$comment": "AR-6 closed operator set, no-value subset."
     },
 
@@ -238,7 +238,7 @@
       "additionalProperties": false,
       "properties": {
         "type": { "const": "string" },
-        "value": { "type": "string", "maxLength": 8192, "description": "A size cap on the string, not one of the host-configurable limits, which cover tree shape and page size but not string length. It leaves generous room for typical grid-cell text, so a host that needs longer values should not route them through a filter comparison.", "$comment": "Structural amplification cap (not a SEC-3 named limit — SEC-3 covers tree shape/page size, not string length). Generous headroom over typical grid-cell text; a host needing longer values should not be routing them through a filter comparison." }
+        "value": { "type": "string", "maxLength": 8192, "description": "The string content. It is limited to 8192 characters, a structural size cap rather than one of the host-configurable limits (those cover tree shape and page size, not string length). Do not send longer text through a filter comparison.", "$comment": "Structural amplification cap (not a SEC-3 named limit — SEC-3 covers tree shape/page size, not string length). Generous headroom over typical grid-cell text; a host needing longer values should not be routing them through a filter comparison." }
       },
       "required": ["type", "value"]
     },
@@ -336,7 +336,7 @@
     },
 
     "groupSpec": {
-      "description": "The AG Grid server-side row model row-group drill-down protocol. When `groupKeys` is shorter than `groupCols`, the spec compiles a grouped query: the next group column plus aggregations, filtered by the keys already consumed. When the two have equal length, it compiles the leaf query.",
+      "description": "Describes how far the user has drilled into a grouped grid. `groupCols` lists the row-group columns and `groupKeys` the values already chosen, one per expanded level and in the same order, so it can never be longer than `groupCols`. If `groupKeys` is shorter, the query returns the next group level (the next group column plus aggregations) for rows matching those keys; if both have the same length, it returns the actual rows of that group.",
       "$comment": "AG Grid SSRM row-group drill-down protocol (AR-8). groupKeys.length < groupCols.length compiles a grouped query (next group column + aggregations, filtered by the consumed keys); equal length compiles the leaf query (BM-2).",
       "type": "object",
       "additionalProperties": false,
@@ -361,21 +361,21 @@
     },
 
     "setValuesSpec": {
-      "description": "A request for the distinct values of a column, for a set filter. It is a `$def` and not a property of the root document, because the root models a row-fetch query and requires `page`, while a distinct-values query has no page (its limit is a ceiling, not a window), no sort and no aggregation, and splitting the root into two alternatives would break a published `/v1/` contract. The wire envelope it mirrors is Craticula's own synthetic shape and not AG Grid's, because AG Grid Community has no request or response type for set-filter values and leaves the job to a host-supplied `SetFilterParams.values` callback.",
+      "description": "A request for the distinct values of one column, to fill an AG Grid set filter. It is a separate definition because the main query document requires `page`, while this request has no page, no sort and no aggregation; its `limit` is only a maximum. The request format is Craticula's own, because AG Grid Community defines none and leaves this to a host-supplied values callback.",
       "$comment": "BM-3's set-filter distinct-values request (GRP-6 in spec/semantics.md). Deliberately a $def rather than a property of the root document: the root models a row-fetch query and REQUIRES 'page', while a distinct-values query has no page at all (its limit is a ceiling, not a window), no sort and no aggregation — and restructuring the root into a two-armed oneOf would be a breaking change to a published /v1/ contract. The wire envelope this mirrors ('setValuesRequest') is Craticula's own synthetic shape, not AG Grid's: AG Grid Community has no request/response type for set-filter values at all and delegates the whole job to a host-supplied SetFilterParams.values callback. See spec/fixtures/group-aggregation/README.md for the envelope and 016-019 for its artifact oracle.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "colId": {
           "$ref": "#/$defs/fieldName",
-          "description": "The column whose distinct values are being resolved: it is the `SELECT DISTINCT` expression, the only `ORDER BY` key, and the field whose own conditions are dropped from the accompanying filter. It is client-controlled, and unlike a filter's column id it is the question and not a condition on it, so it must pass the field allowlist in every GridSchema mode, Lenient included.",
+          "description": "The column whose distinct values are wanted. The result is the distinct values of this column, ordered by it, and any conditions the filter has on this same column are ignored. Because the client chooses it, it must be in the field allowlist in every mode, Lenient included.",
           "$comment": "The column whose distinct values are being resolved: the SELECT DISTINCT expression, the sole ORDER BY key, and the field whose OWN conditions are dropped from the accompanying filter (GRP-6). Client-controlled, and unlike a filter's colId it is the question rather than a condition on it — so it must pass the SC-1 allowlist in EVERY GridSchema mode, Lenient included."
         },
         "searchPrefix": {
           "type": "string",
           "minLength": 1,
           "maxLength": 8192,
-          "description": "The text of the set filter's own inline search box. It compiles into an ordinary `startsWith` predicate against `colId`, so it follows the same case-sensitivity and escaping rules as a user's own prefix filter, and it is kept when the own-field exclusion removes every other condition on `colId`. An empty search box omits this property, and `minLength: 1` rejects an empty string, which would match every row.",
+          "description": "The text typed into the set filter's own search box. It becomes an ordinary starts-with condition on `colId`, with the same case and escaping rules as a user's own prefix filter, and it stays even when every other condition on `colId` is dropped. Leave the property out for an empty search box (an empty string is rejected because it would match every row); the text is capped at the same length as a string value, and a prefix on a column not declared as a string is rejected at runtime, which this schema cannot express.",
           "$comment": "The set filter's own inline search box text. Compiled into an ordinary startsWith predicate against colId (GRP-6), so SEM-1's per-field mechanism and SEM-7's escaping govern it exactly as they would a user's own prefix filter — it is not a construct of its own, and it survives the own-field exclusion that removes every other condition on colId. An empty search box OMITS this property; minLength:1 rejects \"\", which would otherwise compile to a predicate matching every row. maxLength repeats stringValue's own bound, since it compiles into exactly one.\n\nA prefix against a column not declared 'string' has no defined meaning and is rejected at the typeCoercion stage (SEM-5's uncoercible-value), which JSON Schema cannot express: it depends on the GridSchema, not on this document."
         },
         "limit": {
@@ -401,7 +401,7 @@
           "minLength": 1,
           "maxLength": 64,
           "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
-          "description": "An optional output key for the aggregated value, which defaults to a compiler-chosen name derived from the field and function when absent. Unlike `field`, the alias is not checked against the GridSchema allowlist, yet it lands in the generated query text as an identifier (such as `SUM(x) AS <alias>`, a `$group` output key or an Elasticsearch aggregation name). An identifier cannot be parameterized, so the identifier-safe pattern is the only guard against injection through the alias in all four compilers.",
+          "description": "An optional output key for the aggregated value, which defaults to a compiler-chosen name derived from the field and function when absent. Unlike `field`, the alias is not checked against the GridSchema allowlist, yet it lands in the generated query text as an identifier (such as `SUM(x) AS <alias>`, a `$group` output key or an Elasticsearch aggregation name). An identifier cannot be parameterized, so the identifier-safe pattern (a letter or underscore followed by letters, digits and underscores) is the only guard against injection through the alias in all four compilers.",
           "$comment": "Optional output key for the aggregated value; defaults to a compiler-chosen name derived from field+func when absent. Unlike 'field', alias is not gated by the GridSchema allowlist, yet it lands in generated query text as an identifier (SUM(x) AS <alias>, $group output key, ES agg name) where SEC-2's 'values are parameters' rule cannot apply — an identifier can't be parameterized. The identifier-safe pattern is therefore the only guard against alias-as-injection-vector across all four compilers."
         }
       },

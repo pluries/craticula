@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.pluries.dev/craticula/v1/grid-schema.schema.json",
   "title": "Craticula GridSchema",
-  "description": "The field allowlist and per-field configuration that the host declares and every compilation requires. Every field a compilation touches (in filters, sort, group or aggregations) must be listed in `fields`; a column id that is not listed is exactly what the allowlist exists to reject. The `source` and per-field `format` members were added after the first version of this schema, together with the model that reads them.",
+  "description": "The field allowlist and per-field configuration that the host declares and every compilation requires. Every field a compilation touches (in filters, sort, group or aggregations) must be listed in `fields`; a column id that is not listed is either rejected or removed, depending on `mode`. The `source` and per-field `format` members were added after the first version of this schema, together with the model that reads them.",
   "$comment": "The host-declared field allowlist and per-field configuration every compilation requires (SC-1..SC-5). This is a spec-level assumption authored for the conformance fixture suite (#1630) ahead of the actual GridSchema model/validator (#1631) — #1631 must conform to this shape, not the other way around, since this schema exists first. That precedence applies to what existed then; members added later were added here and in the model by the same story ('source' in #1638, per-field 'format' in #1653), so for those two the two are one change and neither leads. Every field a compilation touches (in filters, sort, group, aggregations) MUST appear in 'fields'; a colId absent from 'fields' is what the allowlist (SC-1) exists to reject.",
   "type": "object",
   "additionalProperties": false,
@@ -22,12 +22,12 @@
     "stableKey": {
       "type": "string",
       "minLength": 1,
-      "description": "The field appended as a trailing sort tiebreaker whenever the request's own sort does not already end in a unique key. A field listed once in the sort counts once, and the sort stops at an exact stable key. It is required for every grid, and it must be a key that is present in `fields`.",
+      "description": "A field that is unique per row (no two rows share a value, null included). When the request's sort does not already end in an exact ordering on it, it is appended as a final ascending sort key with nulls last, so that paging is deterministic. A repeated field in the sort is dropped, and nothing after the stable key is kept once it orders exactly (any non-text field, or a case-sensitive text field); it is required for every grid and must be one of the keys in `fields`.",
       "$comment": "SEM-6: the field appended as a trailing sort tiebreaker whenever the request's own sort, after SEM-6's reduction (a field listed once, the sort stopping at an exact stable key), doesn't already reach a unique key. Required per grid — every GridSchema fixture must declare one, and it must itself be a key present in 'fields'."
     },
     "staticFilter": {
       "$ref": "./ir.schema.json#/$defs/filterNode",
-      "description": "A filter fragment written by the host and combined with AND into every compiled query, which makes it the hook for tenancy or soft-delete rules. A client never influences it, so it appears only in the grid schema and never in an AG Grid request. When absent, no static filter applies.",
+      "description": "A host-written condition, in the same filter-node shape as the IR, that is ANDed into every query. Use it for rules such as limiting rows to one tenant or hiding soft-deleted rows. Clients cannot change it.",
       "$comment": "SC-5: a host-authored IR filter fragment ANDed into every compiled query (the tenancy/soft-delete hook). Never client-influenced — this field only ever appears in schema.json, never in an agGridRequest.json. Absent means no static filter for this fixture."
     },
     "fields": {
@@ -119,8 +119,8 @@
           "required": ["field"],
           "properties": {
             "field": { "type": "string", "minLength": 1 },
-            "keywordSubField": { "type": "string", "description": "The name of the keyword-style sub-field used for exact-match and substring matching. It is needed by the term, wildcard, prefix and regexp operations on an analyzed field.", "$comment": "SC-3: the .keyword-style exact-match/substring sub-field name, for term/wildcard/prefix/regexp ops on an analyzed field." },
-            "normalizedSubField": { "type": "string", "description": "A keyword sub-field that the index fills through an ICU-folding normalizer, used for case-insensitive ordering and range comparisons. It is needed there because Elasticsearch and OpenSearch have no query-time case-insensitive option for range queries in the supported older version range. It is different from `keywordSubField`, so declare it only for a field that needs case-insensitive ordering.", "$comment": "SC-3 (plural sub-field names): a keyword sub-field maintained via an ICU-folding normalizer at index time, used for case-insensitive ORDER BY / range comparisons (SEM-1) where ES/OpenSearch's query-time case_insensitive parameter is unavailable (range queries, in the pinned 7.10-era subset). Distinct from keywordSubField — only declare it for a field that needs case-insensitive ordering." }
+            "keywordSubField": { "type": "string", "description": "The name of the exact-value sub-field (often `.keyword`) that holds the unsplit text. It is used for exact, prefix, wildcard and regex matching on a field that the index also tokenises.", "$comment": "SC-3: the .keyword-style exact-match/substring sub-field name, for term/wildcard/prefix/regexp ops on an analyzed field." },
+            "normalizedSubField": { "type": "string", "description": "The name of a keyword sub-field that the index fills through a case- and accent-folding normalizer at indexing time. It is used for case-insensitive sorting and range comparisons, because Elasticsearch and OpenSearch range queries cannot ignore case at query time in the supported 7.10-era versions. It is separate from `keywordSubField`; declare it only for a field that needs case-insensitive ordering, and note that it costs extra index work.", "$comment": "SC-3 (plural sub-field names): a keyword sub-field maintained via an ICU-folding normalizer at index time, used for case-insensitive ORDER BY / range comparisons (SEM-1) where ES/OpenSearch's query-time case_insensitive parameter is unavailable (range queries, in the pinned 7.10-era subset). Distinct from keywordSubField — only declare it for a field that needs case-insensitive ordering." }
           }
         }
       }
@@ -135,7 +135,7 @@
         "datePattern": {
           "type": "string",
           "minLength": 1,
-          "description": "The date pattern for this field in an export, replacing the writer's ISO 8601 default for this field only. It only applies when `type` is `date` or `datetime`, and it uses the LDML/CLDR field letters that every platform's formatter shares (`yyyy`, `MM`, `dd`, `HH`, `mm`, `ss` and literal separators), so `dd/MM/yyyy` means the same on .NET, Java and JavaScript. A pattern no formatter can apply is rejected when the schema is parsed, and an offset specifier (`z` or `K`) shows the host machine's offset for a value that carries none.",
+          "description": "A date pattern for this field in an export, replacing the ISO 8601 default. It only applies when `type` is `date` or `datetime`. Use only the common pattern letters (`yyyy`, `MM`, `dd`, `HH`, `mm`, `ss` and literal separators), so `dd/MM/yyyy` gives the same output on .NET, Java and JavaScript; a pattern the formatter cannot apply is rejected when the schema is parsed, and an offset letter (`z`, `K`) shows the server's own offset for a value that has none.",
           "$comment": "EXP-5's date pattern, replacing the writer's ISO 8601 default for this field only. Only meaningful when type is 'date' or 'datetime'. Written in the LDML/CLDR field letters every platform's formatter shares — yyyy, MM, dd, HH, mm, ss and literal separators — so 'dd/MM/yyyy' means the same to .NET, Java and a JavaScript port; a pattern outside that shared subset is not portable and must not appear in a fixture. A pattern no formatter can apply is rejected when the schema is parsed, not when the first date cell is written, which a streaming export cannot recover from. Note that an offset specifier (z/K) renders the host machine's offset when applied to a value that carries none, so it is meaningful only for a column an adapter yields with an offset."
         },
         "decimalSeparator": {
@@ -161,7 +161,7 @@
         "searchMode": {
           "enum": ["substring", "analyzed"],
           "default": "substring",
-          "description": "How `contains` matches text in this field. `substring` is the default and uses wildcard or n-gram matching, and `analyzed` is the explicit opt-in to tokenized relevance matching.",
+          "description": "How `contains` matches text in this field. `substring` (default) finds the text anywhere inside the value; `analyzed` searches by whole words with relevance scoring, and is only available where the backend supports it (search engines).",
           "$comment": "SEM-7: substring is contains' pinned default (wildcard/ngram); analyzed is the explicit per-field opt-in to tokenized relevance matching."
         }
       }
