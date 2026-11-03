@@ -21,7 +21,7 @@ SECURITY = ROOT / "SECURITY.md"
 PRIVATE_PREFIXES = ("docs/", ".claude", "CLAUDE.md", ".mcp.json", ".githooks", ".azuredevops", ".sonarlint", ".vscode",
                     "scripts/publish-github.sh", "scripts/sync-release-commit.sh", "scripts/apply-public-change.sh",
                     "scripts/test_apply_public_change.py", "scripts/test_publish_mirror_real.py", "scripts/test_jenkinsfile.py",
-                    "scripts/test_release_steps.py", "scripts/test_release_steps_publish.py", "scripts/release-steps-fixtures/",
+                    "scripts/test_release_steps.py", "scripts/test_release_steps_publish.py", "scripts/test_release_steps_notes.py", "scripts/release-steps-fixtures/",
                     "csharp/tests/Craticula.Conformance.Tests/JenkinsfileTests.cs", "Jenkinsfile", "jenkins/")
 # `docs/adr` is the one public folder under a private path (the PUBLIC_EXCEPT array of scripts/publish-github.sh, #1665, ADR 0004).
 PUBLIC_EXCEPTIONS = ("docs/adr",)

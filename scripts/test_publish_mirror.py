@@ -350,11 +350,13 @@ class ScriptTests(unittest.TestCase):
     def test_the_release_publish_test_stays_out_of_the_public_history(self):
         # #3486: it tests the push and release commands of jenkins/release-steps.sh, which is private, like its sibling test.
         self.write("scripts/test_release_steps_publish.py", "# tests a private script\n")
+        self.write("scripts/test_release_steps_notes.py", "# tests a private script\n")
         self.write("scripts/test_release_verify.py", "# stays\n")
         self.commit("TECHNICAL #7 add the release publish tests")
         self.publish()
         tree = self.git("ls-tree", "-r", "--name-only", "main", cwd=self.pub).stdout.split()
         self.assertNotIn("scripts/test_release_steps_publish.py", tree)
+        self.assertNotIn("scripts/test_release_steps_notes.py", tree)
         self.assertIn("scripts/test_release_verify.py", tree)
 
     def public_tree(self):
