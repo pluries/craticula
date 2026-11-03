@@ -20,10 +20,30 @@ the code the page shows (a quickstart program that the solution builds cannot dr
 file inside the repository.
 
 Pages are Markdown files, or generated from a repository file: `"generator": "schema-reference"` renders a JSON Schema as
-reference tables, `"generator": "rules-index"` lists every rule id of the rule source (`spec/semantics.md`) with a link to its
-anchor. A paragraph that opens with a bold rule id (`**GRP-7. ...**`) and a heading that opens with one (`## SEM-1. ...`) get an
+reference tables, `"generator": "semantics-split"` cuts the rule source (`spec/semantics.md`) into one page per section. A paragraph that opens with a bold rule id (`**GRP-7. ...**`) and a heading that opens with one (`## SEM-1. ...`) get an
 anchor of that id (`#grp-7`, `#sem-1`), and the build fails when a page mentions a rule id (of the prefixes in `ruleIdPrefixes`)
 that the rule source does not define.
+
+Docs site v2 contract (story #3554, task #3555; spec `docs/spec/docs-site-v2.md`; the behaviour is built by the green step):
+  * `site/site.json` page keys: `slug`, `title`, `source`, `group` (one of GROUPS, or absent/null only for the page `index`),
+    optional `subgroup` (one nesting level under the group), required `description` (one sentence), optional `authored: true`
+    with `reviewed` (an ISO date; an authored page without it fails the build), optional `generator`, `template`.
+  * `"generator": "semantics-split"` (keys `source` = spec/semantics.md, `summaries` = site/summaries.json): one index page (the
+    page's own slug, group Reference) that lists the split pages with their summaries, then one page per `## ` section of the
+    source (SEM-1..SEM-8 and each addendum) in subgroup `Semantics`. A section's key in the summaries file is its rule id
+    (`SEM-1`) or, for an addendum, the text after `Addendum — ` up to ` (`; the entry holds `title` (plain name), `description`
+    (one sentence) and `summary` (at most three sentences, the lead paragraph). The split page's slug is `slugify(title)`, its h1
+    is the plain title (the heading line is replaced) and the anchors of the rules it holds (`#sem-1`, `#grp-7`) stay. A
+    section with no entry fails the build and names the heading. The `rules-index` generator is removed.
+  * Sidebar: GROUPS in that fixed order, empty ones omitted, subgroups as nested native `<details>` with a `<summary>`, the
+    group open when it holds the current page, the current page `aria-current="page"`, the page `index` absent.
+  * Template values added: `{{prev_next}}` (a `<nav aria-label="Previous and next">` linking the neighbours in sidebar order,
+    empty for `index`; its links carry `rel="prev"` and `rel="next"`), `{{head_links}}` (the favicon SVG and apple-touch-icon `<link>` tags), `{{description}}`, `{{spec_version}}`
+    (the text of `spec/VERSION`). The build writes `favicon.svg`, `favicon.ico` (32 x 32) and `apple-touch-icon.png` (180 x 180).
+  * The build fails and names the file or page on: a source with `<script`, an event-handler attribute or a `javascript:` link
+    (DS-21); a level-2 heading over 60 characters; a missing description, summary or `reviewed`; a coded reference
+    (a word boundary, 2 to 5 capitals, a hyphen and digits, or `#` and three digits) in a title, sidebar label, TOC label, description or summary (DS-19).
+  * A link to `semantics.html#<anchor>` or to the source file `semantics.md#<anchor>` resolves to the split page that holds the anchor.
 
     python3 scripts/build_site.py [--out DIR] [--root DIR]
 
@@ -32,13 +52,18 @@ Exit codes: 0 built and every link resolves, 1 a link is dead or private, 2 bad 
 from __future__ import annotations
 
 import argparse
+import datetime
+import functools
 import html
 import json
 import os
 import re
+import struct
 import sys
+import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
 
 # The private paths of scripts/publish-github.sh (its PRIVATE array): what the public mirror does not carry, so a link to one is
 # dead there. test_build_site.py pins this tuple to the real array where that script exists (the private repository).
@@ -50,6 +75,12 @@ PRIVATE_PATHS = ("docs", ".claude", "CLAUDE.md", ".mcp.json", ".githooks", ".azu
 EXTERNAL = re.compile(r"^(?:[a-zA-Z][a-zA-Z0-9+.-]*:)")
 ALLOWED_SCHEMES = ("http:", "https:", "mailto:")
 SLUG = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+CODED_REFERENCE = re.compile(r"\b[A-Z]{2,5}-\d+|#\d{3,}")  # DS-19: a rule id, a requirement id, a schema code or a ticket number
+EVENT_HANDLER = re.compile(r"[\s/\"']on[a-z]+\s*=")  # DS-21, inside one tag
+ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+MAX_TOC_LABEL = 60  # DS-9
+ADDENDUM = "Addendum — "
+SPLIT_SUBGROUP = "Semantics"
 
 
 class BuildError(Exception):
@@ -159,6 +190,7 @@ _RULE_OPENER = re.compile(rf"^\*\*({RULE_ID})\.\s")
 _RULE_HEADING = re.compile(rf"^({RULE_ID})\.\s")
 _HEADING = re.compile(r"^(#{1,6})\s+(.*?)(?:\s+#+)?\s*$")
 _FENCE = re.compile(r"^(\s*)(```+|~~~+)\s*([\w+-]*)")
+_FENCE_LINE = re.compile(r"^\s*(`{3,}|~{3,})")
 _LIST = re.compile(r"^(\s*)([-*+]|\d+[.)])\s+(.*)")
 _TABLE_SEP = re.compile(r"^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$")
 _RULE = re.compile(r"^\s*([-*_])(\s*\1){2,}\s*$")
@@ -358,21 +390,88 @@ class Page:
     rendered: Rendered | None = None
     group: str | None = None  # FR-32, task #3474
     template: str | None = None  # FR-32, task #3474
+    description: str = ""  # #3555, DS-12
+    subgroup: str | None = None  # #3555, DS-2: one nesting level under the group
+    authored: bool = False  # #3555, DS-24
+    reviewed: str | None = None  # #3555, DS-24: ISO date of the review of an authored page
+    summary: str = ""  # #3555, DS-10: the lead paragraph of a split semantics page
+    alias: str = ""  # #3555: the rule anchor (`sem-1`) a split page keeps next to its title
+
+
+def _layout(pages: list["Page"]) -> dict[str, list]:
+    """DS-2: group -> its entries in order, where an entry is a page or a (subgroup name, pages) pair placed where the
+    subgroup's first page appears. A page without a group (the home page) is not part of the sidebar."""
+    layout: dict[str, list] = {name: [] for name in GROUPS}
+    subgroups: dict[tuple[str, str], list[Page]] = {}
+    for page in pages:
+        if not page.group or page.slug == "index":
+            continue
+        if page.subgroup:
+            key = (page.group, page.subgroup)
+            if key not in subgroups:
+                subgroups[key] = []
+                layout[page.group].append((page.subgroup, subgroups[key]))
+            subgroups[key].append(page)
+        else:
+            layout[page.group].append(page)
+    return layout
+
+
+def ordered_pages(pages: list["Page"]) -> list["Page"]:
+    """The pages in sidebar order: the order of previous and next."""
+    flat: list[Page] = []
+    for name in GROUPS:
+        for entry in _layout(pages)[name]:
+            flat.extend(entry[1] if isinstance(entry, tuple) else [entry])
+    return flat
+
+
+def _side_link(page: "Page", current_slug: str) -> str:
+    current = ' aria-current="page"' if page.slug == current_slug else ""
+    return f'<li><a href="{html.escape(page.slug)}.html"{current}>{html.escape(page.title)}</a></li>'
 
 
 def render_sidebar(pages: list["Page"], current_slug: str) -> str:
-    """FR-32, task #3474: one block per group in first-appearance order, the current page marked aria-current."""
-    groups: dict[str, list[Page]] = {}
-    for page in pages:
-        groups.setdefault(page.group or "", []).append(page)
-    current = ' aria-current="page"'  # not inline in the f-string: a backslash there needs Python 3.12 (the floor is 3.10)
+    """DS-2: the groups in their fixed order (empty ones left out) as native collapsible blocks; a subgroup nests one level
+    deeper; the group and subgroup that hold the current page are open, and the current page is marked aria-current."""
+    layout = _layout(pages)
     blocks = []
-    for name, members in groups.items():
-        items = "".join(
-            f'<li><a href="{html.escape(p.slug)}.html"{current if p.slug == current_slug else ""}>{html.escape(p.title)}</a></li>'
-            for p in members)
-        blocks.append(f'<div class="side-group"><p class="side-title">{html.escape(name)}</p><ul>{items}</ul></div>')
+    for name in GROUPS:
+        if not layout[name]:
+            continue
+        items: list[str] = []
+        group_open = False
+        for entry in layout[name]:
+            if isinstance(entry, tuple):
+                sub_name, members = entry
+                sub_open = any(member.slug == current_slug for member in members)
+                group_open = group_open or sub_open
+                open_attribute = " open" if sub_open else ""
+                links = "".join(_side_link(member, current_slug) for member in members)
+                items.append(f'<li class="side-sub"><details{open_attribute}><summary>{html.escape(sub_name)}</summary><ul>{links}</ul></details></li>')
+            else:
+                group_open = group_open or entry.slug == current_slug
+                items.append(_side_link(entry, current_slug))
+        open_attribute = " open" if group_open else ""
+        blocks.append(f'<div class="side-group"><details{open_attribute}><summary>{html.escape(name)}</summary><ul>{"".join(items)}</ul></details></div>')
     return "".join(blocks)
+
+
+def render_pager(pages: list["Page"], current_slug: str) -> str:
+    """DS-8: links to the previous and the next page in sidebar order; empty for a page that is not in the sidebar (the home page)."""
+    order = ordered_pages(pages)
+    slugs = [page.slug for page in order]
+    if current_slug not in slugs:
+        return ""
+    position = slugs.index(current_slug)
+    links = []
+    if position > 0:
+        before = order[position - 1]
+        links.append(f'<a class="pager-prev" rel="prev" href="{html.escape(before.slug)}.html"><span>Previous</span><strong>{html.escape(before.title)}</strong></a>')
+    if position + 1 < len(order):
+        after = order[position + 1]
+        links.append(f'<a class="pager-next" rel="next" href="{html.escape(after.slug)}.html"><span>Next</span><strong>{html.escape(after.title)}</strong></a>')
+    return f'<nav class="pager" aria-label="Previous and next">{"".join(links)}</nav>'
 
 
 def render_toc(rendered: Rendered) -> str:
@@ -381,7 +480,171 @@ def render_toc(rendered: Rendered) -> str:
     return f'<p class="side-title">On this page</p><ul>{links}</ul>' if links else ""
 
 
-GENERATORS = ("schema-reference", "rules-index")
+GROUPS = ("Concepts", "Guides", "Configuration", "Reference")  # #3555, DS-2: the sidebar's fixed order
+GENERATORS = ("schema-reference", "semantics-split")
+
+
+@dataclass
+class SplitPage:
+    """One page cut from spec/semantics.md (#3555, DS-10)."""
+    slug: str
+    title: str
+    description: str
+    summary: str
+    markdown: str  # the section with its heading line replaced by `# <title>` and the summary as the lead paragraph
+    alias: str = ""  # the rule anchor the section's heading had (`sem-1`), kept on the page
+    original: str = ""  # the section as the source has it, heading line included: the anchors old links point at
+
+
+def _section_key(heading: str) -> str:
+    """The key of a `## ` heading in the summaries file: its rule id (`SEM-1`), or for an addendum the text between
+    `Addendum — ` and ` (`."""
+    rule = _RULE_HEADING.match(heading)
+    if rule:
+        return rule.group(1)
+    if heading.startswith(ADDENDUM):
+        return heading[len(ADDENDUM):].split(" (", 1)[0].strip()
+    return heading.strip()
+
+
+def _cut(text: str) -> tuple[list[str], list[tuple[str, list[str]]]]:
+    """The lines before the first `## ` heading, and the `## ` sections after them; a fenced block never starts a section (the
+    fence closes on the same character with at least as many of them, as render_markdown reads it)."""
+    preface: list[str] = []
+    sections: list[tuple[str, list[str]]] = []
+    fence = ""
+    for line in text.split("\n"):
+        opener = _FENCE_LINE.match(line)
+        if fence:
+            closer = opener.group(1) if opener else ""
+            if closer and closer[0] == fence[0] and len(closer) >= len(fence) and not line.strip().strip(fence[0]):
+                fence = ""
+        elif opener:
+            fence = opener.group(1)
+        elif line.startswith("## "):
+            sections.append((line[3:].strip(), []))
+            continue
+        (sections[-1][1] if sections else preface).append(line)
+    return preface, sections
+
+
+def semantics_preface(text: str) -> str:
+    """The text before the first section of the semantics source, without its level-1 title line."""
+    lines = _cut(text)[0]
+    while lines and (not lines[0].strip() or lines[0].startswith("# ")):
+        lines = lines[1:]
+    return "\n".join(lines).strip()
+
+
+def semantics_split(text: str, summaries: dict) -> list[SplitPage]:
+    """Cut the semantics source into one SplitPage per `## ` section, in document order, with its plain title, description and
+    summary taken from `summaries` (keys: see the module docstring). A section without an entry raises BuildError naming it."""
+    sections = _cut(text)[1]
+    pages: list[SplitPage] = []
+    seen: set[str] = set()
+    for heading, lines in sections:
+        key = _section_key(heading)
+        entry = summaries.get(key)
+        if not isinstance(entry, dict):
+            raise BuildError(f"the summaries file has no entry '{key}' for the section '{heading[:60]}'")
+        for name in ("title", "description", "summary"):
+            value = entry.get(name)
+            if not isinstance(value, str) or not value.strip():
+                raise BuildError(f"the summaries file: entry '{key}' needs a non-empty string '{name}'")
+        title = entry["title"].strip()
+        slug = slugify(title)
+        if not SLUG.match(slug) or slug in seen:
+            raise BuildError(f"the summaries file: entry '{key}': the title '{title}' gives the page name '{slug}', which is invalid or used twice")
+        seen.add(slug)
+        rule = _RULE_HEADING.match(heading)
+        body = "\n".join(lines).strip("\n")
+        pages.append(SplitPage(slug, title, entry["description"].strip(), entry["summary"].strip(),
+                               f"# {title}\n\n{entry['summary'].strip()}\n\n{body}\n", rule_anchor(rule.group(1)) if rule else "",
+                               f"## {heading}\n{body}\n"))
+    return pages
+
+
+def split_index(page: "Page", parts: list[SplitPage], preface: str = "") -> str:
+    """The Markdown of the index page of a split source: its description, the preface of the source, then each part with its summary."""
+    lines = [f"# {page.title}", "", page.description, ""]
+    if preface:
+        lines.extend([preface, ""])
+    lines.extend(f"- [{part.title}]({part.slug}.html): {part.summary}" for part in parts)
+    return "\n".join([*lines, ""])
+
+
+def unsafe_markup(text: str) -> str | None:
+    """DS-21: what a page source holds that the site never publishes (a script element or an event-handler attribute), or None."""
+    lowered = text.lower()
+    position = lowered.find("<")
+    while position >= 0:
+        end = lowered.find(">", position)
+        tag = lowered[position:end if end >= 0 else len(lowered)]
+        if tag.startswith("<script"):
+            return "a script element"
+        if EVENT_HANDLER.search(tag):
+            return "an event-handler attribute"
+        position = lowered.find("<", position + 1)
+    return None
+
+
+# ---------------------------------------------------------------- favicon (DS-18)
+
+FAVICON_ORANGE = (255, 122, 61)
+FAVICON_DARK = (18, 16, 14)
+FAVICON_BARS = (10, 16, 22)
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+FAVICON_SVG = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">'
+               '<rect x="1" y="1" width="30" height="30" rx="8" fill="#FF7A3D"/>'
+               '<path d="M10 7v18M16 7v18M22 7v18" stroke="#12100E" stroke-width="3" stroke-linecap="round" fill="none"/></svg>\n')
+
+
+def _in_mark(x: float, y: float) -> tuple[int, int, int] | None:
+    """The colour of the brand mark at a point of its 32 x 32 grid, or None outside it (the rounded square and three bars)."""
+    centre_x, centre_y = min(max(x, 9), 23), min(max(y, 9), 23)
+    if not (1 <= x <= 31 and 1 <= y <= 31) or (x - centre_x) ** 2 + (y - centre_y) ** 2 > 64:
+        return None
+    bar_y = min(max(y, 7), 25)
+    if any((x - bar) ** 2 + (y - bar_y) ** 2 <= 2.25 for bar in FAVICON_BARS):
+        return FAVICON_DARK
+    return FAVICON_ORANGE
+
+
+def _png_chunk(name: bytes, data: bytes) -> bytes:
+    return struct.pack(">I", len(data)) + name + data + struct.pack(">I", zlib.crc32(name + data) & 0xFFFFFFFF)
+
+
+@functools.lru_cache(maxsize=None)
+def favicon_png(size: int) -> bytes:
+    """The brand mark as an RGBA PNG of `size` x `size` pixels, drawn with 4 x 4 samples per pixel (no image library)."""
+    samples, scale = 4, size / 32
+    rows = []
+    for row in range(size):
+        line = bytearray([0])
+        for column in range(size):
+            covered, red, green, blue = 0, 0, 0, 0
+            for sample_y in range(samples):
+                for sample_x in range(samples):
+                    colour = _in_mark((column + (sample_x + 0.5) / samples) / scale, (row + (sample_y + 0.5) / samples) / scale)
+                    if colour is not None:
+                        covered, red, green, blue = covered + 1, red + colour[0], green + colour[1], blue + colour[2]
+            if covered:
+                line.extend((red // covered, green // covered, blue // covered, 255 * covered // (samples * samples)))
+            else:
+                line.extend((0, 0, 0, 0))
+        rows.append(bytes(line))
+    header = struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0)
+    return PNG_SIGNATURE + _png_chunk(b"IHDR", header) + _png_chunk(b"IDAT", zlib.compress(b"".join(rows), 9)) + _png_chunk(b"IEND", b"")
+
+
+def favicon_ico() -> bytes:
+    """A 32 x 32 `favicon.ico` holding the PNG (the format every current browser reads)."""
+    image = favicon_png(32)
+    return struct.pack("<HHH", 0, 1, 1) + struct.pack("<BBBBHHII", 32, 32, 0, 0, 1, 32, len(image), 22) + image
+
+
+HEAD_LINKS = ('<link rel="icon" type="image/svg+xml" href="favicon.svg"><link rel="icon" href="favicon.ico" sizes="32x32">'
+              '<link rel="apple-touch-icon" href="apple-touch-icon.png">')
 
 
 def load_config(root: Path) -> dict:
@@ -390,6 +653,8 @@ def load_config(root: Path) -> dict:
         config = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as error:
         raise BuildError(f"cannot read {path}: {error}") from error
+    if not isinstance(config, dict):
+        raise BuildError(f"{path}: the file must hold one JSON object")
     for key in ("title", "repo", "branch", "pages"):
         if key not in config:
             raise BuildError(f"{path}: missing '{key}'")
@@ -403,14 +668,41 @@ def load_config(root: Path) -> dict:
             raise BuildError(f"{path}: page '{entry['slug']}': unknown generator '{generator}'")
         if generator == "schema-reference":
             entry["source"] = entry.get("schema")
-        elif generator == "rules-index":
-            entry["source"] = config["ruleSource"]
         if not isinstance(entry.get("source"), str):
-            raise BuildError(f"{path}: page '{entry['slug']}' needs a string 'source' (or the 'schema' / 'ruleSource' its generator reads)")
+            raise BuildError(f"{path}: page '{entry['slug']}' needs a string 'source' (or the 'schema' its generator reads)")
+        if generator == "semantics-split":
+            summaries = entry.get("summaries")
+            norm = os.path.normpath(summaries).replace(os.sep, "/") if isinstance(summaries, str) else ""
+            if not norm or os.path.isabs(summaries) or norm.startswith("../") or norm == ".." or _is_private(norm):
+                raise BuildError(f"{path}: page '{entry['slug']}': 'summaries' must name a public file inside the repository")
         if not SLUG.match(entry["slug"]):
             raise BuildError(f"{path}: page slug '{entry['slug']}' must match [a-z0-9][a-z0-9-]*")
-        if not isinstance(entry.get("group"), str) or not entry["group"].strip():
-            raise BuildError(f"{path}: page '{entry['slug']}' needs a non-empty string 'group' (the sidebar block it belongs to)")
+        group = entry.get("group")
+        if entry["slug"] == "index" and group is None:
+            pass
+        elif group not in GROUPS:
+            raise BuildError(f"{path}: page '{entry['slug']}' needs a 'group' that is one of {', '.join(GROUPS)}")
+        subgroup = entry.get("subgroup")
+        if subgroup is not None and (not isinstance(subgroup, str) or not subgroup.strip()):
+            raise BuildError(f"{path}: page '{entry['slug']}': 'subgroup' must be a non-empty string")
+        if subgroup and CODED_REFERENCE.search(subgroup):
+            raise BuildError(f"{path}: page '{entry['slug']}': the subgroup holds a coded reference")
+        description = entry.get("description")
+        if not isinstance(description, str) or not description.strip():
+            raise BuildError(f"{path}: page '{entry['slug']}' needs a one-sentence 'description'")
+        if "authored" in entry and not isinstance(entry["authored"], bool):
+            raise BuildError(f"{path}: page '{entry['slug']}': 'authored' must be true or false")
+        if entry.get("authored") is True:
+            reviewed = entry.get("reviewed")
+            try:
+                if not isinstance(reviewed, str) or not ISO_DATE.fullmatch(reviewed):
+                    raise ValueError(reviewed)
+                datetime.date.fromisoformat(reviewed)
+            except ValueError as error:
+                raise BuildError(f"{path}: authored page '{entry['slug']}' needs a 'reviewed' date (YYYY-MM-DD, a real day)") from error
+        for label, value in (("title", entry["title"]), ("description", description)):
+            if CODED_REFERENCE.search(value):
+                raise BuildError(f"{path}: page '{entry['slug']}': the {label} holds a coded reference")
         template = entry.get("template")
         if template is not None:
             norm = os.path.normpath(template).replace(os.sep, "/") if isinstance(template, str) else ""
@@ -564,16 +856,7 @@ def rule_definitions(text: str) -> dict[str, str]:
     return found
 
 
-def rules_index(text: str, rules_page: str) -> str:
-    rows = [f"| [{rule}]({rules_page}.html#{rule_anchor(rule)}) | {_cell(title)} |" for rule, title in rule_definitions(text).items()]
-    return "\n".join([
-        "# Rule index", "",
-        "Every numbered rule of the semantics specification, in document order. Each id links to the rule itself.", "",
-        "| Rule | Starts with |", "|---|---|", *rows, ""])
-
-
 _INCLUDE = re.compile(r"^\{\{include\s+(\S+)\s+([\w-]*)\}\}\s*$")
-_FENCE_LINE = re.compile(r"^\s*(`{3,}|~{3,})")
 
 
 def expand_includes(text: str, root: Path, source: str) -> str:
@@ -633,9 +916,21 @@ def _is_private(rel: str) -> bool:
 
 def resolve_link(href: str, source: str, pages_by_source: dict[str, Page], root: Path, config: dict,
                  anchors_of, errors: list[str], line: int, own_anchors: set[str], raw: bool = False,
-                 pages_by_slug: dict[str, Page] | None = None, page_anchors=None, label: str | None = None) -> str:
+                 pages_by_slug: dict[str, Page] | None = None, page_anchors=None, label: str | None = None,
+                 splits: dict[str, "SplitLinks"] | None = None, own_split: "SplitLinks | None" = None) -> str:
     """The href to emit for `href` found in `source`, or the original one after recording an error."""
     where = f"{label or source}:{line}"
+    splits = splits or {}
+
+    def split_href(links: "SplitLinks", fragment: str, name: str) -> str:
+        if not fragment:
+            return f"{links.index_slug}.html"
+        found = links.owner(fragment)
+        if found is None:
+            errors.append(f"{where}: dead anchor '#{fragment}' in {name}")
+            return href
+        return f"{found[0]}.html" + (f"#{fragment}" if found[1] else "")
+
     if EXTERNAL.match(href):
         if not href.lower().startswith(ALLOWED_SCHEMES):
             errors.append(f"{where}: link '{href[:40]}' uses a scheme other than http, https or mailto")
@@ -643,8 +938,14 @@ def resolve_link(href: str, source: str, pages_by_source: dict[str, Page], root:
     path_part, _, fragment = href.partition("#")
     if not path_part:
         if fragment and fragment not in own_anchors:
+            found = own_split.owner(fragment) if own_split else None
+            if found:
+                return f"{found[0]}.html" + (f"#{fragment}" if found[1] else "")
             errors.append(f"{where}: dead anchor '#{fragment}'")
         return href
+    index_links = {links.index_slug: links for links in splits.values()}
+    if path_part.endswith(".html") and "/" not in path_part and path_part[:-5] in index_links:
+        return split_href(index_links[path_part[:-5]], fragment, path_part)
     if pages_by_slug and path_part.endswith(".html") and "/" not in path_part and path_part[:-5] in pages_by_slug:
         # A link to a built page (`ir-schema.html#filternode`), as the generated pages write them.
         if fragment and page_anchors is not None and fragment not in page_anchors(path_part[:-5]):
@@ -657,6 +958,8 @@ def resolve_link(href: str, source: str, pages_by_source: dict[str, Page], root:
     if _is_private(target):
         errors.append(f"{where}: link '{href}' points into the private part of the repository ({target})")
         return href
+    if target in splits:
+        return split_href(splits[target], fragment, target)
     page = pages_by_source.get(target)
     if page is not None:
         if fragment and fragment not in anchors_of(page.source):
@@ -672,6 +975,14 @@ def resolve_link(href: str, source: str, pages_by_source: dict[str, Page], root:
     return f"{config['repo'].rstrip('/')}/{kind}/{config['branch']}/{target.rstrip('/')}" + (f"#{fragment}" if fragment else "")
 
 
+@dataclass
+class SplitLinks:
+    """Where the anchors of a split source went: the index page's slug and, for an anchor, the page that holds its heading and
+    whether the anchor still exists on that page (None when the source has no such anchor)."""
+    index_slug: str
+    owner: Callable[[str], "tuple[str, bool] | None"]
+
+
 def fill_template(template: str, values: dict[str, str]) -> str:
     """One pass: a value that itself contains {{...}} (page content may) is never substituted again."""
     return re.sub(r"\{\{(\w+)\}\}", lambda m: values.get(m.group(1), m.group(0)), template)
@@ -680,16 +991,47 @@ def fill_template(template: str, values: dict[str, str]) -> str:
 def build(root: Path, out_dir: Path) -> list[str]:
     """Build the site; returns the list of errors (empty when every link resolves and every rule id exists)."""
     config = load_config(root)
-    pages = [Page(p["slug"], p["title"], p["source"], p.get("generator"), group=p["group"], template=p.get("template")) for p in config["pages"]]
-    pages_by_slug = {p.slug: p for p in pages}
-    pages_by_source = {p.source: p for p in pages if p.generator is None}
-    page_of_file = {os.path.basename(p.source): p.slug for p in pages if p.generator == "schema-reference"}
-    errors: list[str] = []
-
-    text_cache: dict[str, str] = {}
 
     def read(rel: str) -> str:
         return (root / rel).read_text(encoding="utf-8")
+
+    pages: list[Page] = []
+    text_cache: dict[str, str] = {}
+    split_sources: dict[str, list[Page]] = {}
+    split_slugs: dict[str, str] = {}
+    split_summaries: dict[str, str] = {}
+    member_original: dict[str, str] = {}
+    errors: list[str] = []
+    for p in config["pages"]:
+        page = Page(p["slug"], p["title"], p["source"], p.get("generator"), group=p.get("group"), template=p.get("template"),
+                    description=p["description"], subgroup=p.get("subgroup"), authored=p.get("authored") is True, reviewed=p.get("reviewed"))
+        pages.append(page)
+        if page.generator != "semantics-split":
+            continue
+        try:
+            parts = semantics_split(read(page.source), json.loads(read(p["summaries"])))
+        except (OSError, UnicodeDecodeError, ValueError) as error:
+            raise BuildError(f"page '{page.slug}': cannot read {page.source} or {p['summaries']}: {error}") from error
+        preface = semantics_preface(read(page.source))
+        text_cache[page.slug] = split_index(page, parts, preface)
+        split_slugs[page.source] = page.slug
+        split_summaries[page.slug] = p["summaries"]
+        split_sources[page.source] = []
+        for part in parts:
+            for label, value in (("title", part.title), ("description", part.description), ("summary", part.summary)):
+                if CODED_REFERENCE.search(value):
+                    errors.append(f"site/site.json: page '{part.slug}' ('{part.title}'): the {label} holds a coded reference")
+            member = Page(part.slug, part.title, page.source, "semantics-part", group="Reference", subgroup=SPLIT_SUBGROUP,
+                          description=part.description, summary=part.summary, alias=part.alias)
+            text_cache[member.slug] = part.markdown
+            member_original[member.slug] = part.original
+            pages.append(member)
+            split_sources[page.source].append(member)
+    pages_by_slug = {p.slug: p for p in pages}
+    if len(pages_by_slug) != len(pages):
+        raise BuildError("page names are not unique once the split pages are added")
+    pages_by_source = {p.source: p for p in pages if p.generator is None}
+    page_of_file = {os.path.basename(p.source): p.slug for p in pages if p.generator == "schema-reference"}
 
     def page_text(page: Page) -> str:
         """The Markdown of a page: the file itself, or what its generator makes of the file."""
@@ -700,11 +1042,9 @@ def build(root: Path, out_dir: Path) -> list[str]:
                 except ValueError as error:
                     raise BuildError(f"{page.source}: not valid JSON: {error}") from error
                 text_cache[page.slug] = schema_reference(schema, os.path.basename(page.source), page_of_file)
-            elif page.generator == "rules-index":
-                semantics = next((p for p in pages if p.source == config["ruleSource"] and p.generator is None), None)
-                text_cache[page.slug] = rules_index(read(page.source), semantics.slug if semantics else "semantics")
             else:
-                text_cache[page.slug] = expand_includes(read(page.source), root, page.source)
+                source_text = read(page.source)
+                text_cache[page.slug] = expand_includes(source_text, root, page.source)
         return text_cache[page.slug]
 
     anchor_cache: dict[str, set[str]] = {}
@@ -712,10 +1052,37 @@ def build(root: Path, out_dir: Path) -> list[str]:
     def page_anchors(slug: str) -> set[str]:
         if slug not in anchor_cache:
             try:
-                anchor_cache[slug] = render_markdown(page_text(pages_by_slug[slug])).anchors
+                found = set(render_markdown(page_text(pages_by_slug[slug])).anchors)
             except (OSError, UnicodeDecodeError):
-                anchor_cache[slug] = set()
+                found = set()
+            if pages_by_slug[slug].alias:
+                found.add(pages_by_slug[slug].alias)
+            anchor_cache[slug] = found
         return anchor_cache[slug]
+
+    def make_owner(source: str):
+        members = split_sources[source]
+        index_slug = split_slugs[source]
+        heading_page: dict[str, str] = {}
+        current = index_slug
+        section = -1
+        for level, _, anchor in render_markdown(read(source)).headings:
+            if level == 2:
+                section += 1
+                current = members[section].slug if section < len(members) else current
+            heading_page.setdefault(anchor, current)
+
+        def owner(anchor: str) -> tuple[str, bool] | None:
+            if anchor in heading_page:
+                return heading_page[anchor], anchor in page_anchors(heading_page[anchor])
+            for member in members:
+                if anchor in page_anchors(member.slug):
+                    return member.slug, True
+            return (index_slug, True) if anchor in page_anchors(index_slug) else None
+        return owner
+
+    splits = {source: SplitLinks(split_slugs[source], make_owner(source)) for source in split_sources}
+    own_split_of = {member.slug: splits[source] for source, members in split_sources.items() for member in members}
 
     file_anchor_cache: dict[str, set[str]] = {}
 
@@ -732,10 +1099,17 @@ def build(root: Path, out_dir: Path) -> list[str]:
 
     templates = {rel: read(rel) for rel in {"site/template.html", *(p.template for p in pages if p.template)}}
     style = read("site/style.css")
+    try:
+        spec_version = read("spec/VERSION").strip()
+    except (OSError, UnicodeDecodeError):
+        spec_version = ""
     out_dir.mkdir(parents=True, exist_ok=True)
     for stale in out_dir.glob("*.html"):  # a page removed from site.json must not linger in the output
         stale.unlink()
     (out_dir / "style.css").write_text(style, encoding="utf-8")
+    (out_dir / "favicon.svg").write_text(FAVICON_SVG, encoding="utf-8")
+    (out_dir / "favicon.ico").write_bytes(favicon_ico())
+    (out_dir / "apple-touch-icon.png").write_bytes(favicon_png(180))
     fonts_in, fonts_out = root / "site" / "fonts", out_dir / "fonts"
     if fonts_out.is_dir():  # a font removed from site/fonts must not linger in the output
         for stale_font in fonts_out.iterdir():
@@ -747,7 +1121,7 @@ def build(root: Path, out_dir: Path) -> list[str]:
             if font.is_file():
                 (fonts_out / font.name).write_bytes(font.read_bytes())
 
-    nav = "".join(f'<li><a href="{html.escape(p.slug)}.html">{html.escape(p.title)}</a></li>' for p in pages)
+    nav = "".join(f'<li><a href="{html.escape(p.slug)}.html">{html.escape(p.title)}</a></li>' for p in pages if p.generator != "semantics-part")
     texts: dict[str, str] = {}
 
     for page in pages:
@@ -756,30 +1130,52 @@ def build(root: Path, out_dir: Path) -> list[str]:
         except (OSError, UnicodeDecodeError) as error:
             errors.append(f"site/site.json: page '{page.slug}': cannot read {page.source}: {error}")
             continue
-        texts[page.source if page.generator is None else f"{page.source} (page '{page.slug}')"] = text
+        generated = page.generator is not None
+        if page.generator == "semantics-split":
+            for name, value in ((page.source, read(page.source)), *((p_summaries, read(p_summaries)) for p_summaries in [split_summaries[page.slug]])):
+                problem = unsafe_markup(value)
+                if problem:
+                    errors.append(f"{name}: page '{page.slug}' holds {problem}, which the site never publishes")
+        texts[f"{page.source} (page '{page.slug}')" if generated else page.source] = text
+        if not generated:
+            problem = unsafe_markup(text)
+            if problem:
+                errors.append(f"{page.source}: page '{page.slug}' holds {problem}, which the site never publishes")
         own = page_anchors(page.slug)
         link_errors: list[str] = []
         rendered = render_markdown(text, resolve=lambda href, image=False: href)
         # Second pass with the real resolver, now that the page's own anchors are known; the line of each link is taken
         # from the first pass's record, in order.
         lines = iter(line for line, _ in rendered.links)
-        source_for_links = page.source if page.generator is None else f"site/site.json#{page.slug}"
+        label = f"{page.source} (page '{page.slug}')" if page.generator == "semantics-part" else (f"site/site.json#{page.slug}" if generated else None)
 
-        def resolver(href: str, image: bool = False, source=page.source if page.generator is None else "site/_generated", own=own,
-                     sink=link_errors, lines=lines, label=source_for_links if page.generator else None) -> str:
+        def resolver(href: str, image: bool = False, source=page.source if page.generator in (None, "semantics-part", "semantics-split") else "site/_generated",
+                     own=own, sink=link_errors, lines=lines, label=label, own_split=own_split_of.get(page.slug)) -> str:
             return resolve_link(href, source, pages_by_source, root, config, anchors_of, sink, next(lines, 0), own, raw=image,
-                                pages_by_slug=pages_by_slug, page_anchors=page_anchors, label=label)
+                                pages_by_slug=pages_by_slug, page_anchors=page_anchors, label=label, splits=splits, own_split=own_split)
 
         rendered = render_markdown(text, resolve=resolver)
         errors.extend(link_errors)
+        if page.alias:
+            rendered.html = f'<a id="{html.escape(page.alias)}"></a>' + rendered.html
+            rendered.anchors.add(page.alias)
+        for level, heading, _ in rendered.headings:
+            if level == 2 and len(heading) > MAX_TOC_LABEL:
+                errors.append(f"page '{page.slug}': the heading '{heading[:40]}…' is {len(heading)} characters; a level-2 heading is at most {MAX_TOC_LABEL}")
+            if level == 2 and CODED_REFERENCE.search(heading):
+                errors.append(f"page '{page.slug}': the heading '{heading[:60]}' holds a coded reference, and it is a label of the page's contents")
         page.rendered = rendered
 
         values = {
             "site_title": html.escape(config["title"]),
             "page_title": html.escape(page.title),
+            "description": html.escape(page.description, quote=True),
+            "head_links": HEAD_LINKS,
+            "spec_version": html.escape(spec_version),
             "nav": nav,
             "sidebar": render_sidebar(pages, page.slug),
             "toc": render_toc(rendered),
+            "prev_next": render_pager(pages, page.slug),
             "content": rendered.html,
             "source": html.escape(page.source),
             "source_url": html.escape(f"{config['repo'].rstrip('/')}/blob/{config['branch']}/{page.source}"),

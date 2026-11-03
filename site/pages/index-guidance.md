@@ -24,18 +24,18 @@ Two kinds of obligation appear below, and the difference matters:
 | OpenSearch / Elasticsearch | `keyword` sub-fields, a normalizer for case-insensitive sorting, a precise number type for decimals | silent for a missing `keyword` sub-field in a filter (no rows match), loud in a sort; silent for rounding |
 
 Every engine also needs the schema's **stable key to be unique, with at most one `NULL`**
-([SEM-6](semantics.html#sem-6)). Most engines let a unique constraint hold many `NULL`s, which breaks the paging guarantee; declare the
+([Deterministic paging](semantics.html#sem-6)). Most engines let a unique constraint hold many `NULL`s, which breaks the paging guarantee; declare the
 key `NOT NULL`. A text stable key that is case-insensitive also needs a binary or case-sensitive collation on MySQL and SQL
 Server, or two keys that differ only by case tie.
 
 ## Indexes for every database
 
-- **Filters.** A text field compares case-insensitively by default ([SEM-1](semantics.html#sem-1)). The rule is built so a plain
+- **Filters.** A text field compares case-insensitively by default ([Case sensitivity](semantics.html#sem-1)). The rule is built so a plain
   index on the column can still be used for equality: the compiler states a collation on the comparison instead of wrapping the
   column in `lower()`. Make the index match that collation (below). Substring matches (`contains`, `endsWith`) start with a
   wildcard, which no ordinary B-tree index serves; see each engine.
-- **Sorting.** Every ordered query ends with the schema's stable key, ascending with nulls last ([SEM-6](semantics.html#sem-6)),
-  and Craticula spells null placement itself ([SEM-3](semantics.html#sem-3)). An index serves the sort only if it matches that
+- **Sorting.** Every ordered query ends with the schema's stable key, ascending with nulls last ([Deterministic paging](semantics.html#sem-6)),
+  and Craticula spells null placement itself ([Null ordering](semantics.html#sem-3)). An index serves the sort only if it matches that
   exact order. On PostgreSQL, SQLite and Oracle the quickstart's order is `amount DESC NULLS FIRST, id ASC NULLS LAST`, so the
   matching index is `(amount DESC NULLS FIRST, id ASC NULLS LAST)`; a plain `(amount, id)` index does not match a descending sort.
   On SQL Server and MySQL the statement orders by a null test first (`CASE WHEN ... IS NULL`, `ISNULL(...)`), which no column index
@@ -53,23 +53,23 @@ CREATE COLLATION craticula_ci (provider = icu, locale = 'und-u-ks-level2', deter
 ```
 
 Without it every case-insensitive `=`, `IN`, range and `ORDER BY` fails with an unknown collation
-([SEM-1](semantics.html#sem-1)).
+([Case sensitivity](semantics.html#sem-1)).
 
 - **Equality and sorting** on a case-insensitive text field name `craticula_ci`. An index created with that collation
   (`CREATE INDEX ... ON orders (customer COLLATE craticula_ci)`) is the one that matches; confirm with `EXPLAIN`.
 - **`contains`, `startsWith`, `endsWith`** compile to `ILIKE`. Back them with a trigram index: `CREATE EXTENSION pg_trgm;`
   then `CREATE INDEX ... USING gin (customer gin_trgm_ops);`.
 - **Dates:** declare `datetime` columns `timestamptz`. With plain `timestamp` the server compares through the session time zone and
-  rows shift without an error ([SEM-4](semantics.html#sem-4)).
+  rows shift without an error ([Dates and time zones](semantics.html#sem-4)).
 - Grouping columns need no collation: PostgreSQL's default collation is deterministic, so `EMEA` and `emea` are two groups, as
-  [GRP-2](semantics.html#grp-2) requires.
+  [Grouping and drill-down](semantics.html#grp-2) requires.
 
 ## SQL Server
 
 No collation setup for filters: the statement carries `COLLATE Latin1_General_CI_AS` (or `Latin1_General_CS_AS` for a field you
 declared case-sensitive) inline, so neither direction depends on the database's own collation.
 
-- **Grouping columns, silent obligation.** A `GROUP BY` and a drill-down must be exact ([GRP-2](semantics.html#grp-2)), and the
+- **Grouping columns, silent obligation.** A `GROUP BY` and a drill-down must be exact ([Grouping and drill-down](semantics.html#grp-2)), and the
   statement names no collation there. SQL Server's usual default (`SQL_Latin1_General_CP1_CI_AS`) folds case, so a grouped
   column declared with it puts `EMEA` and `emea` in one group. Declare each groupable column, and the stable key if it is text,
   with a binary or case-sensitive collation. The column definition is, for example:
@@ -82,7 +82,7 @@ declared case-sensitive) inline, so neither direction depends on the database's 
   speed: a comparison that names a collation different from the column's usually cannot seek on it, so measure a
   case-insensitive filter on a column you also group by.
 - **Dates.** `datetime2` has no time zone. Store the UTC reading; the compiler compares the UTC instant against it
-  directly, and results come back as UTC ([SEM-4](semantics.html#sem-4)).
+  directly, and results come back as UTC ([Dates and time zones](semantics.html#sem-4)).
 - **Entity Framework Core:** set `PatternMatchFoldsCase = false` on the provider semantics unless every searchable column's
   collation folds case; `true` sends a bare `LIKE`, which on a binary-collated column matches exact case only. See the
   [adapter's README](../../csharp/src/Craticula.EntityFrameworkCore/README.md).
@@ -96,7 +96,7 @@ Case sensitivity there belongs to the **column's** collation, which a statement 
 - **Case-sensitive fields, silent obligation.** A field declared `caseSensitivity: "sensitive"` needs a `_bin` or `_as_cs`
   column collation (`utf8mb4_bin`, `utf8mb4_0900_as_cs`). On a `_ci` column the declaration has no effect and comparisons stay
   case-insensitive; the compiled statement does not tell you.
-- **Grouping columns** need the same binary or `_as_cs` collation for exact groups ([GRP-2](semantics.html#grp-2)):
+- **Grouping columns** need the same binary or `_as_cs` collation for exact groups ([Grouping and drill-down](semantics.html#grp-2)):
 
   ```sql
   country varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin
@@ -107,7 +107,7 @@ Case sensitivity there belongs to the **column's** collation, which a statement 
   more; the compiler cannot give you both from one column.
 - **Entity Framework Core:** like SQL Server, set `PatternMatchFoldsCase = false` unless every searchable column's collation folds case.
 - **Dates.** `DATETIME` has no time zone: store UTC. If you use MySqlConnector, leave `DateTimeKind` at its default or set UTC;
-  `Local` only labels the value and would shift every instant by the server's offset ([SEM-4](semantics.html#sem-4)).
+  `Local` only labels the value and would shift every instant by the server's offset ([Dates and time zones](semantics.html#sem-4)).
 
 ## SQLite
 
@@ -115,7 +115,7 @@ Case sensitivity there belongs to the **column's** collation, which a statement 
 - **Case-insensitive** fields use `COLLATE NOCASE`, which folds ASCII letters only (`É` and `é` stay different). An index
   declared `(customer COLLATE NOCASE)` serves them.
 - **Datetimes, silent obligation.** SQLite has no timestamp type and compares text character by character. Store every
-  `datetime` as exactly `yyyy-MM-ddTHH:mm:ss.fffZ`, in UTC, with three fraction digits ([SEM-4](semantics.html#sem-4)). Another
+  `datetime` as exactly `yyyy-MM-ddTHH:mm:ss.fffZ`, in UTC, with three fraction digits ([Dates and time zones](semantics.html#sem-4)). Another
   width (`...:00Z`, `yyyy-MM-dd HH:mm:ss`) returns wrong rows without an error.
 - **Entity Framework Core** binds a `DateTime` in its own `yyyy-MM-dd HH:mm:ss` form, so map every datetime to and from the
   stored text in your `DbContext`. Without the mapping an `eq` finds nothing, a range bound counts the whole date as later and
@@ -157,7 +157,7 @@ Case sensitivity there belongs to the **column's** collation, which a statement 
   MongoDB). A regex does not use a collation-aware index the way an equality does, so expect to scan on a large collection and
   measure.
 - **Sorting.** The sort runs on computed helper fields that hold the null placement, so no index serves it as a whole; index your
-  filters ([SEM-3](semantics.html#sem-3)).
+  filters ([Null ordering](semantics.html#sem-3)).
 - **Grouping requests compare case-sensitively.** MongoDB has one collation per query. A grouping request must keep its
   buckets exact, so its pipeline carries no collation and a user filter in the same request compares case-**sensitively**
   (GRP-2's accepted divergence #3). The other databases fold case in that filter.

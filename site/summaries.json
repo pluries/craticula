@@ -1,0 +1,82 @@
+{
+  "SEM-1": {
+    "title": "Case sensitivity",
+    "description": "Text comparisons ignore case unless the field says otherwise.",
+    "summary": "Every comparison and ordering of text ignores case by default. Case sensitivity is a setting of the field, not of the operator or of the place where the comparison appears. A filter on a field therefore always agrees with a sort on the same field."
+  },
+  "SEM-2": {
+    "title": "Null handling",
+    "description": "What blank, not blank and null values mean for each field type.",
+    "summary": "A text field is blank when it is null or empty, and any other field is blank only when it is null. Not blank is exactly the opposite of blank. On an engine that stores an empty string as null, such as Oracle, the check reduces to null alone."
+  },
+  "SEM-3": {
+    "title": "Null ordering",
+    "description": "Every sort says whether nulls come first or last.",
+    "summary": "Each sort key carries an explicit position for nulls, first or last, independent of the sort direction. The compiler follows it literally, with the engine's own syntax where there is one and an equivalent form where there is not. The AG Grid adapter supplies a default, because the grid itself does not send one."
+  },
+  "SEM-4": {
+    "title": "Dates and time zones",
+    "description": "How dates and moments in time are read from a request.",
+    "summary": "A calendar date without a time is kept apart from a moment in time with a zone. The adapter turns the grid's zone-less strings into typed values using the field's declared type and the zone of the request, never the zone of the server. No compiler guesses a zone."
+  },
+  "SEM-5": {
+    "title": "Type coercion",
+    "description": "Text values from the grid are converted to typed values once, in the adapter.",
+    "summary": "The grid sends numbers and dates as text. The adapter converts each value once, using the type the schema declares for the field, and no compiler converts it again. A value that cannot be converted is a request error in Strict mode."
+  },
+  "SEM-6": {
+    "title": "Deterministic paging",
+    "description": "The same request always returns the same rows in the same order.",
+    "summary": "Every grid names a unique stable key. The compiler adds it as the last sort key, after the keys the user chose, so that rows with equal values always come back in the same order. The added key gets a null position like any other sort key."
+  },
+  "SEM-7": {
+    "title": "Substring matching on OpenSearch",
+    "description": "Contains and not contains match substrings on OpenSearch and Elasticsearch, as SQL does.",
+    "summary": "On OpenSearch and Elasticsearch, contains and not contains look for the text inside the value, exactly as a SQL substring match does. There is no tokenising, stemming or relevance scoring. A field can opt in to full-text matching explicitly if a host wants that instead."
+  },
+  "SEM-8": {
+    "title": "Empty set membership",
+    "description": "An in filter with no values matches nothing; not in matches everything.",
+    "summary": "A set filter with an empty list of values is valid. In matches no row and not in matches every row, including rows whose field is null. The empty list combines with and, or and not by ordinary logic."
+  },
+  "aggregation semantics": {
+    "title": "Aggregations",
+    "description": "How counts, sums and other aggregations behave, and what an empty group returns.",
+    "summary": "A count counts the rows where the named field has a value, never all rows. The rules also say what the result column is called and how grouping keys are matched. An aggregation over a group with no values has a defined answer, and a known difference in the placement of null groups on OpenSearch is recorded."
+  },
+  "grouping semantics": {
+    "title": "Grouping and drill-down",
+    "description": "How a grouped grid asks for one level at a time and how drilling down is compiled.",
+    "summary": "Each request opens one level of a grouped grid and carries the path of groups above it. Group values are matched exactly, and the output columns are named at every level. A drill-down is compiled like any other filter, combined with the user's own filter."
+  },
+  "export semantics": {
+    "title": "Export",
+    "description": "The rules for compiling an export request.",
+    "summary": "An export is a request of its own kind. It drops the grouping state and names its output columns, which an ordinary row query does not. The export scope chooses the page mode and nothing else in the compiler changes; streaming and the CSV file itself are described elsewhere."
+  },
+  "canonical SQL rendering": {
+    "title": "SQL rendering",
+    "description": "The one way each construct is written as SQL, for every dialect.",
+    "summary": "The same request must produce the same statement shape every time. Identifiers are always quoted, parentheses follow the structure of the filter, and negative operators use the negated operator. The page also lists where an engine differs, such as Postgres array parameters, collations and Oracle's empty-string rule."
+  },
+  "canonical MongoDB rendering": {
+    "title": "MongoDB rendering",
+    "description": "The one way each construct is written as a MongoDB pipeline.",
+    "summary": "A comparison is always a field document with an explicit operator, and the composites map to the matching MongoDB operators. Null inclusion, blank checks, ranges, collation and the escaping of patterns each have one fixed form. The pinned floor is MongoDB 4.2."
+  },
+  "canonical OpenSearch/Elasticsearch rendering": {
+    "title": "OpenSearch and Elasticsearch rendering",
+    "description": "The one way each construct is written as an OpenSearch or Elasticsearch query.",
+    "summary": "Each construct has one fixed form: the kind of term query follows the field's type, null inclusion and blank checks have fixed shapes, and every sort spells out its order and missing-value rule. Grouping uses a composite aggregation and distinct values use a terms aggregation. One compiler serves both engines, and they differ only in how a point in time is handled."
+  },
+  "execution equality": {
+    "title": "Execution equality",
+    "description": "Checking that compiled queries return the same rows on a real engine.",
+    "summary": "Comparing the text a compiler writes cannot see a collation that is ignored or a null that sorts the wrong way. Fixtures can therefore carry a seeded dataset and the rows a real engine must return, and the results are compared column by column and row by row. A known and accepted difference between engines is written down in the fixture."
+  },
+  "cross-backend parity property": {
+    "title": "Cross-engine parity",
+    "description": "Checking that generated requests return the same rows on every engine.",
+    "summary": "One generated request, run over one seeded dataset on several engines, must return the same rows. The check covers combinations nobody wrote down by hand, and it keeps a register of the constructs it leaves out because engines are known to differ. A difference the check finds becomes a fixture."
+  }
+}

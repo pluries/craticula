@@ -13,7 +13,7 @@ Nothing is published for Go: no package, no install command.
 ## What you can do today
 
 - Use the C# library, which is the reference implementation: [Quickstart: C#](quickstart-csharp.html).
-- Read the rules a Go port will have to follow: [semantics](semantics.html), the [rule index](rules.html) and the
+- Read the rules a Go port will have to follow: [semantics](semantics.html), and the
   schema references ([GridSchema](grid-schema.html), [IR](ir-schema.html)).
 - Look at the test a port has to pass: the conformance fixtures
   (`spec/fixtures`) and the language-neutral runner described in

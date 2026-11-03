@@ -28,7 +28,7 @@ OData: `$filter=status eq 'active'`. The same holds for `ne`, `gt`, `ge`, `lt`, 
 
 {{include site/examples/odata/01-filter-equals.sql.txt sql}}
 
-The comparison is `COLLATE craticula_ci`: **text compares case-insensitively by default** ([SEM-1](semantics.html#sem-1)). In OData
+The comparison is `COLLATE craticula_ci`: **text compares case-insensitively by default** ([Case sensitivity](semantics.html#sem-1)). In OData
 the result usually depends on the service and its database. If your users relied on exact case, declare the field
 `caseSensitivity: "sensitive"` in the schema.
 
@@ -42,7 +42,7 @@ one `filterModel` entry per column.
 
 {{include site/examples/odata/02-filter-two-columns.sql.txt sql}}
 
-The `contains` match is escaped: the user's `%` and `_` are literal characters, never wildcards ([SEM-7](semantics.html#sem-7)).
+The `contains` match is escaped: the user's `%` and `_` are literal characters, never wildcards ([Substring matching on OpenSearch](semantics.html#sem-7)).
 
 ### `or` on one column
 
@@ -70,7 +70,7 @@ OData: `$filter=status ne 'blocked'` or `$filter=not (status eq 'blocked')`. In 
 {{include site/examples/odata/05-filter-not-equal.sql.txt sql}}
 
 Read the statement closely. `status ne 'blocked'` also returns the rows where `status` is `NULL`. Craticula's negative operators
-include null rows on purpose ([SEM-2](semantics.html#sem-2)), so the grid behaves like AG Grid's own in-memory filter. SQL's
+include null rows on purpose ([Null handling](semantics.html#sem-2)), so the grid behaves like AG Grid's own in-memory filter. SQL's
 three-valued logic would drop those rows, and an OData service may or may not. Check the old behaviour with a test before you
 migrate a filter that excludes values.
 
@@ -85,7 +85,7 @@ OData: `$filter=region eq null`. There are two forms, and they differ for text c
 {{include site/examples/odata/06-filter-null.sql.txt sql}}
 
 - An `eq` with a null value, written in the `customFilters` extension: exactly `NULL`, and nothing else
-  ([GRP-7](semantics.html#grp-7)). This is OData's `eq null`.
+  ([Grouping and drill-down](semantics.html#grp-7)). This is OData's `eq null`.
 
 {{include site/examples/odata/13-filter-exactly-null.json json}}
 
@@ -114,7 +114,7 @@ compiles to the `true` operator.
 ### Dates and date-times
 
 A date filter takes the grid's wire form: `yyyy-MM-dd`, or `yyyy-MM-dd HH:mm:ss` as a wall-clock time read in the zone the request
-carries (`requestContext.zone`) or the parser options name, UTC by default ([SEM-4](semantics.html#sem-4)). An OData literal such as
+carries (`requestContext.zone`) or the parser options name, UTC by default ([Dates and time zones](semantics.html#sem-4)). An OData literal such as
 `2026-01-01T00:00:00Z` or one with an offset does not fit that form. Convert it to the request's zone, or send the exact instant
 through `customFilters` as a typed `datetime` value that names its zone.
 
@@ -144,10 +144,10 @@ Two differences:
 
 - **Null placement.** OData's standard sorts null as the lowest value: first when ascending, last when descending. The grid
   sends no null position, so Craticula uses the opposite, fixed rule: **last when ascending, first when descending**
-  ([SEM-3](semantics.html#sem-3)), shown above as `amount DESC NULLS FIRST`. Every ascending sort on a column that holds nulls
+  ([Null ordering](semantics.html#sem-3)), shown above as `amount DESC NULLS FIRST`. Every ascending sort on a column that holds nulls
   returns those rows in a different place after the migration.
 - **A stable order.** A service has to keep `$skip`/`$top` stable between requests. Craticula guarantees it whatever the grid sorts by:
-  it always ends the sort with the schema's **stable key** ([SEM-6](semantics.html#sem-6)), so two rows never trade places between
+  it always ends the sort with the schema's **stable key** ([Deterministic paging](semantics.html#sem-6)), so two rows never trade places between
   pages.
 
 `$count=true` (the `@odata.count` of the answer) is the row count the execution adapters return next to the page when you ask for it
@@ -186,7 +186,7 @@ Differences to know:
 - `count` counts the non-null values of a column, not rows ([AGG-1](semantics.html#agg-1)), and the column must list `count` in its
   `aggregatable` setting. To count rows, count the stable key.
 - The sum of a group with no values is `0`, and `avg`, `min`, `max` are `NULL` ([AGG-6](semantics.html#agg-6)).
-- The group whose key is null is a group of its own, and you open it with a null group key ([GRP-7](semantics.html#grp-7)).
+- The group whose key is null is a group of its own, and you open it with a null group key ([Grouping and drill-down](semantics.html#grp-7)).
 - The aggregate comes back named `<field>_<function>` (`amount_sum`) unless the grid's column id says otherwise.
 - Ordering the groups by an aggregate is not available on the search engines (a composite aggregation lists groups in key order only).
 
@@ -207,6 +207,6 @@ Differences to know:
 
 ## Next
 
-- The rules these examples rely on: [semantics](semantics.html) and the [rule index](rules.html).
+- The rules these examples rely on: [semantics](semantics.html).
 - Every setting of the schema: the [GridSchema reference](grid-schema.html).
 - Run the same requests on a real database: the [C# quickstart](quickstart-csharp.html).

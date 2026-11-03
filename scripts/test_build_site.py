@@ -22,11 +22,14 @@ ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE = "<html><title>{{page_title}}</title><nav>{{nav}}</nav>{{content}}<a href=\"{{source_url}}\">{{source}}</a></html>"
 
 
-def make_repo(files: dict[str, str], pages: list[dict], default_group: bool = True, **extra) -> Path:
-    """A scratch repository: the site files, the given pages' sources and any other file. FR-32 makes `group` required, so a
-    page without the key gets "Docs" unless the caller opts out with `default_group=False` (the T2 refusal tests)."""
+def make_repo(files: dict[str, str], pages: list[dict], default_group: bool = True, default_description: bool = True, **extra) -> Path:
+    """A scratch repository: the site files, the given pages' sources and any other file. Docs site v2 (#3555): `group` is one of
+    the four group names and `description` is required, so a page without the key gets "Guides" and a one-sentence description
+    unless the caller opts out with `default_group=False` or `default_description=False` (the refusal tests)."""
     if default_group:
-        pages = [p if not isinstance(p, dict) or "group" in p else {**p, "group": "Docs"} for p in pages]
+        pages = [p if not isinstance(p, dict) or "group" in p else {**p, "group": "Guides"} for p in pages]
+    if default_description:
+        pages = [p if not isinstance(p, dict) or "description" in p else {**p, "description": "A page of the test site."} for p in pages]
     root = Path(tempfile.mkdtemp())
     config = {"title": "T", "repo": "https://example.test/r", "branch": "main", "pages": pages, **extra}
     everything = {"site/site.json": json.dumps(config), "site/template.html": TEMPLATE, "site/style.css": "body{}", **files}
@@ -37,7 +40,7 @@ def make_repo(files: dict[str, str], pages: list[dict], default_group: bool = Tr
     return root
 
 
-INDEX = {"slug": "index", "title": "Home", "source": "index.md", "group": "Docs"}
+INDEX = {"slug": "index", "title": "Home", "source": "index.md", "group": "Guides", "description": "The home page."}
 
 
 def run_build(files: dict[str, str], pages: list[dict], **extra):
@@ -74,6 +77,8 @@ class Anchors(unittest.TestCase):
 
 RULES = ("# Rules\n\n## SEM-1. Case sensitivity\n\ntext\n\n**GRP-7. A nullValue key drills in.** More text.\n\n"
          "**GRP-7b. Not a duplicate.**\n\nplain\n")
+RULES_PAGE = ("# Rules\n\n## Case sensitivity\n\n**SEM-1. Case sensitivity.** text\n\n**GRP-7. A nullValue key drills in.** More text.\n\n"
+              "**GRP-7b. Not a duplicate.**\n\nplain\n")  # DS-19: a heading (a TOC label) holds no rule id, so the rule opens in bold
 SEMANTICS = {"slug": "semantics", "title": "Semantics", "source": "rules.md"}
 RULE_CONFIG = {"ruleSource": "rules.md", "ruleIdPrefixes": ["SEM", "GRP"]}
 
@@ -92,11 +97,6 @@ class RuleAnchors(unittest.TestCase):
     def test_definitions_are_found_with_their_titles_in_document_order(self):
         self.assertEqual(list(bs.rule_definitions(RULES)), ["SEM-1", "GRP-7", "GRP-7b"])
         self.assertEqual(bs.rule_definitions(RULES)["SEM-1"], "Case sensitivity")
-
-    def test_the_rule_index_links_every_rule_to_its_anchor(self):
-        index = bs.rules_index(RULES, "semantics")
-        self.assertIn("[GRP-7](semantics.html#grp-7)", index)
-        self.assertIn("[SEM-1](semantics.html#sem-1)", index)
 
 
 class Includes(unittest.TestCase):
@@ -145,7 +145,6 @@ class RuleSuffixes(unittest.TestCase):
         self.assertEqual(list(bs.rule_definitions(self.TEXT)), ["SQL-7", "SQL-7(b)", "EXP-1(a)"])
         self.assertEqual(bs.rule_anchor("SQL-7(b)"), "sql-7b")
         self.assertLessEqual({"sql-7", "sql-7b", "exp-1a"}, bs.render_markdown(self.TEXT).anchors)
-        self.assertIn("[SQL-7(b)](semantics.html#sql-7b)", bs.rules_index(self.TEXT, "semantics"))
 
     def test_a_mention_with_a_suffix_is_checked_against_the_base_id(self):
         self.assertEqual(bs.check_rule_ids({"a.md": "SQL-7(b) and SQL-7b and GRP-1(f)\n"}, self.TEXT, ["SQL", "GRP"]),
@@ -167,17 +166,17 @@ class RuleIdCheck(unittest.TestCase):
 
     def test_the_build_fails_on_an_unknown_id_on_any_page(self):
         pages = [INDEX, SEMANTICS]
-        errors, _ = run_build({"index.md": "# Home\n\nSee GRP-8.\n", "rules.md": RULES}, pages, **RULE_CONFIG)
+        errors, _ = run_build({"index.md": "# Home\n\nSee GRP-8.\n", "rules.md": RULES_PAGE}, pages, **RULE_CONFIG)
         self.assertEqual(len(errors), 1)
         self.assertIn("index.md:3: rule id 'GRP-8'", errors[0])
 
     def test_the_build_passes_when_every_id_is_defined(self):
-        errors, out = run_build({"index.md": "# Home\n\nSee GRP-7 and [it](rules.md#grp-7).\n", "rules.md": RULES}, [INDEX, SEMANTICS], **RULE_CONFIG)
+        errors, out = run_build({"index.md": "# Home\n\nSee GRP-7 and [it](rules.md#grp-7).\n", "rules.md": RULES_PAGE}, [INDEX, SEMANTICS], **RULE_CONFIG)
         self.assertEqual(errors, [])
         self.assertIn('href="semantics.html#grp-7"', (out / "index.html").read_text(encoding="utf-8"))
 
     def test_a_link_to_an_undefined_rule_anchor_fails_as_a_dead_anchor(self):
-        errors, _ = run_build({"index.md": "# Home\n\n[x](rules.md#grp-99)\n", "rules.md": RULES}, [INDEX, SEMANTICS])
+        errors, _ = run_build({"index.md": "# Home\n\n[x](rules.md#grp-99)\n", "rules.md": RULES_PAGE}, [INDEX, SEMANTICS])
         self.assertEqual(len(errors), 1)
         self.assertIn("dead anchor '#grp-99' in rules.md", errors[0])
 
@@ -249,7 +248,7 @@ class SchemaReference(unittest.TestCase):
     def test_an_unknown_id_in_a_schema_description_fails_the_build(self):
         schema = json.dumps({"title": "T", "properties": {"x": {"type": "string", "description": "see GRP-99"}}})
         pages = [INDEX, SEMANTICS, {"slug": "demo", "title": "Demo", "generator": "schema-reference", "schema": "demo.schema.json"}]
-        errors, _ = run_build({"index.md": "# Home\n", "rules.md": RULES, "demo.schema.json": schema}, pages, **RULE_CONFIG)
+        errors, _ = run_build({"index.md": "# Home\n", "rules.md": RULES_PAGE, "demo.schema.json": schema}, pages, **RULE_CONFIG)
         self.assertEqual(len(errors), 1)
         self.assertIn("GRP-99", errors[0])
         self.assertIn("demo.schema.json (page 'demo')", errors[0])
@@ -302,6 +301,13 @@ class SchemaReference(unittest.TestCase):
 
     def test_an_unknown_generator_is_a_configuration_error(self):
         root = make_repo({"index.md": "# Home\n"}, [INDEX, {"slug": "x", "title": "X", "generator": "nope"}])
+        with self.assertRaises(bs.BuildError):
+            bs.build(root, root / "_out")
+
+    def test_the_removed_rules_index_generator_is_an_unknown_generator(self):
+        """#3555: the Rule index page and its generator are removed (DS-19 and the spec's scope)."""
+        root = make_repo({"index.md": "# Home\n", "rules.md": RULES_PAGE}, [INDEX, {"slug": "rules", "title": "Rule index", "generator": "rules-index"}],
+                         ruleSource="rules.md", ruleIdPrefixes=["SEM"])
         with self.assertRaises(bs.BuildError):
             bs.build(root, root / "_out")
 
@@ -519,67 +525,67 @@ def run_cli(root: Path):
 
 
 class Sidebar(unittest.TestCase):
-    """FR-32, task #3474: T1 and T2."""
+    """FR-32, task #3474: T1 and T2; reshaped by #3555 (four fixed groups, the home page outside the sidebar)."""
 
-    PAGES = [grouped("index", "Start here", "Home"), grouped("spec", "Specification", "The spec"), grouped("intro", "Start here", "Intro")]
+    PAGES = [grouped("spec", "Reference", "The spec"), grouped("intro", "Guides", "Intro"), grouped("index", None, "Home")]  # Reference first in the file, Guides first in the sidebar
     FILES = {"index.md": "# Home\n", "spec.md": "# Spec\n", "intro.md": "# Intro\n"}
 
-    def test_T1_one_list_per_group_in_first_appearance_order_pages_in_config_order(self):
-        side = re.search(r"<aside>(.*)</aside>", build_side(self.FILES, self.PAGES)["index"], re.S).group(1)
-        self.assertLess(side.index("Start here"), side.index("Specification"))
-        self.assertEqual(side.count("Start here"), 1)
-        start = side[:side.index("Specification")]
-        self.assertLess(start.index('href="index.html"'), start.index('href="intro.html"'))
-        self.assertNotIn("spec.html", start)
-        self.assertIn(">The spec</a>", side[side.index("Specification"):])
+    def test_T1_one_list_per_group_in_the_fixed_order_pages_in_config_order(self):
+        side = re.search(r"<aside>(.*)</aside>", build_side(self.FILES, self.PAGES)["intro"], re.S).group(1)
+        self.assertLess(side.index("Guides"), side.index("Reference"))
+        self.assertEqual(side.count("Guides"), 1)
+        guides = side[:side.index("Reference")]
+        self.assertIn('href="intro.html"', guides)
+        self.assertNotIn("spec.html", guides)
+        self.assertIn(">The spec</a>", side[side.index("Reference"):])
+
+    def test_T1_the_home_page_is_not_in_the_sidebar(self):
+        side = re.search(r"<aside>(.*)</aside>", build_side(self.FILES, self.PAGES)["intro"], re.S).group(1)
+        self.assertNotIn('href="index.html"', side)
 
     def test_T1_the_current_page_alone_is_marked_aria_current(self):
         built = build_side(self.FILES, self.PAGES)
         marked = re.findall(r'<a [^>]*aria-current="page"[^>]*>', built["spec"])
         self.assertEqual(len(marked), 1)
         self.assertIn('href="spec.html"', marked[0])
-        self.assertNotIn("aria-current", built["index"].split("spec.html")[1].split("</a>")[0])
-
-    def test_T1_a_group_is_a_single_block_even_when_its_pages_are_not_adjacent(self):
-        side = build_side(self.FILES, self.PAGES)["intro"]
-        self.assertEqual(side.count("Start here"), 1)
+        self.assertNotIn("aria-current", built["intro"].split("spec.html")[1].split("</a>")[0])
 
     def test_T1_a_single_group_renders_no_other_group(self):
-        built = build_side({"index.md": "# Home\n"}, [grouped("index", "Only", "Home")])
-        self.assertEqual(built["index"].count("Only"), 1)
-        self.assertIn('aria-current="page"', built["index"])
+        built = build_side({"index.md": "# Home\n", "intro.md": "# Intro\n"}, [grouped("index", None, "Home"), grouped("intro", "Guides", "Intro")])
+        self.assertEqual(built["intro"].count("Guides"), 1)
+        self.assertNotIn("Reference", built["intro"])
+        self.assertIn('aria-current="page"', built["intro"])
 
-    def test_T1_group_and_title_are_escaped(self):
-        built = build_side({"index.md": "# Home\n"}, [grouped("index", "A & <b>", "T <i>")])
-        self.assertIn("A &amp; &lt;b&gt;", built["index"])
-        self.assertIn("T &lt;i&gt;", built["index"])
+    def test_T1_title_is_escaped(self):
+        built = build_side({"index.md": "# Home\n", "intro.md": "# Intro\n"}, [grouped("index", None, "Home"), grouped("intro", "Guides", "T <i>")])
+        self.assertIn("T &lt;i&gt;", built["intro"])
 
     def test_T1_render_sidebar_marks_the_current_page(self):
-        pages = [bs.Page("index", "Home", "index.md", group="G"), bs.Page("b", "B", "b.md", group="G")]
+        pages = [bs.Page("a", "A", "a.md", group="Guides"), bs.Page("b", "B", "b.md", group="Guides")]
         side = bs.render_sidebar(pages, "b")
         self.assertEqual(side.count('aria-current="page"'), 1)
 
     def test_T2_a_page_without_a_group_is_refused_with_exit_2_naming_the_slug(self):
-        root = make_repo({"index.md": "# Home\n", "spec.md": "# S\n"}, [grouped("index", "G"), grouped("spec", None)], default_group=False)
+        root = make_repo({"index.md": "# Home\n", "spec.md": "# S\n"}, [grouped("index", "Guides"), grouped("spec", None)], default_group=False)
         code, err = run_cli(root)
         self.assertEqual(code, 2)
         self.assertIn("spec", err)
 
-    def test_T2_an_empty_or_non_string_group_is_refused(self):
-        for bad in ("", 3, None):
+    def test_T2_an_empty_non_string_or_unknown_group_is_refused(self):
+        for bad in ("", 3, None, "Start here", "G"):
             with self.subTest(bad=bad):
-                page = grouped("index", "G")
+                page = grouped("spec", "Guides")
                 page["group"] = bad
-                code, err = run_cli(make_repo({"index.md": "# Home\n"}, [page]))
+                code, err = run_cli(make_repo({"index.md": "# Home\n", "spec.md": "# S\n"}, [grouped("index", "Guides"), page]))
                 self.assertEqual(code, 2)
-                self.assertIn("index", err)
+                self.assertIn("spec", err)
 
 
 class Toc(unittest.TestCase):
     """FR-32, task #3474: T3 and T4."""
 
     def toc_of(self, markdown: str) -> str:
-        built = build_side({"index.md": markdown}, [grouped("index", "G", "Home")])
+        built = build_side({"index.md": markdown}, [grouped("index", None, "Home")])
         return re.search(r'<div class="toc">(.*?)</div>', built["index"], re.S).group(1)
 
     def test_T3_three_level_2_headings_give_three_links_in_order(self):
@@ -598,17 +604,19 @@ class Toc(unittest.TestCase):
         self.assertEqual(bs.render_toc(bs.render_markdown("# T\n")), "")
 
     def test_T4_markup_in_a_heading_is_escaped_and_the_anchor_is_the_headings_own(self):
-        built = build_side({"index.md": "# Home\n\n## a <b> & c\n"}, [grouped("index", "G", "Home")])["index"]
+        built = build_side({"index.md": "# Home\n\n## a <b> & c\n"}, [grouped("index", None, "Home")])["index"]
         toc = re.search(r'<div class="toc">(.*?)</div>', built, re.S).group(1)
         href, text = re.search(r'<a href="#([^"]+)">([^<]*)</a>', toc).groups()
         self.assertIn("a &lt;b&gt; &amp; c", text)
         self.assertNotIn("<b>", toc)
         self.assertIn(f'<h2 id="{href}">', built)
 
-    def test_T4_a_rule_id_heading_links_to_its_heading_anchor(self):
-        built = build_side({"index.md": "# Home\n\n## SEM-1. Title\n"}, [grouped("index", "G", "Home")])["index"]
+    def test_T4_a_heading_links_to_its_own_anchor(self):
+        # #3555: the former test used a `## SEM-1. Title` heading; DS-19 now refuses a coded reference in a TOC label
+        # (the refusal is pinned in test_build_site_structure.py), so the rule id is gone from the heading.
+        built = build_side({"index.md": "# Home\n\n## Title\n"}, [grouped("index", None, "Home")])["index"]
         href = re.search(r'<div class="toc">.*?href="#([^"]+)"', built, re.S).group(1)
-        self.assertEqual(href, "sem-1-title")
+        self.assertEqual(href, "title")
         self.assertIn(f'<h2 id="{href}">', built)
 
 
@@ -617,20 +625,20 @@ class PerPageTemplate(unittest.TestCase):
 
     def test_T5_a_page_with_a_template_key_uses_that_file(self):
         files = {"index.md": "# Home\n", "two.md": "# Two\n", "site/home.html": "<html>HOME-TEMPLATE {{content}}</html>"}
-        built = build_side(files, [grouped("index", "G", "Home", template="site/home.html"), grouped("two", "G", "Two")])
+        built = build_side(files, [grouped("index", None, "Home", template="site/home.html"), grouped("two", "Guides", "Two")])
         self.assertIn("HOME-TEMPLATE", built["index"])
         self.assertIn("<h1", built["index"])
         self.assertNotIn("HOME-TEMPLATE", built["two"])
         self.assertIn("<aside>", built["two"])
 
     def test_T5_a_missing_template_file_is_exit_2_naming_the_path(self):
-        root = make_repo({"index.md": "# Home\n"}, [grouped("index", "G", "Home", template="site/nope.html")])
+        root = make_repo({"index.md": "# Home\n"}, [grouped("index", None, "Home", template="site/nope.html")])
         code, err = run_cli(root)
         self.assertEqual(code, 2)
         self.assertIn("site/nope.html", err)
 
     def test_T5_a_template_that_is_not_a_string_is_exit_2(self):
-        code, _ = run_cli(make_repo({"index.md": "# Home\n"}, [grouped("index", "G", "Home", template=7)]))
+        code, _ = run_cli(make_repo({"index.md": "# Home\n"}, [grouped("index", None, "Home", template=7)]))
         self.assertEqual(code, 2)
 
 
@@ -638,15 +646,17 @@ class NoInjection(unittest.TestCase):
     """FR-32, task #3474: T6."""
 
     def test_T6_sidebar_and_toc_placeholders_in_content_are_printed_as_text(self):
-        built = build_side({"index.md": "# Home\n\n## Part\n\n`{{sidebar}}` and {{toc}} here\n"}, [grouped("index", "G", "Home")])["index"]
+        built = build_side({"index.md": "# Home\n\n## Part\n\n`{{sidebar}}` and {{toc}} here\n"}, [grouped("index", None, "Home")])["index"]
         self.assertIn("<code>{{sidebar}}</code>", built)
         self.assertIn("{{toc}} here", built)
         self.assertEqual(built.count("<aside>"), 1)
         self.assertEqual(built.count("On this page"), 1)
 
     def test_T6_a_heading_that_holds_a_placeholder_does_not_expand_in_the_toc(self):
-        built = build_side({"index.md": "# Home\n\n## About {{sidebar}}\n"}, [grouped("index", "G", "Home")])["index"]
-        self.assertIn('href="index.html"', built)
+        # #3555: the home page is outside the sidebar, so a second page in a group carries the sidebar link.
+        built = build_side({"index.md": "# Home\n\n## About {{sidebar}}\n", "two.md": "# Two\n"},
+                           [grouped("index", None, "Home"), grouped("two", "Guides", "Two")])["index"]
+        self.assertEqual(built.count('href="two.html"'), 1)
         self.assertEqual(built.count("<aside>"), 1)
         self.assertIn("{{sidebar}}", built)
 
@@ -714,7 +724,7 @@ class SiteDesign(unittest.TestCase):
         text = " ".join(html.unescape(re.sub(r"<[^>]+>", " ", self.pages["index"])).split())
         for needle in ('SELECT * FROM "orders"', "Field allowlist check failed", '"filter": "acme"', "Safe queries out."):
             self.assertIn(needle, text)
-        for slug in ("quickstart-csharp", "index-guidance", "overview", "spec", "semantics", "rules", "grid-schema",
+        for slug in ("quickstart-csharp", "index-guidance", "overview", "spec", "semantics", "grid-schema",
                      "ir-schema", "odata-migration"):
             self.assertIn(f'href="{slug}.html"', self.pages["index"], slug)
 
@@ -796,8 +806,8 @@ class SiteDesign(unittest.TestCase):
     def test_FR32_a_docs_page_has_both_group_names_and_one_toc_link_per_level_2_heading(self):
         page = self.pages["quickstart-csharp"]
         side = re.search(r"<aside\b.*?</aside>", page, re.S).group(0)
-        self.assertIn("Start here", side)
-        self.assertIn("Specification", side)
+        self.assertIn("Guides", side)
+        self.assertIn("Reference", side)
         main = re.search(r"<main\b.*?</main>", page, re.S).group(0)
         toc = re.search(r'<nav class="toc"[^>]*>(.*?)</nav>', page, re.S).group(1)
         self.assertGreater(main.count("<h2"), 0)
@@ -836,8 +846,7 @@ class SiteDesign(unittest.TestCase):
         self.assertIn('class="toc"', page)
         self.assertIn("On this page", page)
         self.assertEqual(page.count('aria-current="page"'), 1)
-        self.assertIn("side-group", page)
-        self.assertIn("side-title", page)
+        self.assertIn("<details", page)  # the sidebar groups are native collapsible blocks (DS-2)
 
     def css_rules(self) -> list[tuple[list[str], dict[str, str]]]:
         """Flat list of (selectors, declarations) in source order; comments dropped, at-rule wrappers ignored."""
@@ -1032,7 +1041,7 @@ class Cli(unittest.TestCase):
         self.assertEqual(code, 1)  # reported as an unreadable page, not a traceback
 
     def test_exit_2_when_the_rule_prefixes_are_not_a_list(self):
-        root = make_repo({"index.md": "# Home\n", "rules.md": RULES}, [INDEX], ruleSource="rules.md", ruleIdPrefixes="SEM")
+        root = make_repo({"index.md": "# Home\n", "rules.md": RULES_PAGE}, [INDEX], ruleSource="rules.md", ruleIdPrefixes="SEM")
         self.assertEqual(self.run_main(root)[0], 2)
 
     def test_exit_2_when_there_is_no_index_page(self):
@@ -1067,17 +1076,16 @@ class ThisRepository(unittest.TestCase):
     def test_the_semantics_page_reaches_every_rule_by_anchor(self):
         with tempfile.TemporaryDirectory() as out:
             self.assertEqual(bs.build(ROOT, Path(out)), [])
-            semantics = (Path(out) / "semantics.html").read_text(encoding="utf-8")
+            semantics = "".join(f.read_text(encoding="utf-8") for f in sorted(Path(out).glob("*.html")))  # the rules live on the split pages (#3555)
             definitions = bs.rule_definitions((ROOT / "spec" / "semantics.md").read_text(encoding="utf-8"))
             self.assertIn("GRP-7", definitions)
             self.assertLessEqual({"SQL-7(b)", "EXP-1(a)", "EXP-1(b)"}, set(definitions))  # a parenthesised suffix is part of the id
             self.assertIn('id="sql-7b"', semantics)
             missing = [rule for rule in definitions if f'id="{bs.rule_anchor(rule)}"' not in semantics]
-            self.assertEqual(missing, [], "rules without an anchor on the semantics page")
+            self.assertEqual(missing, [], "rules without an anchor on a semantics page")
             self.assertIn('id="grp-7"', semantics)
             self.assertIn('id="sem-1"', semantics)
-            rules = (Path(out) / "rules.html").read_text(encoding="utf-8")
-            self.assertEqual(rules.count("<tr>") - 1, len(definitions))
+            self.assertFalse((Path(out) / "rules.html").exists(), "the Rule index page is removed")
 
     def test_the_quickstart_shows_the_program_and_its_output_verbatim(self):
         with tempfile.TemporaryDirectory() as out:
