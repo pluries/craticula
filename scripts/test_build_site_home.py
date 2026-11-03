@@ -178,6 +178,18 @@ class ScratchGroupConfig(unittest.TestCase):
         errors, _ = outcome(hsite(self.PAGES, groups={"Guides": "Step by step tasks.", "Reference": "Every rule and member."}))
         self.assertEqual(errors, [])
 
+    def test_2_a_key_that_is_not_one_of_the_four_groups_fails_the_build_naming_the_key(self):
+        for key in ("Concept", "Guidez", "guides", "Misc"):
+            with self.subTest(key=key):
+                errors, _ = outcome(hsite(self.PAGES, groups={"Guides": "Step by step tasks.", "Reference": "Every rule and member.", key: "A group."}))
+                self.assertTrue(any(key in message for message in errors), errors)
+
+    def test_2_a_value_that_is_not_a_string_fails_naming_the_group_even_when_the_group_is_empty(self):
+        for bad in (5, None, ["text"], {"a": "b"}, True):
+            with self.subTest(value=bad):
+                errors, _ = outcome(hsite(self.PAGES, groups={"Guides": "Step by step tasks.", "Reference": "Every rule and member.", "Concepts": bad}))
+                self.assertTrue(any("Concepts" in message for message in errors), errors)
+
     def test_2_groups_must_be_an_object_of_strings(self):
         for bad in (["Guides"], "Guides", 5, None):
             with self.subTest(groups=bad):
