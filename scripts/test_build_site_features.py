@@ -46,6 +46,8 @@ FEATURE_SOURCE = ("# Feature page\n\nIntro with **bold**, `code` and [a link](ot
                   "### Beta\n\nBeta body.\n\n#### Gamma\n\nGamma body.\n\n##### Five\n\nFive body.\n\n## Same\n\nx\n\n## Same\n\ny\n")
 TOKENS = ("--bg", "--surface", "--text", "--muted", "--link", "--accent", "--accent-ink")
 REGISTRY_HOSTS = ("nuget.org", "npmjs.com", "pypi.org", "pkg.go.dev")
+HTML_TAG = (r"</?(?:p|a|em|strong|code|pre|span|div|nav|main|header|footer|section|blockquote|br|hr|img|svg|table|thead|tbody|tr|td|th|"
+            r"ul|ol|li|h[1-6]|button|script|style)(?:\s[^>]*)?/?>")
 DENIED_JS = ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval(", "new Function", "document.cookie")
 
 
@@ -251,6 +253,26 @@ class ScratchSearchIndex(unittest.TestCase):
         self.assertEqual(first, (second_out / "search-index.json").read_bytes())
 
 
+PLACEHOLDER_SOURCE = ("# Placeholders\n\nUse <field>NullBucket and keep_alive=<duration> and \"<colId>\" in a **bold** sentence.\n\n"
+                      "Also `<field>` in a code span.\n")
+
+
+class ScratchPlaceholders(unittest.TestCase):
+    """Review finding A: angle-bracket placeholders written in a page are page text and survive in the index text."""
+
+    def test_2_placeholders_survive_in_the_index_text_and_no_html_tag_is_output(self):
+        pages = [HOME, page("ph", "Guides", "Placeholders")]
+        errors, out = outcome(fsite(pages, {"ph.md": PLACEHOLDER_SOURCE}))
+        self.assertEqual(errors, [])
+        path = out / "search-index.json"
+        self.assertTrue(path.is_file(), "search-index.json is not written")
+        text = next(e["text"] for e in json.loads(path.read_text(encoding="utf-8")) if e["slug"] == "ph")
+        for placeholder in ("<field>NullBucket", "keep_alive=<duration>", '"<colId>"', "<field> in a code span"):
+            self.assertIn(placeholder, text)
+        self.assertIn("in a bold sentence", text)
+        self.assertNotRegex(text, r"</?(?:p|strong|code)\b")  # the tags the renderer wrote for the paragraph, the bold and the code span
+
+
 class ScratchAnchors(unittest.TestCase):
     """Contract 3 (DS-6)."""
 
@@ -429,7 +451,8 @@ class RealSite(unittest.TestCase):
                 for value in (entry["title"], entry["description"], entry["text"], *(h["text"] for h in entry["headings"])):
                     self.assertNotRegex(value, CODED)
                     self.assertNotRegex(value, TICKET)
-                self.assertNotRegex(entry["text"], r"</?[a-z][^>]*>")
+                # only markup that came from HTML is forbidden: a placeholder such as <field> is page text and survives
+                self.assertNotRegex(entry["text"], HTML_TAG)
         self.assertIn("Deterministic paging", [e["title"] for e in entries])
 
     def test_2_two_builds_of_the_real_site_give_the_same_index_bytes(self):
@@ -494,6 +517,15 @@ class RealSite(unittest.TestCase):
                             for selector, body in narrow), "html.js must hide the sidebar at 800px and narrower")
         self.assertTrue(any("html.js" in selector and ".menu-toggle" in selector and re.search(r"display\s*:\s*(?!none)", body)
                             for selector, body in narrow), "html.js must show the menu button at 800px and narrower")
+
+    def test_5_the_search_and_theme_buttons_are_hidden_without_javascript(self):
+        rules = css_blocks(self.css)
+        for button in (".search-button", ".theme-button"):
+            with self.subTest(button=button):
+                self.assertTrue(any(
+                    any("html:not(.js)" in part and button in part for part in (x.strip() for x in selector.split(",")))
+                    and re.search(r"display\s*:\s*none", body) for _, selector, body in rules),
+                    f"{button} must be hidden by a `html:not(.js)` rule: it does nothing without a script")
 
     def test_6_tables_scroll_inside_their_own_box(self):
         self.assertTrue(any("table" in selector and re.search(r"overflow-x\s*:\s*auto", body) for _, selector, body in css_blocks(self.css)))
