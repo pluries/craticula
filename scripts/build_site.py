@@ -431,6 +431,17 @@ def _side_link(page: "Page", current_slug: str) -> str:
     return f'<li><a href="{html.escape(page.slug)}.html"{current}>{html.escape(page.title)}</a></li>'
 
 
+def _sidebar_item(entry, current_slug: str) -> tuple[str, bool]:
+    """The list item of one entry of a group (a page, or a subgroup and its pages) and whether it holds the current page."""
+    if not isinstance(entry, tuple):
+        return _side_link(entry, current_slug), entry.slug == current_slug
+    sub_name, members = entry
+    sub_open = any(member.slug == current_slug for member in members)
+    open_attribute = " open" if sub_open else ""
+    links = "".join(_side_link(member, current_slug) for member in members)
+    return f'<li class="side-sub"><details{open_attribute}><summary>{html.escape(sub_name)}</summary><ul>{links}</ul></details></li>', sub_open
+
+
 def render_sidebar(pages: list["Page"], current_slug: str) -> str:
     """DS-2: the groups in their fixed order (empty ones left out) as native collapsible blocks; a subgroup nests one level
     deeper; the group and subgroup that hold the current page are open, and the current page is marked aria-current."""
@@ -439,21 +450,10 @@ def render_sidebar(pages: list["Page"], current_slug: str) -> str:
     for name in GROUPS:
         if not layout[name]:
             continue
-        items: list[str] = []
-        group_open = False
-        for entry in layout[name]:
-            if isinstance(entry, tuple):
-                sub_name, members = entry
-                sub_open = any(member.slug == current_slug for member in members)
-                group_open = group_open or sub_open
-                open_attribute = " open" if sub_open else ""
-                links = "".join(_side_link(member, current_slug) for member in members)
-                items.append(f'<li class="side-sub"><details{open_attribute}><summary>{html.escape(sub_name)}</summary><ul>{links}</ul></details></li>')
-            else:
-                group_open = group_open or entry.slug == current_slug
-                items.append(_side_link(entry, current_slug))
-        open_attribute = " open" if group_open else ""
-        blocks.append(f'<div class="side-group"><details{open_attribute}><summary>{html.escape(name)}</summary><ul>{"".join(items)}</ul></details></div>')
+        rendered = [_sidebar_item(entry, current_slug) for entry in layout[name]]
+        open_attribute = " open" if any(holds for _, holds in rendered) else ""
+        items = "".join(item for item, _ in rendered)
+        blocks.append(f'<div class="side-group"><details{open_attribute}><summary>{html.escape(name)}</summary><ul>{items}</ul></details></div>')
     return "".join(blocks)
 
 
@@ -614,24 +614,26 @@ def _png_chunk(name: bytes, data: bytes) -> bytes:
     return struct.pack(">I", len(data)) + name + data + struct.pack(">I", zlib.crc32(name + data) & 0xFFFFFFFF)
 
 
+def _pixel(column: int, row: int, size: int) -> tuple[int, int, int, int]:
+    """One RGBA pixel of the brand mark: the mean of 4 x 4 samples, transparent where none falls inside it."""
+    samples, scale = 4, size / 32
+    inside = [colour for sample_y in range(samples) for sample_x in range(samples)
+              if (colour := _in_mark((column + (sample_x + 0.5) / samples) / scale, (row + (sample_y + 0.5) / samples) / scale)) is not None]
+    if not inside:
+        return 0, 0, 0, 0
+    count = len(inside)
+    return (sum(c[0] for c in inside) // count, sum(c[1] for c in inside) // count, sum(c[2] for c in inside) // count,
+            255 * count // (samples * samples))
+
+
 @functools.lru_cache(maxsize=None)
 def favicon_png(size: int) -> bytes:
     """The brand mark as an RGBA PNG of `size` x `size` pixels, drawn with 4 x 4 samples per pixel (no image library)."""
-    samples, scale = 4, size / 32
     rows = []
     for row in range(size):
         line = bytearray([0])
         for column in range(size):
-            covered, red, green, blue = 0, 0, 0, 0
-            for sample_y in range(samples):
-                for sample_x in range(samples):
-                    colour = _in_mark((column + (sample_x + 0.5) / samples) / scale, (row + (sample_y + 0.5) / samples) / scale)
-                    if colour is not None:
-                        covered, red, green, blue = covered + 1, red + colour[0], green + colour[1], blue + colour[2]
-            if covered:
-                line.extend((red // covered, green // covered, blue // covered, 255 * covered // (samples * samples)))
-            else:
-                line.extend((0, 0, 0, 0))
+            line.extend(_pixel(column, row, size))
         rows.append(bytes(line))
     header = struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0)
     return PNG_SIGNATURE + _png_chunk(b"IHDR", header) + _png_chunk(b"IDAT", zlib.compress(b"".join(rows), 9)) + _png_chunk(b"IEND", b"")
@@ -746,9 +748,7 @@ def load_config(root: Path) -> dict:
         if not SLUG.match(entry["slug"]):
             raise BuildError(f"{path}: page slug '{entry['slug']}' must match [a-z0-9][a-z0-9-]*")
         group = entry.get("group")
-        if entry["slug"] == "index" and group is None:
-            pass
-        elif group not in GROUPS:
+        if group not in GROUPS and not (entry["slug"] == "index" and group is None):
             raise BuildError(f"{path}: page '{entry['slug']}' needs a 'group' that is one of {', '.join(GROUPS)}")
         subgroup = entry.get("subgroup")
         if subgroup is not None and (not isinstance(subgroup, str) or not subgroup.strip()):
@@ -984,11 +984,11 @@ def _is_private(rel: str) -> bool:
 
 def resolve_link(href: str, source: str, pages_by_source: dict[str, Page], root: Path, config: dict,
                  anchors_of, errors: list[str], line: int, own_anchors: set[str], raw: bool = False,
-                 pages_by_slug: dict[str, Page] | None = None, page_anchors=None, label: str | None = None,
-                 splits: dict[str, "SplitLinks"] | None = None, own_split: "SplitLinks | None" = None) -> str:
+                 label: str | None = None, context: "LinkContext | None" = None) -> str:
     """The href to emit for `href` found in `source`, or the original one after recording an error."""
     where = f"{label or source}:{line}"
-    splits = splits or {}
+    context = context or LinkContext()
+    pages_by_slug, page_anchors, splits, own_split = context.pages_by_slug, context.page_anchors, context.splits, context.own_split
 
     def split_href(links: "SplitLinks", fragment: str, name: str) -> str:
         if not fragment:
@@ -1044,6 +1044,15 @@ def resolve_link(href: str, source: str, pages_by_source: dict[str, Page], root:
 
 
 @dataclass
+class LinkContext:
+    """What a link needs to know about the built pages: by name, their anchors, the split sources and the split the current page is part of."""
+    pages_by_slug: dict[str, Page] | None = None
+    page_anchors: "Callable[[str], set[str]] | None" = None
+    splits: dict[str, "SplitLinks"] = field(default_factory=dict)
+    own_split: "SplitLinks | None" = None
+
+
+@dataclass
 class SplitLinks:
     """Where the anchors of a split source went: the index page's slug and, for an anchor, the page that holds its heading and
     whether the anchor still exists on that page (None when the source has no such anchor)."""
@@ -1078,7 +1087,7 @@ def build(root: Path, out_dir: Path) -> list[str]:
             continue
         try:
             parts = semantics_split(read(page.source), json.loads(read(p["summaries"])))
-        except (OSError, UnicodeDecodeError, ValueError) as error:
+        except (OSError, ValueError) as error:
             raise BuildError(f"page '{page.slug}': cannot read {page.source} or {p['summaries']}: {error}") from error
         preface = semantics_preface(read(page.source))
         text_cache[page.slug] = split_index(page, parts, preface)
@@ -1223,12 +1232,14 @@ def build(root: Path, out_dir: Path) -> list[str]:
         # Second pass with the real resolver, now that the page's own anchors are known; the line of each link is taken
         # from the first pass's record, in order.
         lines = iter(line for line, _ in rendered.links)
-        label = f"{page.source} (page '{page.slug}')" if page.generator == "semantics-part" else (f"site/site.json#{page.slug}" if generated else None)
+        label = f"site/site.json#{page.slug}" if generated else None
+        if page.generator == "semantics-part":
+            label = f"{page.source} (page '{page.slug}')"
 
         def resolver(href: str, image: bool = False, source=page.source if page.generator in (None, "semantics-part", "semantics-split") else "site/_generated",
                      own=own, sink=link_errors, lines=lines, label=label, own_split=own_split_of.get(page.slug)) -> str:
             return resolve_link(href, source, pages_by_source, root, config, anchors_of, sink, next(lines, 0), own, raw=image,
-                                pages_by_slug=pages_by_slug, page_anchors=page_anchors, label=label, splits=splits, own_split=own_split)
+                                label=label, context=LinkContext(pages_by_slug, page_anchors, splits, own_split))
 
         rendered = render_markdown(text, resolve=resolver)
         errors.extend(link_errors)

@@ -114,7 +114,11 @@ def scripts_in_head(page_html: str) -> list[dict]:
 
 def headings_of(page_html: str, levels: str = "234") -> list[tuple[str, str, str]]:
     main = block(page_html, "<main", "</main>")
-    return [(m.group(1), m.group(2), m.group(3)) for m in re.finditer(rf'<h([{levels}]) id="([^"]+)">(.*?)</h\1>', main, re.S)]
+    found = []
+    for opener in re.finditer(rf'<h([{levels}]) id="([^"]+)">', main):
+        end = main.find(f"</h{opener.group(1)}>", opener.end())
+        found.append((opener.group(1), opener.group(2), main[opener.end():end]))
+    return found
 
 
 def css_blocks(css: str) -> list[tuple[str, str, str]]:
@@ -198,7 +202,8 @@ class ScratchScripts(unittest.TestCase):
     def test_1_no_page_holds_an_inline_script(self):
         for slug, text in self.pages.items():
             with self.subTest(page=slug):
-                self.assertEqual([body for body in re.findall(r"<script\b[^>]*>(.*?)</script>", text, re.S) if body.strip()], [])
+                self.assertEqual(text.count("</script>"), text.count("<script"))
+                self.assertEqual(text.count("></script>"), text.count("<script"))  # no inline body
                 self.assertEqual(len(re.findall(r"<script\b", text)), 2)
 
 

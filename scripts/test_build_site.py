@@ -708,7 +708,7 @@ class SiteDesign(unittest.TestCase):
                 self.assertNotIn("fonts.gstatic.com", page)
                 # #3556: the only scripts are the site's own files (theme.js, site.js), relative, with no inline body (DSN-1, DSN-7).
                 self.assertEqual([src for src in re.findall(r"<script\b[^>]*\bsrc=\"([^\"]*)\"", page)], re.findall(r"<script\b[^>]*\bsrc=\"((?:theme|site)\.js)\"", page))
-                self.assertEqual([body for body in re.findall(r"<script\b[^>]*>(.*?)</script>", page, re.S) if body.strip()], [])
+                self.assertEqual(page.count("></script>"), page.count("<script"))  # no inline body
                 self.assertEqual(len(re.findall(r"<script\b", page)), len(re.findall(r"<script\b[^>]*\bsrc=", page)))
                 for tag in re.findall(r"<link\b[^>]*>", page):
                     self.assertNotRegex(tag, r"href=\"https?://")

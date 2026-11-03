@@ -155,6 +155,15 @@ class SideParser(HTMLParser):
             self._href = None
 
 
+def element_inner(text: str, tag: str) -> str:
+    """The inner markup of the first `<tag ...>` element of `text`; '' when absent."""
+    opened = text.find(f"<{tag}")
+    if opened < 0:
+        return ""
+    begin = text.find(">", opened) + 1
+    return text[begin:text.find(f"</{tag}>", begin)]
+
+
 def fragment(text: str, start: str, end: str) -> str:
     """The part of `text` from the tag that holds `start` (an attribute text) up to `end`; '' when absent."""
     at = text.find(start)
@@ -345,8 +354,8 @@ class PreviousNext(unittest.TestCase):
         order = [href[:-5] for href in sidebar_order(pages["semantics"])]
         self.assertEqual(order, ["semantics", "case-rules", "null-rules", "aggregation-rules"])
         self.assertEqual(prev_next(pages["case-rules"]), {"prev": "semantics.html", "next": "null-rules.html"})
-        self.assertEqual(prev_next(pages["semantics"]).get("prev"), None)
-        self.assertEqual(prev_next(pages["aggregation-rules"]).get("next"), None)
+        self.assertIsNone(prev_next(pages["semantics"]).get("prev"))
+        self.assertIsNone(prev_next(pages["aggregation-rules"]).get("next"))
 
 
 class SemanticsSplit(unittest.TestCase):
@@ -365,7 +374,7 @@ class SemanticsSplit(unittest.TestCase):
         for key, slug in SPLIT_SLUGS.items():
             with self.subTest(section=key):
                 title = SUMMARIES[key]["title"]
-                h1 = re.search(r"<h1[^>]*>(.*?)</h1>", pages[slug], re.S).group(1)
+                h1 = element_inner(pages[slug], "h1")
                 self.assertEqual(strip_tags(h1), title)
                 self.assertNotIn("Case sensitivity", pages[slug].replace("Case rules", ""))
                 self.assertNotRegex(strip_tags(h1), CODED)
@@ -486,25 +495,29 @@ class Favicon(unittest.TestCase):
                 self.assertEqual(svg[0].get("type"), "image/svg+xml")
                 self.assertEqual(len(touch), 1)
 
+    def assert_file_names_no_other_host(self, file: Path, text: str):
+        if file.suffix == ".svg":
+            self.assertNotIn("http", re.sub(r'xmlns(?::\w+)?="[^"]*"', "", text), file.name)
+        if file.suffix == ".css":
+            self.assertNotIn("@import", text)
+            self.assertNotIn("url(http", text)
+
+    def assert_tags_name_no_other_host(self, file: Path, text: str):
+        tags = Tags()
+        tags.feed(re.sub(r'xmlns(?::\w+)?="[^"]*"', "", text) if file.suffix == ".svg" else text)
+        for tag, attrs in tags.tags:
+            if tag == "a":
+                continue
+            for name in ("src", "srcset", "poster", "data", "href"):
+                self.assertNotRegex(attrs.get(name, ""), r"(?i)^\s*(?:[a-z][a-z0-9+.-]*:|//)", f"{file.name}: <{tag} {name}>")
+
     def test_T10_nothing_built_loads_from_another_host(self):
         self.assertTrue((self.out / "favicon.svg").is_file(), "favicon.svg is not written")
-        for file in sorted(self.out.rglob("*")):
-            if not file.is_file() or file.suffix not in (".html", ".css", ".svg"):
-                continue
+        files = [f for f in sorted(self.out.rglob("*")) if f.is_file() and f.suffix in (".html", ".css", ".svg")]
+        for file in files:
             text = file.read_text(encoding="utf-8")
-            if file.suffix == ".svg":
-                text = re.sub(r'xmlns(?::\w+)?="[^"]*"', "", text)
-                self.assertNotIn("http", text, file.name)
-            if file.suffix == ".css":
-                self.assertNotIn("@import", text)
-                self.assertNotIn("url(http", text)
-            tags = Tags()
-            tags.feed(text)
-            for tag, attrs in tags.tags:
-                if tag == "a":
-                    continue
-                for name in ("src", "srcset", "poster", "data", "href"):
-                    self.assertNotRegex(attrs.get(name, ""), r"(?i)^\s*(?:[a-z][a-z0-9+.-]*:|//)", f"{file.name}: <{tag} {name}>")
+            self.assert_file_names_no_other_host(file, text)
+            self.assert_tags_name_no_other_host(file, text)
 
 
 class Refusals(unittest.TestCase):
@@ -761,7 +774,7 @@ class RealSite(unittest.TestCase):
                 self.assertRegex(href, bs.SLUG.pattern[:-1] + r"\.html$")
                 self.assertNotRegex(label, CODED)
                 self.assertNotIn(label, sections)
-                h1 = re.search(r"<h1[^>]*>(.*?)</h1>", self.pages[href[:-5]], re.S).group(1)
+                h1 = element_inner(self.pages[href[:-5]], "h1")
                 self.assertEqual(strip_tags(h1), label)
                 self.assertIn(f'href="{href}"', self.pages["semantics"])
 
@@ -771,7 +784,7 @@ class RealSite(unittest.TestCase):
         for _, href, _, _ in links:
             with self.subTest(page=href):
                 text = self.pages[href[:-5]]
-                lead = re.search(r"<p[^>]*>(.*?)</p>", text[text.index("</h1>"):], re.S).group(1)
+                lead = element_inner(text[text.index("</h1>"):], "p")
                 plain = strip_tags(lead)
                 self.assertTrue(plain)
                 self.assertLessEqual(sentences(plain), 3)
