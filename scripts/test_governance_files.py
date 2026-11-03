@@ -21,7 +21,7 @@ SECURITY = ROOT / "SECURITY.md"
 PRIVATE_PREFIXES = ("docs/", ".claude", "CLAUDE.md", ".mcp.json", ".githooks", ".azuredevops", ".sonarlint", ".vscode",
                     "scripts/publish-github.sh", "scripts/sync-release-commit.sh", "scripts/apply-public-change.sh",
                     "scripts/test_apply_public_change.py", "scripts/test_publish_mirror_real.py", "scripts/test_jenkinsfile.py",
-                    "scripts/test_release_steps.py", "scripts/release-steps-fixtures/",
+                    "scripts/test_release_steps.py", "scripts/test_release_steps_publish.py", "scripts/release-steps-fixtures/",
                     "csharp/tests/Craticula.Conformance.Tests/JenkinsfileTests.cs", "Jenkinsfile", "jenkins/")
 # `docs/adr` is the one public folder under a private path (the PUBLIC_EXCEPT array of scripts/publish-github.sh, #1665, ADR 0004).
 PUBLIC_EXCEPTIONS = ("docs/adr",)
@@ -293,6 +293,12 @@ class MoreRuleTests(unittest.TestCase):
         match = re.search(r"(?m)^PUBLIC_EXCEPT=\((.*)\)\s*$", PUBLISH_SCRIPT.read_text(encoding="utf-8"))
         self.assertIsNotNone(match, "no PUBLIC_EXCEPT array in the publish script")
         self.assertEqual(set(match.group(1).split()), set(PUBLIC_EXCEPTIONS), "PUBLIC_EXCEPTIONS differs from the PUBLIC_EXCEPT array of scripts/publish-github.sh")
+
+    def test_the_release_certificate_file_is_public_unlike_the_release_files_of_jenkins(self):
+        # #3488, FR-33: a fingerprint is public, so the mirror carries scripts/release-certificate.json
+        self.assertFalse("scripts/release-certificate.json".startswith(PRIVATE_PREFIXES))
+        for path in ("jenkins/release.Jenkinsfile", "jenkins/jobs/craticula-release.xml"):
+            self.assertTrue(path.startswith(PRIVATE_PREFIXES), path)
 
     def test_nfr01_the_prefix_tuple_matches_the_publish_script_where_it_exists(self):
         if not PUBLISH_SCRIPT.exists():

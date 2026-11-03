@@ -725,7 +725,8 @@ class SiteDesign(unittest.TestCase):
 
     def test_T2_home_page_shows_the_request_the_statement_and_the_links(self):
         text = " ".join(html.unescape(re.sub(r"<[^>]+>", " ", self.pages["index"])).split())
-        for needle in ('SELECT * FROM "orders"', "Field allowlist check failed", '"filter": "acme"', "Safe queries out."):
+        # #3557: the "Refused" line with its rule code is gone from the hero (DS-19), so its text is no longer a needle.
+        for needle in ('SELECT * FROM "orders"', '"filter": "acme"', "Safe queries out."):
             self.assertIn(needle, text)
         for slug in ("quickstart-csharp", "index-guidance", "overview", "spec", "semantics", "grid-schema",
                      "ir-schema", "odata-migration"):
@@ -1070,6 +1071,12 @@ class ThisRepository(unittest.TestCase):
         self.assertIsNotNone(match, "no PRIVATE array in the publish script")
         self.assertEqual({e.rstrip("/") for e in match.group(1).split()}, set(bs.PRIVATE_PATHS),
                          "PRIVATE_PATHS differs from the PRIVATE array of scripts/publish-github.sh")
+
+    def test_the_release_steps_tests_are_private_paths(self):
+        # #3486: the tests of the private jenkins/release-steps.sh are never linked from the public site.
+        for path in ("scripts/test_release_steps.py", "scripts/test_release_steps_publish.py", "scripts/release-steps-fixtures/curl"):
+            with self.subTest(path=path):
+                self.assertTrue(bs._is_private(path))
 
     def test_site_is_public_and_docs_is_private(self):
         self.assertTrue(bs._is_private("docs/TRD.md"))
