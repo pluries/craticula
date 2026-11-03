@@ -61,7 +61,7 @@
   }
 
   function setupCopy() {
-    document.querySelectorAll("main pre").forEach(function (block) {
+    document.querySelectorAll(".prose pre").forEach(function (block) {
       var button = document.createElement("button");
       button.type = "button";
       button.className = "copy-button";
@@ -70,16 +70,22 @@
       button.addEventListener("click", function () {
         var code = block.querySelector("code");
         var text = (code || block).textContent;
-        if (!navigator.clipboard) {
-          return;
-        }
-        navigator.clipboard.writeText(text).then(function () {
-          button.textContent = "Copied";
-          button.setAttribute("data-state", "copied");
+        function report(label, state) {
+          button.textContent = label;
+          button.setAttribute("data-state", state);
           window.setTimeout(function () {
             button.textContent = "Copy";
             button.removeAttribute("data-state");
           }, 1800);
+        }
+        if (!navigator.clipboard) {
+          report("Copy failed", "failed");
+          return;
+        }
+        navigator.clipboard.writeText(text).then(function () {
+          report("Copied", "copied");
+        }, function () {
+          report("Copy failed", "failed");
         });
       });
       block.appendChild(button);
@@ -94,6 +100,7 @@
   var opener = null;
   var hits = [];
   var selected = 0;
+  var status = null;
 
   function loadIndex() {
     if (index || failed) {
@@ -176,17 +183,23 @@
     list.textContent = "";
     var item = document.createElement("li");
     item.className = "search-note";
+    item.setAttribute("role", "presentation");
     item.textContent = message;
     list.appendChild(item);
+    status.textContent = message;
     hits = [];
+    mark();
   }
 
   function mark() {
     hits.forEach(function (link, position) {
-      link.setAttribute("aria-selected", position === selected ? "true" : "false");
+      link.parentNode.setAttribute("aria-selected", position === selected ? "true" : "false");
     });
     if (hits[selected]) {
+      input.setAttribute("aria-activedescendant", hits[selected].parentNode.id);
       hits[selected].scrollIntoView({ block: "nearest" });
+    } else {
+      input.removeAttribute("aria-activedescendant");
     }
   }
 
@@ -209,10 +222,13 @@
     selected = 0;
     found.forEach(function (result) {
       var item = document.createElement("li");
+      item.setAttribute("role", "option");
+      item.id = "search-hit-" + hits.length;
       var link = document.createElement("a");
       var title = document.createElement("strong");
       var place = document.createElement("span");
       link.className = "search-hit";
+      link.tabIndex = -1;
       link.href = result.entry.slug + ".html" + (result.heading ? "#" + result.heading.anchor : "");
       title.textContent = result.entry.title;
       place.textContent = (result.entry.group ? result.entry.group + " / " : "") + (result.heading ? result.heading.text : result.entry.description);
@@ -222,17 +238,21 @@
       list.appendChild(item);
       hits.push(link);
     });
+    status.textContent = found.length + (found.length === 1 ? " result" : " results");
     mark();
   }
 
-  function closeSearch() {
+  function closeSearch(restoreFocus) {
     overlay.hidden = true;
-    if (opener) {
+    if (restoreFocus && opener) {
       opener.focus();
     }
   }
 
   function openSearch(from) {
+    if (!overlay.hidden) {
+      return;
+    }
     opener = from || document.activeElement;
     overlay.hidden = false;
     input.value = "";
@@ -257,15 +277,29 @@
     input.setAttribute("placeholder", "Search the documentation");
     list = document.createElement("ul");
     list.className = "search-results";
+    list.id = "search-results";
+    list.setAttribute("role", "listbox");
+    input.setAttribute("role", "combobox");
+    input.setAttribute("aria-expanded", "true");
+    input.setAttribute("aria-controls", "search-results");
+    status = document.createElement("p");
+    status.className = "search-status";
+    status.setAttribute("role", "status");
     box.appendChild(input);
+    box.appendChild(status);
     box.appendChild(list);
     overlay.appendChild(box);
     document.body.appendChild(overlay);
+    list.addEventListener("click", function (event) {
+      if (event.target.closest && event.target.closest(".search-hit")) {
+        closeSearch(false);
+      }
+    });
 
     input.addEventListener("input", render);
     overlay.addEventListener("click", function (event) {
       if (event.target === overlay) {
-        closeSearch();
+        closeSearch(true);
       }
     });
     input.addEventListener("keydown", function (event) {
@@ -278,7 +312,10 @@
         mark();
         event.preventDefault();
       } else if (event.key === "Enter" && hits[selected]) {
+        closeSearch(false);
         window.location.href = hits[selected].href;
+      } else if (event.key === "Tab") {
+        event.preventDefault();
       }
     });
     document.querySelectorAll(".search-button").forEach(function (button) {
@@ -289,8 +326,8 @@
     document.addEventListener("keydown", function (event) {
       var typing = /^(input|textarea|select)$/i.test(event.target.tagName) || event.target.isContentEditable;
       if (event.key === "Escape" && !overlay.hidden) {
-        closeSearch();
-      } else if ((event.key === "k" && (event.ctrlKey || event.metaKey)) || (event.key === "/" && !typing)) {
+        closeSearch(true);
+      } else if (((event.key || "").toLowerCase() === "k" && (event.ctrlKey || event.metaKey)) || (event.key === "/" && !typing)) {
         event.preventDefault();
         openSearch(null);
       }

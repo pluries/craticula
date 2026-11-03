@@ -319,10 +319,12 @@ html[data-theme="light"] .theme-button .i-light, html[data-theme="dark"] .theme-
 .search-hit { display: block; padding: 10px 12px; border-radius: 10px; color: var(--text); text-decoration: none; }
 .search-hit strong { display: block; font-weight: 600; }
 .search-hit span { display: block; color: var(--muted); font-size: 0.875rem; }
-.search-hit[aria-selected="true"], .search-hit:hover { background: var(--surface); }
+[aria-selected="true"] > .search-hit, .search-hit:hover { background: var(--surface); }
+.search-status { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 @media (max-width: 800px) {
   .top-actions { margin-left: 0; }
   html.js .side { display: none; }
   html.js.menu-open .side { display: block; }
   html.js .menu-toggle { display: inline-flex; }
 }
+html:not(.js) .search-button, html:not(.js) .theme-button { display: none; }

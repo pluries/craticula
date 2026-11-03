@@ -700,7 +700,7 @@ def add_anchors(page_html: str) -> str:
 
 def plain_text(page_html: str) -> str:
     """The text of a rendered page without markup and without coded references, for the search index."""
-    text = _TAG.sub(" ", html.unescape(_TAG.sub(" ", page_html)))
+    text = html.unescape(_TAG.sub(" ", page_html))
     return " ".join(CODED_REFERENCE.sub("", text).split())
 
 
