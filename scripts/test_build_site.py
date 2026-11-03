@@ -1074,7 +1074,7 @@ class ThisRepository(unittest.TestCase):
 
     def test_the_release_steps_tests_are_private_paths(self):
         # #3486: the tests of the private jenkins/release-steps.sh are never linked from the public site.
-        for path in ("scripts/test_release_steps.py", "scripts/test_release_steps_publish.py", "scripts/release-steps-fixtures/curl"):
+        for path in ("scripts/test_release_steps.py", "scripts/test_release_steps_publish.py", "scripts/test_release_steps_notes.py", "scripts/release-steps-fixtures/curl"):
             with self.subTest(path=path):
                 self.assertTrue(bs._is_private(path))
 
