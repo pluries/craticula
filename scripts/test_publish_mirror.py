@@ -336,6 +336,17 @@ class ScriptTests(unittest.TestCase):
         self.assertEqual([], [path for path in tree if path.startswith("scripts/release-steps-fixtures")])
         self.assertIn("scripts/test_release_verify.py", tree)
 
+    def test_the_release_certificate_file_reaches_the_public_history_and_the_release_job_files_do_not(self):
+        # #3488, FR-33: the fingerprint is public; the job definition and its Jenkinsfile are private
+        self.write("scripts/release-certificate.json", '{"sha256": "", "validUntil": "", "subject": ""}\n')
+        self.write("jenkins/release.Jenkinsfile", "// private\n")
+        self.write("jenkins/jobs/craticula-release.xml", "<flow-definition/>\n")
+        self.commit("TECHNICAL #7 add the release job files")
+        self.publish()
+        tree = self.git("ls-tree", "-r", "--name-only", "main", cwd=self.pub).stdout.split()
+        self.assertIn("scripts/release-certificate.json", tree)
+        self.assertEqual([], [path for path in tree if path.startswith("jenkins/")])
+
     def test_the_release_publish_test_stays_out_of_the_public_history(self):
         # #3486: it tests the push and release commands of jenkins/release-steps.sh, which is private, like its sibling test.
         self.write("scripts/test_release_steps_publish.py", "# tests a private script\n")

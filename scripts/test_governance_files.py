@@ -294,6 +294,12 @@ class MoreRuleTests(unittest.TestCase):
         self.assertIsNotNone(match, "no PUBLIC_EXCEPT array in the publish script")
         self.assertEqual(set(match.group(1).split()), set(PUBLIC_EXCEPTIONS), "PUBLIC_EXCEPTIONS differs from the PUBLIC_EXCEPT array of scripts/publish-github.sh")
 
+    def test_the_release_certificate_file_is_public_unlike_the_release_files_of_jenkins(self):
+        # #3488, FR-33: a fingerprint is public, so the mirror carries scripts/release-certificate.json
+        self.assertFalse("scripts/release-certificate.json".startswith(PRIVATE_PREFIXES))
+        for path in ("jenkins/release.Jenkinsfile", "jenkins/jobs/craticula-release.xml"):
+            self.assertTrue(path.startswith(PRIVATE_PREFIXES), path)
+
     def test_nfr01_the_prefix_tuple_matches_the_publish_script_where_it_exists(self):
         if not PUBLISH_SCRIPT.exists():
             self.skipTest("the publish script is private (absent from the public mirror)")
