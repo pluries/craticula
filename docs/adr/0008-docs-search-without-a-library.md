@@ -6,7 +6,7 @@ Work items: #3554, #3556, #3562   Classification: Public
 Accepting this record is the maker's decision.
 
 ## Context
-The docs site v2 needs search (requirement DS-4 of the docs site specification). Search libraries (Lunr, MiniSearch, Pagefind) add a third-party script and a dependency to approve (`.claude/rules/compliance.md` section 4: a new library needs the Engineering Lead's approval). The site is about thirty small pages; the index is below 120 KB compressed.
+The docs site v2 needs search (requirement DS-4 of the docs site specification). Search libraries (Lunr, MiniSearch, Pagefind) add a third-party script and a dependency to approve (a new library needs the Engineering Lead's approval). The site is about thirty small pages; the index is below 120 KB compressed.
 
 ## Decision
 The build writes one `search-index.json` (title, description, headings and plain text per page, no rule ids) and a vanilla script (`site/js/site.js`, about 3 KB compressed) ranks by exact title, title prefix, title word, heading, description, then text. No library, no network request beyond the site's own host.
