@@ -581,6 +581,160 @@ class Refusals(unittest.TestCase):
         self.assertEqual(errors, [])
 
 
+REVIEW_SOURCE = ("# Semantics\n\nPreface paragraph here.\n\n"
+                 "## SEM-6. Deterministic paging\n\nBody six.\n\n### Examples\n\nex one.\n\n"
+                 "## SEM-1. Case sensitivity\n\nBody one.\n\n### Examples\n\nex two.\n\n"
+                 "## SEM-2. Null handling\n\n### Case sensitivity\n\nnested.\n")
+REVIEW_SUMMARIES = {
+    "SEM-6": {"title": "Deterministic paging", "description": "How paging stays stable.", "summary": "Pages never overlap."},
+    "SEM-1": {"title": "Case sensitivity", "description": "How text compares.", "summary": "Text compares without case."},
+    "SEM-2": {"title": "Null handling", "description": "How nulls behave.", "summary": "A null matches nothing."},
+}
+
+
+def review_site(source: str = REVIEW_SOURCE, summaries: dict | None = None, index_source: str = "# Home\n", extra_pages: list[dict] | None = None,
+                files: dict[str, str] | None = None) -> Path:
+    """A split site whose semantics source sits at spec/semantics.md, like the real one."""
+    generated = {**split_page(), "source": "spec/semantics.md"}
+    return site([HOME, generated, *(extra_pages or [])],
+                {"spec/semantics.md": source, "site/summaries.json": json.dumps(REVIEW_SUMMARIES if summaries is None else summaries),
+                 "index.md": index_source, **(files or {})})
+
+
+def link_targets(page_html: str) -> dict[str, str]:
+    parser = Anchors()
+    parser.feed(page_html)
+    return {text: attrs.get("href", "") for attrs, text in parser.links}
+
+
+class SplitLinkAnchors(unittest.TestCase):
+    """Review finding A: a link by an anchor of the ORIGINAL file goes to the split page that holds that heading."""
+
+    FORMS = {"root": "spec/semantics.md#{}", "html": "semantics.html#{}"}
+
+    def lands(self, anchor: str) -> tuple[list[str], dict[str, str], dict[str, str]]:
+        """Build a site whose pages link `anchor` in each form; (errors, link text -> href, built pages)."""
+        rows = [f"[{form}:{anchor}]({pattern.format(anchor)})" for form, pattern in self.FORMS.items()]
+        guide = page("guide", "Guides", source="a/b/guide.md")
+        root = review_site(index_source="# Home\n\n" + "\n\n".join(rows) + "\n", extra_pages=[guide],
+                           files={"a/b/guide.md": f"# Guide\n\n[nested:{anchor}](../../spec/semantics.md#{anchor})\n"})
+        errors, out = outcome(root)
+        pages = {f.stem: f.read_text(encoding="utf-8") for f in out.glob("*.html")}
+        return errors, {**link_targets(pages.get("index", "")), **link_targets(pages.get("guide", ""))}, pages
+
+    def assert_lands_on(self, anchor: str, slug: str, exact: str | None = None):
+        errors, targets, pages = self.lands(anchor)
+        self.assertEqual(errors, [])
+        for form in (*self.FORMS, "nested"):
+            with self.subTest(link=f"{form}:{anchor}"):
+                href = targets.get(f"{form}:{anchor}", "")
+                page_part, _, fragment = href.partition("#")
+                self.assertEqual(page_part, f"{slug}.html")
+                if exact is not None:
+                    self.assertEqual(href, exact)
+                if fragment:  # never a dead fragment
+                    self.assertIn(f'id="{fragment}"', pages[slug])
+
+    def test_A_a_heading_that_became_the_h1_links_to_its_page_without_a_fragment(self):
+        self.assert_lands_on("sem-6-deterministic-paging", "deterministic-paging", exact="deterministic-paging.html")
+
+    def test_A_a_heading_that_keeps_its_id_links_with_the_fragment(self):
+        self.assert_lands_on("examples", "deterministic-paging", exact="deterministic-paging.html#examples")
+
+    def test_A_a_suffixed_duplicate_anchor_goes_to_its_own_section_and_never_fails_the_build(self):
+        self.assert_lands_on("examples-1", "case-sensitivity")
+
+    def test_A_an_anchor_that_the_h1_of_another_page_would_shadow_goes_to_the_section_that_holds_it(self):
+        self.assert_lands_on("case-sensitivity", "null-handling")
+
+    def test_A_rule_anchors_keep_their_fragment_on_their_page(self):
+        self.assert_lands_on("sem-1", "case-sensitivity", exact="case-sensitivity.html#sem-1")
+        self.assert_lands_on("sem-2", "null-handling", exact="null-handling.html#sem-2")
+
+
+class SplitFences(unittest.TestCase):
+    """Review finding B: a section is not cut inside a fence, with the converter's close rule (same character, length >= opener)."""
+
+    def test_B_a_four_backtick_fence_holding_three_backticks_and_a_heading_line_does_not_cut_a_section(self):
+        source = ("# Semantics\n\n## SEM-1. Case sensitivity\n\n````md\n```\n## Not a heading\n````\n\nBody after the fence.\n\n"
+                  "## SEM-2. Null handling\n\nBody two.\n")
+        pages = built(review_site(source, {key: REVIEW_SUMMARIES[key] for key in ("SEM-1", "SEM-2")}))
+        self.assertIn("Body after the fence.", pages["case-sensitivity"])
+        self.assertIn("## Not a heading", pages["case-sensitivity"])
+        self.assertEqual(sorted(slug for slug in pages if slug not in ("index", "semantics")), ["case-sensitivity", "null-handling"])
+
+    def test_B_a_tilde_fence_is_not_closed_by_a_backtick_line(self):
+        source = ("# Semantics\n\n## SEM-1. Case sensitivity\n\n~~~\n```\n## Not a heading\n~~~\n\nBody after the fence.\n")
+        pages = built(review_site(source, {"SEM-1": REVIEW_SUMMARIES["SEM-1"]}))
+        self.assertIn("Body after the fence.", pages["case-sensitivity"])
+
+
+class SplitPreface(unittest.TestCase):
+    """Review finding C: the text before the first `## ` shows on the index page."""
+
+    def test_C_the_preface_follows_the_description_and_comes_before_the_part_list(self):
+        main = fragment(built(review_site())["semantics"], "<main", "</main>")
+        description, preface, first_part = main.find("The rules behind the output."), main.find("Preface paragraph here."), main.find('href="deterministic-paging.html"')
+        self.assertGreaterEqual(description, 0)
+        self.assertGreater(preface, description)
+        self.assertGreater(first_part, preface)
+
+
+class UnsafeMarkupEverywhere(unittest.TestCase):
+    """Review finding D: DS-21 also catches a handler glued to a slash or a quote, in every source the build reads."""
+
+    BAD = ("<svg/onload=alert(1)>", '<a href="x"onclick=1>y</a>')
+
+    def test_D_a_page_source_with_a_glued_handler_fails_naming_the_file(self):
+        for markup in self.BAD:
+            with self.subTest(markup=markup):
+                errors = outcome(site([HOME, page("bad", "Guides")], {"bad.md": f"# Bad\n\n{markup}\n"}))[0]
+                self.assertTrue(any("bad.md" in message for message in errors), errors)
+
+    def test_D_the_semantics_source_with_a_glued_handler_fails_naming_the_file(self):
+        for markup in self.BAD:
+            with self.subTest(markup=markup):
+                errors = outcome(review_site(REVIEW_SOURCE + f"\n{markup}\n"))[0]
+                self.assertTrue(any("semantics.md" in message for message in errors), errors)
+
+    def test_D_a_summaries_value_with_markup_fails_naming_the_file(self):
+        for markup in self.BAD:
+            with self.subTest(markup=markup):
+                entries = json.loads(json.dumps(REVIEW_SUMMARIES))
+                entries["SEM-2"]["summary"] = f"Safe words. {markup}"
+                errors = outcome(review_site(summaries=entries))[0]
+                self.assertTrue(any("summaries.json" in message for message in errors), errors)
+
+
+class ConfigRefusals(unittest.TestCase):
+    """Review finding E: a bad site.json is a configuration error (BuildError, exit 2)."""
+
+    def refused(self, pages: list[dict]):
+        with self.assertRaises(bs.BuildError):
+            bs.build(site(pages), Path(tempfile.mkdtemp()))
+
+    def test_E_authored_must_be_a_boolean(self):
+        for bad in ("yes", "true", 1):
+            with self.subTest(authored=bad):
+                self.refused([HOME, page("alpha", "Guides", authored=bad, reviewed="2026-11-03")])
+
+    def test_E_reviewed_must_be_a_real_calendar_date(self):
+        for bad in ("2026-99-99", "2026-02-30", "2026-13-01"):
+            with self.subTest(reviewed=bad):
+                self.refused([HOME, page("alpha", "Guides", authored=True, reviewed=bad)])
+
+    def test_E_a_subgroup_holding_a_coded_reference_is_refused(self):
+        self.refused([HOME, page("alpha", "Guides", subgroup="SEM-1 rules")])
+
+    def test_E_site_json_must_be_an_object(self):
+        for text in ("[]", "5", "null", '"text"'):
+            with self.subTest(site_json=text):
+                root = site([HOME])
+                (root / "site" / "site.json").write_text(text, encoding="utf-8")
+                with self.assertRaises(bs.BuildError):
+                    bs.build(root, root / "_out")
+
+
 class RealSite(unittest.TestCase):
     """The acceptance tests on this repository's own sources (T1 to T10 of the real build)."""
 
