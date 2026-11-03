@@ -36,6 +36,14 @@ from test_build_site import ROOT, contrast, luminance  # noqa: E402
 from test_build_site_structure import (  # noqa: E402
     CODED, HOME, TICKET, Anchors, Tags, built, head_links, outcome, page, sidebar_order, site, strip_tags, toc_labels)
 
+# repeated literals (SonarQube S1192)
+TOP_HEADER = '<header class="top"'
+SEARCH_INDEX_JSON = "search-index.json"
+INDEX_NOT_WRITTEN = "search-index.json is not written"
+THEME_JS_NAME = "theme.js"
+SITE_JS_NAME = "site.js"
+DISPLAY_NONE = 'display\\s*:\\s*none'
+
 TEMPLATE = ('<!doctype html><html lang="en"><head><meta charset="utf-8"><title>{{page_title}}</title>'
             '<meta name="description" content="{{description}}">{{head_links}}{{scripts}}<link rel="stylesheet" href="style.css"></head>'
             '<body>{{topbar}}<div class="layout">{{menu_button}}<aside id="sidebar"><nav aria-label="Pages">{{sidebar}}</nav></aside>'
@@ -102,7 +110,7 @@ class Controls(HTMLParser):
 
 def topbar(page_html: str) -> Controls:
     parser = Controls()
-    parser.feed(block(page_html, '<header class="top"', "</header>"))
+    parser.feed(block(page_html, TOP_HEADER, "</header>"))
     return parser
 
 
@@ -190,15 +198,15 @@ class ScratchScripts(unittest.TestCase):
         cls.pages = {f.stem: f.read_text(encoding="utf-8") for f in cls.out.glob("*.html")}
 
     def test_1_both_scripts_are_copied_to_the_output_root_unchanged(self):
-        self.assertEqual((self.out / "theme.js").read_text(encoding="utf-8") if (self.out / "theme.js").is_file() else None, THEME_JS)
-        self.assertEqual((self.out / "site.js").read_text(encoding="utf-8") if (self.out / "site.js").is_file() else None, SITE_JS)
+        self.assertEqual((self.out / THEME_JS_NAME).read_text(encoding="utf-8") if (self.out / THEME_JS_NAME).is_file() else None, THEME_JS)
+        self.assertEqual((self.out / SITE_JS_NAME).read_text(encoding="utf-8") if (self.out / SITE_JS_NAME).is_file() else None, SITE_JS)
 
     def test_1_every_page_links_the_blocking_theme_script_then_the_deferred_site_script_in_the_head(self):
         self.assertEqual(sorted(self.pages), ["feature", "index", "ref"])
         for slug, text in self.pages.items():
             with self.subTest(page=slug):
-                self.assertEqual(scripts_in_head(text), [{"src": "theme.js", "defer": False, "async": False},
-                                                         {"src": "site.js", "defer": True, "async": False}])
+                self.assertEqual(scripts_in_head(text), [{"src": THEME_JS_NAME, "defer": False, "async": False},
+                                                         {"src": SITE_JS_NAME, "defer": True, "async": False}])
 
     def test_1_no_page_holds_an_inline_script(self):
         for slug, text in self.pages.items():
@@ -216,11 +224,11 @@ class ScratchSearchIndex(unittest.TestCase):
         cls.root = fsite(FEATURE_PAGES)
         errors, cls.out = outcome(cls.root)
         assert errors == [], errors
-        path = cls.out / "search-index.json"
+        path = cls.out / SEARCH_INDEX_JSON
         cls.entries = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
 
     def setUp(self):
-        self.assertIsNotNone(self.entries, "search-index.json is not written")
+        self.assertIsNotNone(self.entries, INDEX_NOT_WRITTEN)
 
     def test_2_the_index_is_one_entry_per_page_in_site_order_with_the_pinned_keys(self):
         self.assertEqual([e["slug"] for e in self.entries], ["index", "feature", "ref"])
@@ -252,11 +260,11 @@ class ScratchSearchIndex(unittest.TestCase):
                 self.assertNotRegex(value, TICKET)
 
     def test_2_two_builds_give_the_same_bytes(self):
-        first = (self.out / "search-index.json").read_bytes() if (self.out / "search-index.json").is_file() else b""
+        first = (self.out / SEARCH_INDEX_JSON).read_bytes() if (self.out / SEARCH_INDEX_JSON).is_file() else b""
         second_out = Path(tempfile.mkdtemp()) / "again"
         self.assertEqual(bs.build(self.root, second_out), [])
         self.assertTrue(first)
-        self.assertEqual(first, (second_out / "search-index.json").read_bytes())
+        self.assertEqual(first, (second_out / SEARCH_INDEX_JSON).read_bytes())
 
 
 PLACEHOLDER_SOURCE = ("# Placeholders\n\nUse <field>NullBucket and keep_alive=<duration> and \"<colId>\" in a **bold** sentence.\n\n"
@@ -270,8 +278,8 @@ class ScratchPlaceholders(unittest.TestCase):
         pages = [HOME, page("ph", "Guides", "Placeholders")]
         errors, out = outcome(fsite(pages, {"ph.md": PLACEHOLDER_SOURCE}))
         self.assertEqual(errors, [])
-        path = out / "search-index.json"
-        self.assertTrue(path.is_file(), "search-index.json is not written")
+        path = out / SEARCH_INDEX_JSON
+        self.assertTrue(path.is_file(), INDEX_NOT_WRITTEN)
         text = next(e["text"] for e in json.loads(path.read_text(encoding="utf-8")) if e["slug"] == "ph")
         for placeholder in ("<field>NullBucket", "keep_alive=<duration>", '"<colId>"', "<field> in a code span"):
             self.assertIn(placeholder, text)
@@ -321,7 +329,7 @@ class ScratchTopBar(unittest.TestCase):
                 links = {i["text"].strip(): i["attrs"].get("href") for i in bar.items if i["tag"] == "a"}
                 self.assertEqual(links.get("Docs"), sidebar_order(self.pages["feature"])[0])
                 self.assertEqual(links.get("Reference"), "ref.html")
-                self.assertNotIn("aria-current", block(text, '<header class="top"', "</header>"))
+                self.assertNotIn("aria-current", block(text, TOP_HEADER, "</header>"))
 
     def test_4_the_github_link_the_search_button_and_the_theme_button_have_accessible_names_and_inline_icons(self):
         for slug, text in self.pages.items():
@@ -401,20 +409,20 @@ class RealSite(unittest.TestCase):
         self.assertEqual(self.errors, [])
 
     def test_1_both_scripts_exist_are_copied_and_linked_from_every_page(self):
-        for name in ("theme.js", "site.js"):
+        for name in (THEME_JS_NAME, SITE_JS_NAME):
             self.assertEqual((self.out / name).read_text(encoding="utf-8") if (self.out / name).is_file() else None, self.js(name))
         for slug, text in self.pages.items():
             with self.subTest(page=slug):
-                self.assertEqual(scripts_in_head(text), [{"src": "theme.js", "defer": False, "async": False},
-                                                         {"src": "site.js", "defer": True, "async": False}])
+                self.assertEqual(scripts_in_head(text), [{"src": THEME_JS_NAME, "defer": False, "async": False},
+                                                         {"src": SITE_JS_NAME, "defer": True, "async": False}])
 
     def test_1_each_script_is_at_most_30_kb_gzipped(self):
-        for name in ("theme.js", "site.js"):
+        for name in (THEME_JS_NAME, SITE_JS_NAME):
             with self.subTest(script=name):
                 self.assertLessEqual(len(gzip.compress(self.js(name).encode("utf-8"), 9)), 30 * 1024)
 
     def test_1_the_scripts_use_no_markup_sink_no_eval_no_cookie_and_no_other_host(self):
-        for name in ("theme.js", "site.js"):
+        for name in (THEME_JS_NAME, SITE_JS_NAME):
             text = self.js(name)
             for denied in DENIED_JS:
                 with self.subTest(script=name, token=denied):
@@ -423,28 +431,28 @@ class RealSite(unittest.TestCase):
                 self.assertNotRegex(text, r"(?i)https?:|[\"'`]//")
 
     def test_1_the_site_script_loads_the_index_from_its_own_host_by_a_relative_path(self):
-        self.assertIn("search-index.json", self.js("site.js"))
+        self.assertIn(SEARCH_INDEX_JSON, self.js(SITE_JS_NAME))
 
     def test_5_the_theme_script_marks_the_page_and_reads_the_choice_before_paint(self):
-        text = self.js("theme.js")
+        text = self.js(THEME_JS_NAME)
         self.assertIn("documentElement", text)
         self.assertRegex(text, r"""["']js["']""")
         self.assertIn("data-theme", text)
 
     def test_5_every_storage_access_is_in_a_try_block_and_one_key_is_used(self):
         keys: set[str] = set()
-        for name in ("theme.js", "site.js"):
+        for name in (THEME_JS_NAME, SITE_JS_NAME):
             text = self.js(name)
             for found in re.finditer("localStorage", text):
                 with self.subTest(script=name, at=found.start()):
                     self.assertTrue(inside_try(text, found.start()), "localStorage outside a try block")
             keys.update(re.findall(r"""(?:getItem|setItem|removeItem)\(\s*["']([^"']+)["']""", text))
         self.assertLessEqual(len(keys), 1)
-        self.assertGreater(len("".join(self.js(n) for n in ("theme.js", "site.js")).split("localStorage")), 1, "the choice is never stored")
+        self.assertGreater(len("".join(self.js(n) for n in (THEME_JS_NAME, SITE_JS_NAME)).split("localStorage")), 1, "the choice is never stored")
 
     def test_2_the_search_index_lists_every_page_with_plain_fields_and_is_at_most_500_kb_gzipped(self):
-        path = self.out / "search-index.json"
-        self.assertTrue(path.is_file(), "search-index.json is not written")
+        path = self.out / SEARCH_INDEX_JSON
+        self.assertTrue(path.is_file(), INDEX_NOT_WRITTEN)
         raw = path.read_bytes()
         self.assertLessEqual(len(gzip.compress(raw, 9)), 500 * 1024)
         entries = json.loads(raw)
@@ -464,8 +472,8 @@ class RealSite(unittest.TestCase):
     def test_2_two_builds_of_the_real_site_give_the_same_index_bytes(self):
         again = Path(tempfile.mkdtemp()) / "again"
         bs.build(ROOT, again)
-        self.assertTrue((self.out / "search-index.json").is_file(), "search-index.json is not written")
-        self.assertEqual((self.out / "search-index.json").read_bytes(), (again / "search-index.json").read_bytes())
+        self.assertTrue((self.out / SEARCH_INDEX_JSON).is_file(), INDEX_NOT_WRITTEN)
+        self.assertEqual((self.out / SEARCH_INDEX_JSON).read_bytes(), (again / SEARCH_INDEX_JSON).read_bytes())
 
     def test_3_every_h2_to_h4_of_every_page_has_its_anchor_and_the_toc_keeps_plain_text(self):
         for slug, text in self.pages.items():
@@ -483,7 +491,7 @@ class RealSite(unittest.TestCase):
         repo = self.config["repo"]
         for slug, text in self.pages.items():
             with self.subTest(page=slug):
-                self.assertEqual(text.count('<header class="top"'), 1)
+                self.assertEqual(text.count(TOP_HEADER), 1)
                 bar = topbar(text)
                 self.assertEqual(bar.images, 0)
                 texts = {i["text"].strip() for i in bar.items if i["tag"] == "a"}
@@ -520,9 +528,9 @@ class RealSite(unittest.TestCase):
     def test_6_the_stylesheet_hides_the_sidebar_behind_the_button_only_with_javascript_at_800px(self):
         rules = css_blocks(self.css)
         base = [body for context, selector, body in rules if context == "" and selector.strip() == ".menu-toggle"]
-        self.assertTrue(base and any(re.search(r"display\s*:\s*none", body) for body in base), ".menu-toggle must be hidden without JavaScript")
+        self.assertTrue(base and any(re.search(DISPLAY_NONE, body) for body in base), ".menu-toggle must be hidden without JavaScript")
         narrow = [(selector, body) for context, selector, body in rules if re.search(r"max-width\s*:\s*800px", context)]
-        self.assertTrue(any("html.js" in selector and ("#sidebar" in selector or ".side" in selector) and re.search(r"display\s*:\s*none", body)
+        self.assertTrue(any("html.js" in selector and ("#sidebar" in selector or ".side" in selector) and re.search(DISPLAY_NONE, body)
                             for selector, body in narrow), "html.js must hide the sidebar at 800px and narrower")
         self.assertTrue(any("html.js" in selector and ".menu-toggle" in selector and re.search(r"display\s*:\s*(?!none)", body)
                             for selector, body in narrow), "html.js must show the menu button at 800px and narrower")
@@ -533,7 +541,7 @@ class RealSite(unittest.TestCase):
             with self.subTest(button=button):
                 self.assertTrue(any(
                     any("html:not(.js)" in part and button in part for part in (x.strip() for x in selector.split(",")))
-                    and re.search(r"display\s*:\s*none", body) for _, selector, body in rules),
+                    and re.search(DISPLAY_NONE, body) for _, selector, body in rules),
                     f"{button} must be hidden by a `html:not(.js)` rule: it does nothing without a script")
 
     def test_6_tables_scroll_inside_their_own_box(self):

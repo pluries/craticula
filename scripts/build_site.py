@@ -1290,8 +1290,12 @@ class SiteBuild:
 
     def check_markup(self, page: Page, text: str) -> None:
         """DS-21: a source that holds a script element or an event-handler attribute is refused, and so are the files a split reads."""
-        sources = [(page.source, self.read(page.source)), (self.split_summaries[page.slug], self.read(self.split_summaries[page.slug]))] \
-            if page.generator == "semantics-split" else ([(page.source, text)] if page.generator is None else [])
+        sources: list[tuple[str, str]] = []
+        if page.generator == "semantics-split":
+            summaries = self.split_summaries[page.slug]
+            sources = [(page.source, self.read(page.source)), (summaries, self.read(summaries))]
+        elif page.generator is None:
+            sources = [(page.source, text)]
         for name, value in sources:
             problem = unsafe_markup(value)
             if problem:

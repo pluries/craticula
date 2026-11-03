@@ -29,10 +29,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import build_site as bs  # noqa: E402
 from test_build_site_structure import CODED, TICKET  # noqa: E402
 
+# repeated literals (SonarQube S1192)
+GRID_SCHEMA_SCHEMA_JSON = "grid-schema.schema.json"
+IR_SCHEMA_JSON = "ir.schema.json"
+COMMENT_KEYWORD = "$comment"
+
 ROOT = Path(__file__).resolve().parent.parent
 BASELINE = ROOT / "scripts" / "schema-descriptions-baseline.json"
-FILES = ("grid-schema.schema.json", "ir.schema.json")
-COUNTS = {"grid-schema.schema.json": 22, "ir.schema.json": 50}
+FILES = (GRID_SCHEMA_SCHEMA_JSON, IR_SCHEMA_JSON)
+COUNTS = {GRID_SCHEMA_SCHEMA_JSON: 22, IR_SCHEMA_JSON: 50}
 TERMINATOR = re.compile(r"[.!?](?:\s|$)")
 
 
@@ -55,7 +60,7 @@ def collect(node, pointer: str, keyword: str, found: dict) -> dict:
 
 def skeleton(node):
     if isinstance(node, dict):
-        return {k: skeleton(v) for k, v in node.items() if not (k in ("description", "$comment") and isinstance(v, str))}
+        return {k: skeleton(v) for k, v in node.items() if not (k in ("description", COMMENT_KEYWORD) and isinstance(v, str))}
     if isinstance(node, list):
         return [skeleton(v) for v in node]
     return node
@@ -89,8 +94,8 @@ class Baseline(unittest.TestCase):
         data = baseline()
         for name in FILES:
             self.assertEqual(COUNTS[name], len(data[name]["descriptions"]), name)
-        self.assertEqual(["/$defs/setValuesSpec/properties/searchPrefix"], list(data["ir.schema.json"]["comments"]))
-        self.assertEqual({}, data["grid-schema.schema.json"]["comments"])
+        self.assertEqual(["/$defs/setValuesSpec/properties/searchPrefix"], list(data[IR_SCHEMA_JSON]["comments"]))
+        self.assertEqual({}, data[GRID_SCHEMA_SCHEMA_JSON]["comments"])
         for name in FILES:
             self.assertRegex(data[name]["skeletonSha256"], r"^[0-9a-f]{64}$")
             self.assertTrue(all(text.strip() for text in data[name]["descriptions"].values()))
@@ -126,7 +131,7 @@ class SchemaFiles(unittest.TestCase):
         for name in FILES:
             original = baseline()[name]
             descriptions = collect(load(name), "", "description", {})
-            comments = collect(load(name), "", "$comment", {})
+            comments = collect(load(name), "", COMMENT_KEYWORD, {})
             for pointer, before in original["descriptions"].items():
                 with self.subTest(schema=name, member=pointer):
                     if CODED.search(before) or TICKET.search(before):
@@ -148,26 +153,26 @@ class SchemaFiles(unittest.TestCase):
 
     def test_the_comment_of_the_baseline_survives_inside_the_merged_comment(self):
         pointer = "/$defs/setValuesSpec/properties/searchPrefix"
-        kept = baseline()["ir.schema.json"]["comments"][pointer]
-        merged = collect(load("ir.schema.json"), "", "$comment", {}).get(pointer, "")
+        kept = baseline()[IR_SCHEMA_JSON]["comments"][pointer]
+        merged = collect(load(IR_SCHEMA_JSON), "", COMMENT_KEYWORD, {}).get(pointer, "")
         self.assertTrue(merged.endswith("\n\n" + kept), "the earlier comment is kept after the original description")
 
 
 class ReferencePages(unittest.TestCase):
     def test_the_reference_pages_never_show_a_comment_and_no_coded_reference_reaches_them(self):
-        pages = {"grid-schema.schema.json": "grid-schema", "ir.schema.json": "ir-schema"}
+        pages = {GRID_SCHEMA_SCHEMA_JSON: "grid-schema", IR_SCHEMA_JSON: "ir-schema"}
         for name in FILES:
             schema = load(name)
             markdown = bs.schema_reference(schema, name, pages)
             with self.subTest(schema=name):
-                for pointer, comment in collect(schema, "", "$comment", {}).items():
+                for pointer, comment in collect(schema, "", COMMENT_KEYWORD, {}).items():
                     self.assertNotIn(comment, markdown, pointer)
                 self.assertNotRegex(markdown, CODED)
                 self.assertNotRegex(markdown, TICKET)
 
     def test_the_generator_hides_a_comment_and_shows_the_description(self):
-        schema = {"title": "T", "properties": {"x": {"type": "string", "description": "A plain sentence.", "$comment": "SC-9 the original wording"}},
-                  "$defs": {"d": {"description": "Plain too.", "$comment": "GRP-1 the original", "type": "object"}}}
+        schema = {"title": "T", "properties": {"x": {"type": "string", "description": "A plain sentence.", COMMENT_KEYWORD: "SC-9 the original wording"}},
+                  "$defs": {"d": {"description": "Plain too.", COMMENT_KEYWORD: "GRP-1 the original", "type": "object"}}}
         markdown = bs.schema_reference(schema, "t.schema.json", {"t.schema.json": "t"})
         self.assertIn("A plain sentence.", markdown)
         self.assertIn("Plain too.", markdown)
@@ -190,7 +195,7 @@ class HelperGuards(unittest.TestCase):
 
     def test_the_skeleton_hash_ignores_only_string_annotations(self):
         base = {"type": "object", "description": "a", "properties": {"description": {"type": "string"}}}
-        changed = {"type": "object", "description": "b", "$comment": "c", "properties": {"description": {"type": "string"}}}
+        changed = {"type": "object", "description": "b", COMMENT_KEYWORD: "c", "properties": {"description": {"type": "string"}}}
         self.assertEqual(skeleton_hash(base), skeleton_hash(changed))
         self.assertNotEqual(skeleton_hash(base), skeleton_hash({**base, "type": "array"}))
 

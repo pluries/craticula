@@ -29,11 +29,15 @@ from test_build_site import ROOT  # noqa: E402
 from test_build_site_features import TEMPLATE, block  # noqa: E402
 from test_build_site_structure import CODED, TICKET, Anchors, built, meta_description, outcome, page, sidebar, site, strip_tags  # noqa: E402
 
+# repeated literals (SonarQube S1192)
+STEP_BY_STEP_TASKS = "Step by step tasks."
+EVERY_RULE_AND_MEMBER = "Every rule and member."
+
 HOME_TEMPLATE = ('<!doctype html><html lang="en"><head><meta charset="utf-8"><title>{{page_title}}</title>'
                  '<meta name="description" content="{{description}}">{{head_links}}</head>'
                  '<body class="home">{{topbar}}<main id="main">{{group_cards}}{{content}}</main><footer>spec {{spec_version}}</footer></body></html>')
-GROUP_TEXT = {"Concepts": "How the pieces fit together.", "Guides": "Step by step tasks.", "Configuration": "Settings and options.",
-              "Reference": "Every rule and member."}
+GROUP_TEXT = {"Concepts": "How the pieces fit together.", "Guides": STEP_BY_STEP_TASKS, "Configuration": "Settings and options.",
+              "Reference": EVERY_RULE_AND_MEMBER}
 HEX_COLOUR = re.compile(r"(?<!&)#[0-9a-fA-F]{3,8}\b")
 COLOUR_FUNCTION = re.compile(r"\b(?:rgb|rgba|hsl|hsla)\(")
 
@@ -168,26 +172,26 @@ class ScratchGroupConfig(unittest.TestCase):
     PAGES = [page("r", "Reference", "Rules"), page("a", "Guides", "First guide")]
 
     def test_2_a_non_empty_group_without_a_description_fails_the_build_naming_the_group(self):
-        for name, groups in (("missing", {"Guides": "Step by step tasks."}), ("blank", {"Guides": "Step by step tasks.", "Reference": "  "}),
-                             ("empty", {"Guides": "Step by step tasks.", "Reference": ""}), ("not a string", {"Guides": "Step by step tasks.", "Reference": 5})):
+        for name, groups in (("missing", {"Guides": STEP_BY_STEP_TASKS}), ("blank", {"Guides": STEP_BY_STEP_TASKS, "Reference": "  "}),
+                             ("empty", {"Guides": STEP_BY_STEP_TASKS, "Reference": ""}), ("not a string", {"Guides": STEP_BY_STEP_TASKS, "Reference": 5})):
             with self.subTest(case=name):
                 errors, _ = outcome(hsite(self.PAGES, groups=groups))
                 self.assertTrue(any("Reference" in message for message in errors), errors)
 
     def test_2_an_empty_group_may_go_without_a_description(self):
-        errors, _ = outcome(hsite(self.PAGES, groups={"Guides": "Step by step tasks.", "Reference": "Every rule and member."}))
+        errors, _ = outcome(hsite(self.PAGES, groups={"Guides": STEP_BY_STEP_TASKS, "Reference": EVERY_RULE_AND_MEMBER}))
         self.assertEqual(errors, [])
 
     def test_2_a_key_that_is_not_one_of_the_four_groups_fails_the_build_naming_the_key(self):
         for key in ("Concept", "Guidez", "guides", "Misc"):
             with self.subTest(key=key):
-                errors, _ = outcome(hsite(self.PAGES, groups={"Guides": "Step by step tasks.", "Reference": "Every rule and member.", key: "A group."}))
+                errors, _ = outcome(hsite(self.PAGES, groups={"Guides": STEP_BY_STEP_TASKS, "Reference": EVERY_RULE_AND_MEMBER, key: "A group."}))
                 self.assertTrue(any(key in message for message in errors), errors)
 
     def test_2_a_value_that_is_not_a_string_fails_naming_the_group_even_when_the_group_is_empty(self):
         for bad in (5, None, ["text"], {"a": "b"}, True):
             with self.subTest(value=bad):
-                errors, _ = outcome(hsite(self.PAGES, groups={"Guides": "Step by step tasks.", "Reference": "Every rule and member.", "Concepts": bad}))
+                errors, _ = outcome(hsite(self.PAGES, groups={"Guides": STEP_BY_STEP_TASKS, "Reference": EVERY_RULE_AND_MEMBER, "Concepts": bad}))
                 self.assertTrue(any("Concepts" in message for message in errors), errors)
 
     def test_2_groups_must_be_an_object_of_strings(self):
@@ -199,7 +203,7 @@ class ScratchGroupConfig(unittest.TestCase):
     def test_2_a_description_with_a_coded_reference_fails_naming_the_group(self):
         for text in ("See SEM-6 for details.", "Tracked in #1638."):
             with self.subTest(text=text):
-                errors, _ = outcome(hsite(self.PAGES, groups={"Guides": text, "Reference": "Every rule and member."}))
+                errors, _ = outcome(hsite(self.PAGES, groups={"Guides": text, "Reference": EVERY_RULE_AND_MEMBER}))
                 self.assertTrue(any("Guides" in message for message in errors), errors)
 
 

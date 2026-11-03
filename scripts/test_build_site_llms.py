@@ -43,6 +43,15 @@ from test_build_site import ROOT  # noqa: E402
 from test_build_site_features import fsite  # noqa: E402
 from test_build_site_structure import SPLIT_SLUGS, SUMMARIES, meta_description, page, sidebar  # noqa: E402
 
+# repeated literals (SonarQube S1192)
+LLMS_TXT = "llms.txt"
+SEMANTICS_MD = "semantics.md"
+SITE_SUMMARIES_JSON = "site/summaries.json"
+LLMS_FULL_TXT = "llms-full.txt"
+DOCS_X_MD = "docs/x.md"
+SITE_JSON = "site.json"
+HTML_GLOB = "*.html"
+
 PAGES = [page("index", None, "Home"), page("a", "Guides", "Alpha"), page("b", "Reference", "Beta", subgroup="Sub"), page("c", "Reference", "Gamma")]
 PROD = "https://docs.example.test/craticula"
 PREVIEW = "https://preview.example.test/pr-7"
@@ -106,36 +115,36 @@ class ScratchLlms(unittest.TestCase):
     def test_13_llms_txt_follows_the_llmstxt_shape_with_relative_links_when_no_base_address_is_given(self):
         errors, out = build_out(llms_site())
         self.assertEqual(errors, [])
-        self.assertEqual(expected_llms(out, "T", "The index page.", ""), read(out, "llms.txt"))
-        self.assertNotIn("https://", read(out, "llms.txt"))
+        self.assertEqual(expected_llms(out, "T", "The index page.", ""), read(out, LLMS_TXT))
+        self.assertNotIn("https://", read(out, LLMS_TXT))
 
     def test_13_the_summary_comes_from_site_json_when_it_names_one(self):
         errors, out = build_out(llms_site(summary="A one-sentence summary of the site."))
         self.assertEqual(errors, [])
-        self.assertEqual(expected_llms(out, "T", "A one-sentence summary of the site.", ""), read(out, "llms.txt"))
+        self.assertEqual(expected_llms(out, "T", "A one-sentence summary of the site.", ""), read(out, LLMS_TXT))
 
     def test_13_site_json_base_url_makes_the_links_absolute_and_a_trailing_slash_is_dropped(self):
         for base in (PROD, PROD + "/"):
             with self.subTest(base=base):
                 errors, out = build_out(llms_site(baseUrl=base))
                 self.assertEqual(errors, [])
-                self.assertEqual(expected_llms(out, "T", HOME_DESCRIPTION, PROD), read(out, "llms.txt"))
-                self.assertNotIn(PROD + "//", read(out, "llms.txt"))
+                self.assertEqual(expected_llms(out, "T", HOME_DESCRIPTION, PROD), read(out, LLMS_TXT))
+                self.assertNotIn(PROD + "//", read(out, LLMS_TXT))
 
     def test_13_the_base_url_argument_wins_over_site_json_and_over_nothing(self):
         errors, out = build_out(llms_site(baseUrl=PROD), base_url=PREVIEW + "/")
         self.assertEqual(errors, [])
-        text = read(out, "llms.txt")
+        text = read(out, LLMS_TXT)
         self.assertEqual(expected_llms(out, "T", HOME_DESCRIPTION, PREVIEW), text)
         self.assertNotIn(PROD, text)
         errors, out = build_out(llms_site(), base_url=PREVIEW)
-        self.assertEqual(expected_llms(out, "T", HOME_DESCRIPTION, PREVIEW), read(out, "llms.txt"))
+        self.assertEqual(expected_llms(out, "T", HOME_DESCRIPTION, PREVIEW), read(out, LLMS_TXT))
 
     def test_13_the_command_line_flag_reaches_the_build(self):
         root = llms_site(baseUrl=PROD)
         code, err = run_cli_with(root, ["--base-url", PREVIEW])
         self.assertEqual((0, ""), (code, err), err)
-        self.assertIn(f"]({PREVIEW}/a.md)", read(root / "_out", "llms.txt"))
+        self.assertIn(f"]({PREVIEW}/a.md)", read(root / "_out", LLMS_TXT))
 
     def test_13_a_base_url_that_is_not_an_https_address_is_a_configuration_error(self):
         bad = (f"{PLAIN_SCHEME}://{BAD_HOST}", f"{FILE_TRANSFER_SCHEME}://{BAD_HOST}", BAD_HOST, "https://", "https:///x", f"https://{BAD_HOST}/?a=1",
@@ -158,24 +167,24 @@ class ScratchLlms(unittest.TestCase):
     def test_13_every_page_is_listed_exactly_once_and_only_non_empty_groups_have_a_section(self):
         errors, out = build_out(llms_site())
         self.assertEqual(errors, [])
-        text = read(out, "llms.txt")
+        text = read(out, LLMS_TXT)
         slugs = re.findall(r"\]\(([a-z0-9-]+)\.md\)", text)
-        self.assertEqual(sorted(slugs), sorted(p.stem for p in out.glob("*.html")))
+        self.assertEqual(sorted(slugs), sorted(p.stem for p in out.glob(HTML_GLOB)))
         self.assertEqual(re.findall(r"(?m)^## (.+)$", text), ["Home", "Guides", "Reference"])
         self.assertEqual(1, text.count("](index.md)"))
 
     def test_13_llms_full_holds_every_title_and_text_home_first_then_in_sidebar_order(self):
         errors, out = build_out(llms_site())
         self.assertEqual(errors, [])
-        self.assertEqual(expected_full(out), read(out, "llms-full.txt"))
+        self.assertEqual(expected_full(out), read(out, LLMS_FULL_TXT))
 
     def test_13_split_pages_are_listed_in_the_reference_section_in_place(self):
-        files = {"semantics.md": "# Semantics\n\nIntro.\n\n## SEM-1. Case sensitivity\n\nBody one.\n", "site/summaries.json": json.dumps({"SEM-1": SUMMARIES["SEM-1"]})}
-        split = {"slug": "semantics", "title": "Semantics", "source": "semantics.md", "generator": "semantics-split",
-                 "summaries": "site/summaries.json", "group": "Reference", "description": "The rules behind the output."}
+        files = {SEMANTICS_MD: "# Semantics\n\nIntro.\n\n## SEM-1. Case sensitivity\n\nBody one.\n", SITE_SUMMARIES_JSON: json.dumps({"SEM-1": SUMMARIES["SEM-1"]})}
+        split = {"slug": "semantics", "title": "Semantics", "source": SEMANTICS_MD, "generator": "semantics-split",
+                 "summaries": SITE_SUMMARIES_JSON, "group": "Reference", "description": "The rules behind the output."}
         errors, out = build_out(llms_site([PAGES[0], PAGES[1], split], files))
         self.assertEqual(errors, [])
-        text = read(out, "llms.txt")
+        text = read(out, LLMS_TXT)
         self.assertEqual(expected_llms(out, "T", HOME_DESCRIPTION, ""), text)
         self.assertIn(f"- [Case rules](case-rules.md): {SUMMARIES['SEM-1']['description']}", text)
         self.assertEqual(1, text.count("](semantics.md)"))
@@ -213,22 +222,22 @@ class ScratchMarkdownPages(unittest.TestCase):
         self.assertNotIn("{{", text)
 
     def test_14_split_semantics_pages_have_their_own_markdown_with_title_and_summary(self):
-        files = {"semantics.md": "# Semantics\n\nIntro.\n\n## SEM-1. Case sensitivity\n\nBody one.\n", "site/summaries.json": json.dumps({"SEM-1": SUMMARIES["SEM-1"]})}
-        split = {"slug": "semantics", "title": "Semantics", "source": "semantics.md", "generator": "semantics-split",
-                 "summaries": "site/summaries.json", "group": "Reference", "description": "The rules behind the output."}
+        files = {SEMANTICS_MD: "# Semantics\n\nIntro.\n\n## SEM-1. Case sensitivity\n\nBody one.\n", SITE_SUMMARIES_JSON: json.dumps({"SEM-1": SUMMARIES["SEM-1"]})}
+        split = {"slug": "semantics", "title": "Semantics", "source": SEMANTICS_MD, "generator": "semantics-split",
+                 "summaries": SITE_SUMMARIES_JSON, "group": "Reference", "description": "The rules behind the output."}
         errors, out = build_out(llms_site([PAGES[0], PAGES[1], split], files))
         self.assertEqual(errors, [])
         part = read(out, f"{SPLIT_SLUGS['SEM-1']}.md")
         for needle in ("# Case rules", SUMMARIES["SEM-1"]["summary"], "Body one."):
             self.assertIn(needle, part)
-        index = read(out, "semantics.md")
+        index = read(out, SEMANTICS_MD)
         self.assertIn("# Semantics", index)
         self.assertIn(SUMMARIES["SEM-1"]["summary"], index)
 
     def test_14_every_html_page_has_a_markdown_file_and_the_other_way_round(self):
         errors, out = build_out(llms_site())
         self.assertEqual(errors, [])
-        self.assertEqual(sorted(p.stem for p in out.glob("*.html")), sorted(p.stem for p in out.glob("*.md")))
+        self.assertEqual(sorted(p.stem for p in out.glob(HTML_GLOB)), sorted(p.stem for p in out.glob("*.md")))
 
 
 class ScratchOutputsAreStableAndClean(unittest.TestCase):
@@ -239,7 +248,7 @@ class ScratchOutputsAreStableAndClean(unittest.TestCase):
         _, first = build_out(root)
         second = Path(tempfile.mkdtemp()) / "again"
         self.assertEqual(bs.build(root, second), [])
-        names = ["llms.txt", "llms-full.txt", *(p.name for p in sorted(first.glob("*.md")))]
+        names = [LLMS_TXT, LLMS_FULL_TXT, *(p.name for p in sorted(first.glob("*.md")))]
         self.assertEqual(["a.md", "b.md", "c.md", "index.md"], sorted(n for n in names if n.endswith(".md")))
         for name in names:
             self.assertEqual((first / name).read_bytes(), (second / name).read_bytes(), name)
@@ -249,24 +258,24 @@ class ScratchOutputsAreStableAndClean(unittest.TestCase):
         _, out = build_out(root)
         (out / "ghost.md").write_text("# left over\n", encoding="utf-8")
         self.assertTrue((out / "c.md").is_file())
-        config = json.loads((root / "site" / "site.json").read_text(encoding="utf-8"))
+        config = json.loads((root / "site" / SITE_JSON).read_text(encoding="utf-8"))
         config["pages"] = [p for p in config["pages"] if p["slug"] != "c"]
-        (root / "site" / "site.json").write_text(json.dumps(config), encoding="utf-8")
+        (root / "site" / SITE_JSON).write_text(json.dumps(config), encoding="utf-8")
         self.assertEqual(bs.build(root, out), [])
         self.assertFalse((out / "c.md").exists())
         self.assertFalse((out / "ghost.md").exists())
-        self.assertNotIn("](c.md)", read(out, "llms.txt"))
-        self.assertNotIn("c.md", read(out, "llms-full.txt"))
+        self.assertNotIn("](c.md)", read(out, LLMS_TXT))
+        self.assertNotIn("c.md", read(out, LLMS_FULL_TXT))
 
     def test_6_a_source_under_a_private_path_is_still_refused_and_no_output_names_it(self):
-        pages = [PAGES[0], page("secret", "Guides", source="docs/x.md")]
-        root = llms_site(pages, {"docs/x.md": "# Secret\n"})
+        pages = [PAGES[0], page("secret", "Guides", source=DOCS_X_MD)]
+        root = llms_site(pages, {DOCS_X_MD: "# Secret\n"})
         with self.assertRaises(bs.BuildError):
             bs.build(root, root / "_out")
-        root = llms_site(files={"a.md": "# A\n\n{{include docs/x.md text}}\n", "docs/x.md": "private\n"})
+        root = llms_site(files={"a.md": "# A\n\n{{include docs/x.md text}}\n", DOCS_X_MD: "private\n"})
         with self.assertRaises(bs.BuildError):
             bs.build(root, root / "_out")
-        for name in ("llms.txt", "llms-full.txt", "a.md"):
+        for name in (LLMS_TXT, LLMS_FULL_TXT, "a.md"):
             self.assertFalse((root / "_out" / name).exists() and "private" in (root / "_out" / name).read_text(encoding="utf-8"), name)
 
 
@@ -284,9 +293,9 @@ class RealSite(unittest.TestCase):
     def setUpClass(cls):
         cls.out = Path(tempfile.mkdtemp()) / "out"
         cls.errors = bs.build(ROOT, cls.out)
-        cls.config = json.loads((ROOT / "site" / "site.json").read_text(encoding="utf-8"))
+        cls.config = json.loads((ROOT / "site" / SITE_JSON).read_text(encoding="utf-8"))
         cls.base = cls.config.get("baseUrl", "")
-        cls.pages = sorted(p.stem for p in cls.out.glob("*.html"))
+        cls.pages = sorted(p.stem for p in cls.out.glob(HTML_GLOB))
 
     def test_the_real_sources_still_build_without_errors(self):
         self.assertEqual(self.errors, [])
@@ -301,10 +310,10 @@ class RealSite(unittest.TestCase):
         home = next(p for p in self.config["pages"] if p["slug"] == "index")
         summary = self.config.get("summary", home["description"])
         docs_page = next(slug for slug in self.pages if slug != "index")
-        self.assertEqual(expected_llms(self.out, title, summary, self.base, home["title"], docs_page), read(self.out, "llms.txt"))
+        self.assertEqual(expected_llms(self.out, title, summary, self.base, home["title"], docs_page), read(self.out, LLMS_TXT))
 
     def test_13_every_built_page_is_listed_once_in_llms_txt_and_has_a_markdown_file(self):
-        text = read(self.out, "llms.txt")
+        text = read(self.out, LLMS_TXT)
         listed = re.findall(r"\]\(" + re.escape(self.base) + r"/([a-z0-9-]+)\.md\)", text)
         self.assertEqual(sorted(listed), self.pages)
         self.assertEqual(self.pages, sorted(p.stem for p in self.out.glob("*.md")))
@@ -314,13 +323,13 @@ class RealSite(unittest.TestCase):
     def test_13_llms_full_holds_each_page_in_the_agreed_blocks(self):
         docs_page = next(slug for slug in self.pages if slug != "index")
         home_title = next(p["title"] for p in self.config["pages"] if p["slug"] == "index")
-        self.assertEqual(expected_full(self.out, home_title, docs_page), read(self.out, "llms-full.txt"))
+        self.assertEqual(expected_full(self.out, home_title, docs_page), read(self.out, LLMS_FULL_TXT))
 
     def test_13_a_preview_build_never_points_at_the_production_host(self):
         self.assertTrue(self.base, "site.json has no baseUrl")
         out = Path(tempfile.mkdtemp()) / "preview"
         self.assertEqual(bs.build(ROOT, out, base_url=PREVIEW), [])
-        text = read(out, "llms.txt")
+        text = read(out, LLMS_TXT)
         self.assertNotIn(self.base, text)
         self.assertEqual(len(self.pages), text.count(f"]({PREVIEW}/"))
 
@@ -348,7 +357,7 @@ class RealSite(unittest.TestCase):
     def test_6_no_output_links_into_a_private_path_holds_a_private_host_or_a_credential(self):
         # Public pages may name a private folder in prose (the README layout, "see docs/TRD-..." in a schema description): those sentences
         # already stand in the public README and spec. What DSN-6 forbids is a link into the private part, a private host or a credential.
-        outputs = ["llms.txt", "llms-full.txt", *(f"{slug}.md" for slug in self.pages)]
+        outputs = [LLMS_TXT, LLMS_FULL_TXT, *(f"{slug}.md" for slug in self.pages)]
         for name in outputs:
             text = read(self.out, name)
             with self.subTest(output=name):
@@ -357,7 +366,7 @@ class RealSite(unittest.TestCase):
                     self.assertNotIn(token, text)
 
     def test_6_llms_txt_lists_only_the_built_pages_and_names_no_private_path_at_all(self):
-        text = read(self.out, "llms.txt")
+        text = read(self.out, LLMS_TXT)
         for entry in bs.PRIVATE_PATHS:
             self.assertNotIn(entry if "." in Path(entry).name else entry + "/", text)
         targets = re.findall(r"\]\(([^)\s]+)\)", text)
@@ -365,13 +374,13 @@ class RealSite(unittest.TestCase):
 
     def test_6_the_link_scan_itself_finds_a_private_target(self):
         sample = "[a](docs/x.md) [b](../../.claude/rules/y.md#z) [c](https://github.com/o/r/blob/main/jenkins/release.Jenkinsfile) [d](README.md)"
-        self.assertEqual(["docs/x.md", "../../.claude/rules/y.md#z", "https://github.com/o/r/blob/main/jenkins/release.Jenkinsfile"],
+        self.assertEqual([DOCS_X_MD, "../../.claude/rules/y.md#z", "https://github.com/o/r/blob/main/jenkins/release.Jenkinsfile"],
                          self.private_link_targets(sample))
 
     def test_6_two_builds_of_the_real_site_give_identical_bytes(self):
         again = Path(tempfile.mkdtemp()) / "again"
         bs.build(ROOT, again)
-        for name in ("llms.txt", "llms-full.txt", "index.md", "overview.md"):
+        for name in (LLMS_TXT, LLMS_FULL_TXT, "index.md", "overview.md"):
             self.assertEqual(read(self.out, name).encode(), read(again, name).encode(), name)
 
 

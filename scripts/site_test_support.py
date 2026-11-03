@@ -16,6 +16,9 @@ import build_site as bs  # noqa: E402
 from test_build_site import ROOT  # noqa: E402
 from test_build_site_structure import CODED, TICKET  # noqa: E402
 
+# repeated literals (SonarQube S1192)
+HTML_SUFFIX = ".html"
+
 PAGES_DIR = ROOT / "site" / "pages"
 FAKE_REVIEW = "2026-11-03"   # a date for the scratch builds only: the maker's real review date is not invented here
 # "There is no live demo site" is an honest denial that the pages may keep, so the claims are the affirmative phrases.
@@ -136,8 +139,8 @@ class EditorialMixin:
                     path = target.partition("#")[0]
                     if SCHEME.match(target) or not path:
                         continue
-                    if path.endswith(".html") and "/" not in path:
-                        self.assertIn(path.removesuffix(".html"), pages)
+                    if path.endswith(HTML_SUFFIX) and "/" not in path:
+                        self.assertIn(path.removesuffix(HTML_SUFFIX), pages)
                     else:
                         resolved = Path(os.path.normpath(PAGES_DIR / path))
                         self.assertTrue(resolved.exists(), f"{target} does not exist")
@@ -149,6 +152,6 @@ class EditorialMixin:
                 section = where_it_comes_from(text_of(slug))
                 self.assertTrue(section, "no 'Where this comes from' section")
                 self.assertEqual(1, section.count("\n## "), "it is the last level-2 section")
-                files = [t for t in LINK.findall(section) if not SCHEME.match(t) and not t.endswith(".html")]
+                files = [t for t in LINK.findall(section) if not SCHEME.match(t) and not t.endswith(HTML_SUFFIX)]
                 existing = [t for t in files if Path(os.path.normpath(PAGES_DIR / t.partition("#")[0])).is_file()]
                 self.assertTrue(existing, f"no existing repository file linked in {section[:80]!r}")

@@ -18,6 +18,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import build_site as bs  # noqa: E402
 from test_build_site import ROOT, make_repo  # noqa: E402
 
+# repeated literals (SonarQube S1192)
+AGGREGATION_SEMANTICS = "aggregation semantics"
+SEMANTICS_MD = "semantics.md"
+SITE_SUMMARIES_JSON = "site/summaries.json"
+THE_RULES_BEHIND_THE_OUTPUT = "The rules behind the output."
+INDEX_MD = "index.md"
+FAVICON_SVG = "favicon.svg"
+FAVICON_ICO = "favicon.ico"
+APPLE_TOUCH_ICON_PNG = "apple-touch-icon.png"
+XMLNS_ATTRIBUTE = 'xmlns(?::\\w+)?="[^"]*"'
+HTML_GLOB = "*.html"
+BETA_HTML = "beta.html"
+BAD_MD = "bad.md"
+
 TEMPLATE = ('<!doctype html><html><head>{{head_links}}<meta name="description" content="{{description}}"><title>{{page_title}}</title></head>'
             '<body><aside>{{sidebar}}</aside><nav class="toc">{{toc}}</nav><main>{{content}}</main>{{prev_next}}'
             '<footer>spec {{spec_version}}</footer></body></html>')
@@ -33,9 +47,9 @@ SEM_SOURCE = ("# Semantics\n\nIntro.\n\n"
 SUMMARIES = {
     "SEM-1": {"title": "Case rules", "description": "How text compares.", "summary": "Text compares without case by default. Opt in to case sensitive. That is all."},
     "SEM-2": {"title": "Null rules", "description": "How nulls behave.", "summary": "A null matches nothing. Sorting puts it last."},
-    "aggregation semantics": {"title": "Aggregation rules", "description": "How sums work.", "summary": "Sums skip nulls."},
+    AGGREGATION_SEMANTICS: {"title": "Aggregation rules", "description": "How sums work.", "summary": "Sums skip nulls."},
 }
-SPLIT_SLUGS = {"SEM-1": "case-rules", "SEM-2": "null-rules", "aggregation semantics": "aggregation-rules"}
+SPLIT_SLUGS = {"SEM-1": "case-rules", "SEM-2": "null-rules", AGGREGATION_SEMANTICS: "aggregation-rules"}
 
 
 def page(slug: str, group: str | None, title: str | None = None, **extra) -> dict:
@@ -49,8 +63,8 @@ HOME = page("index", "Guides", "Home")  # accepted by the current build; the pag
 
 
 def split_page() -> dict:
-    return {"slug": "semantics", "title": "Semantics", "source": "semantics.md", "generator": "semantics-split",
-            "summaries": "site/summaries.json", "group": "Reference", "description": "The rules behind the output."}
+    return {"slug": "semantics", "title": "Semantics", "source": SEMANTICS_MD, "generator": "semantics-split",
+            "summaries": SITE_SUMMARIES_JSON, "group": "Reference", "description": THE_RULES_BEHIND_THE_OUTPUT}
 
 
 def site(pages: list[dict], files: dict[str, str] | None = None, **extra) -> Path:
@@ -60,9 +74,9 @@ def site(pages: list[dict], files: dict[str, str] | None = None, **extra) -> Pat
 
 
 def split_site(summaries: dict | None = None, index_source: str | None = None, files: dict[str, str] | None = None) -> Path:
-    extra_files = {"semantics.md": SEM_SOURCE, "site/summaries.json": json.dumps(SUMMARIES if summaries is None else summaries), **(files or {})}
+    extra_files = {SEMANTICS_MD: SEM_SOURCE, SITE_SUMMARIES_JSON: json.dumps(SUMMARIES if summaries is None else summaries), **(files or {})}
     if index_source is not None:
-        extra_files["index.md"] = index_source
+        extra_files[INDEX_MD] = index_source
     return site([HOME, split_page()], extra_files)
 
 
@@ -78,7 +92,7 @@ def outcome(root: Path) -> tuple[list[str], Path]:
 def built(root: Path) -> dict[str, str]:
     errors, out = outcome(root)
     assert errors == [], errors
-    return {f.stem: f.read_text(encoding="utf-8") for f in out.glob("*.html")}
+    return {f.stem: f.read_text(encoding="utf-8") for f in out.glob(HTML_GLOB)}
 
 
 class Tags(HTMLParser):
@@ -278,13 +292,13 @@ class Sidebar(unittest.TestCase):
 
     def test_T1_each_page_is_listed_once_and_the_home_page_is_not_listed(self):
         order = sidebar_order(built(site(self.PAGES))["alpha"])
-        self.assertEqual(sorted(order), ["alpha.html", "beta.html", "delta.html", "epsilon.html", "gamma.html"])
+        self.assertEqual(sorted(order), ["alpha.html", BETA_HTML, "delta.html", "epsilon.html", "gamma.html"])
         self.assertNotIn("index.html", order)
 
     def test_T1_a_subgroup_nests_its_pages_one_level_under_the_group(self):
         paths = {href: path for path, href, _, _ in sidebar(built(site(self.PAGES))["alpha"]).links}
         self.assertEqual(paths["alpha.html"], ("Guides",))
-        self.assertEqual(paths["beta.html"], ("Guides", "Setup"))
+        self.assertEqual(paths[BETA_HTML], ("Guides", "Setup"))
         self.assertEqual(paths["delta.html"], ("Reference", "Semantics"))
         self.assertEqual(paths["epsilon.html"], ("Reference", "Semantics"))
         self.assertEqual(paths["gamma.html"], ("Reference",))
@@ -293,7 +307,7 @@ class Sidebar(unittest.TestCase):
         pages = built(site(self.PAGES))
         side = sidebar(pages["beta"])
         current = [href for _, href, _, is_current in side.links if is_current]
-        self.assertEqual(current, ["beta.html"])
+        self.assertEqual(current, [BETA_HTML])
         self.assertTrue(side.open.get(("Guides",)))
         self.assertTrue(side.open.get(("Guides", "Setup")))
         self.assertFalse(side.open.get(("Reference",), False))
@@ -383,7 +397,7 @@ class SemanticsSplit(unittest.TestCase):
         pages = built(split_site())
         for key, slug in SPLIT_SLUGS.items():
             with self.subTest(section=key):
-                body_marker = {"SEM-1": "Body one.", "SEM-2": "Body two.", "aggregation semantics": "Body three."}[key]
+                body_marker = {"SEM-1": "Body one.", "SEM-2": "Body two.", AGGREGATION_SEMANTICS: "Body three."}[key]
                 self.assertLess(pages[slug].index(SUMMARIES[key]["summary"]), pages[slug].index(body_marker))
                 self.assertEqual(meta_description(pages[slug]), SUMMARIES[key]["description"])
 
@@ -398,7 +412,7 @@ class SemanticsSplit(unittest.TestCase):
             with self.subTest(section=key):
                 self.assertIn(f'href="{slug}.html"', pages["semantics"])
                 self.assertIn(SUMMARIES[key]["summary"], pages["semantics"])
-        self.assertEqual(meta_description(pages["semantics"]), "The rules behind the output.")
+        self.assertEqual(meta_description(pages["semantics"]), THE_RULES_BEHIND_THE_OUTPUT)
 
     def test_T3_the_sidebar_lists_the_split_pages_in_the_semantics_subgroup_of_reference(self):
         side = sidebar(built(split_site())["semantics"])
@@ -446,7 +460,7 @@ class LinkRemap(unittest.TestCase):
         for link in ("semantics.html#nope", "semantics.md#nope"):
             with self.subTest(link=link):
                 errors, _ = outcome(split_site(index_source=f"# Home\n\n[x]({link})\n"))
-                self.assertTrue(any("index.md" in message and "nope" in message for message in errors), errors)
+                self.assertTrue(any(INDEX_MD in message and "nope" in message for message in errors), errors)
 
 
 class Footer(unittest.TestCase):
@@ -468,13 +482,13 @@ class Favicon(unittest.TestCase):
 
     def test_T6_the_build_writes_a_svg_a_32_pixel_ico_and_a_180_pixel_touch_icon(self):
         self.assertEqual(self.errors, [])
-        for name in ("favicon.svg", "favicon.ico", "apple-touch-icon.png"):
+        for name in (FAVICON_SVG, FAVICON_ICO, APPLE_TOUCH_ICON_PNG):
             self.assertTrue((self.out / name).is_file(), f"{name} is not written")
-        svg = (self.out / "favicon.svg").read_text(encoding="utf-8")
+        svg = (self.out / FAVICON_SVG).read_text(encoding="utf-8")
         self.assertTrue(svg.lstrip().startswith("<svg"))
-        icon = (self.out / "apple-touch-icon.png").read_bytes()
+        icon = (self.out / APPLE_TOUCH_ICON_PNG).read_bytes()
         self.assertEqual(decode_png(icon), (180, 180, True, True))
-        entries = read_ico((self.out / "favicon.ico").read_bytes())
+        entries = read_ico((self.out / FAVICON_ICO).read_bytes())
         self.assertEqual([(w, h) for w, h, _ in entries], [(32, 32)])
         data = entries[0][2]
         if data[:8] == PNG_SIGNATURE:
@@ -484,27 +498,27 @@ class Favicon(unittest.TestCase):
             self.assertEqual((width, double_height), (32, 64))
 
     def test_T6_every_page_links_the_svg_and_the_touch_icon_in_its_head(self):
-        pages = {f.stem: f.read_text(encoding="utf-8") for f in self.out.glob("*.html")}
+        pages = {f.stem: f.read_text(encoding="utf-8") for f in self.out.glob(HTML_GLOB)}
         self.assertEqual(sorted(pages), ["a", "index"])
         for slug, text in pages.items():
             with self.subTest(page=slug):
                 links = head_links(text)
-                svg = [tag for tag in links if tag.get("rel") == "icon" and tag.get("href") == "favicon.svg"]
-                touch = [tag for tag in links if tag.get("rel") == "apple-touch-icon" and tag.get("href") == "apple-touch-icon.png"]
+                svg = [tag for tag in links if tag.get("rel") == "icon" and tag.get("href") == FAVICON_SVG]
+                touch = [tag for tag in links if tag.get("rel") == "apple-touch-icon" and tag.get("href") == APPLE_TOUCH_ICON_PNG]
                 self.assertEqual(len(svg), 1)
                 self.assertEqual(svg[0].get("type"), "image/svg+xml")
                 self.assertEqual(len(touch), 1)
 
     def assert_file_names_no_other_host(self, file: Path, text: str):
         if file.suffix == ".svg":
-            self.assertNotIn("http", re.sub(r'xmlns(?::\w+)?="[^"]*"', "", text), file.name)
+            self.assertNotIn("http", re.sub(XMLNS_ATTRIBUTE, "", text), file.name)
         if file.suffix == ".css":
             self.assertNotIn("@import", text)
             self.assertNotIn("url(http", text)
 
     def assert_tags_name_no_other_host(self, file: Path, text: str):
         tags = Tags()
-        tags.feed(re.sub(r'xmlns(?::\w+)?="[^"]*"', "", text) if file.suffix == ".svg" else text)
+        tags.feed(re.sub(XMLNS_ATTRIBUTE, "", text) if file.suffix == ".svg" else text)
         for tag, attrs in tags.tags:
             if tag == "a":
                 continue
@@ -512,7 +526,7 @@ class Favicon(unittest.TestCase):
                 self.assertNotRegex(attrs.get(name, ""), r"(?i)^\s*(?:[a-z][a-z0-9+.-]*:|//)", f"{file.name}: <{tag} {name}>")
 
     def test_T10_nothing_built_loads_from_another_host(self):
-        self.assertTrue((self.out / "favicon.svg").is_file(), "favicon.svg is not written")
+        self.assertTrue((self.out / FAVICON_SVG).is_file(), "favicon.svg is not written")
         files = [f for f in sorted(self.out.rglob("*")) if f.is_file() and f.suffix in (".html", ".css", ".svg")]
         for file in files:
             text = file.read_text(encoding="utf-8")
@@ -553,8 +567,8 @@ class Refusals(unittest.TestCase):
                        "[x](javascript:alert(1))", "[x](JaVaScRiPt:alert(1))")
         for source in bad_sources:
             with self.subTest(source=source):
-                errors = self.with_index(page("bad", "Guides"), {"bad.md": f"# Bad\n\n{source}\n"})
-                self.assertTrue(any("bad.md" in message for message in errors), errors)
+                errors = self.with_index(page("bad", "Guides"), {BAD_MD: f"# Bad\n\n{source}\n"})
+                self.assertTrue(any(BAD_MD in message for message in errors), errors)
 
     def test_T8_prose_that_names_a_handler_without_using_one_builds(self):
         self.assertEqual(self.with_index(page("prose", "Guides"), {"prose.md": "# Prose\n\nThe error handler runs when a request fails.\n"}), [])
@@ -610,8 +624,8 @@ def review_site(source: str = REVIEW_SOURCE, summaries: dict | None = None, inde
     """A split site whose semantics source sits at spec/semantics.md, like the real one."""
     generated = {**split_page(), "source": "spec/semantics.md"}
     return site([HOME, generated, *(extra_pages or [])],
-                {"spec/semantics.md": source, "site/summaries.json": json.dumps(REVIEW_SUMMARIES if summaries is None else summaries),
-                 "index.md": index_source, **(files or {})})
+                {"spec/semantics.md": source, SITE_SUMMARIES_JSON: json.dumps(REVIEW_SUMMARIES if summaries is None else summaries),
+                 INDEX_MD: index_source, **(files or {})})
 
 
 def link_targets(page_html: str) -> dict[str, str]:
@@ -632,7 +646,7 @@ class SplitLinkAnchors(unittest.TestCase):
         root = review_site(index_source="# Home\n\n" + "\n\n".join(rows) + "\n", extra_pages=[guide],
                            files={"a/b/guide.md": f"# Guide\n\n[nested:{anchor}](../../spec/semantics.md#{anchor})\n"})
         errors, out = outcome(root)
-        pages = {f.stem: f.read_text(encoding="utf-8") for f in out.glob("*.html")}
+        pages = {f.stem: f.read_text(encoding="utf-8") for f in out.glob(HTML_GLOB)}
         return errors, {**link_targets(pages.get("index", "")), **link_targets(pages.get("guide", ""))}, pages
 
     def assert_lands_on(self, anchor: str, slug: str, exact: str | None = None):
@@ -687,7 +701,7 @@ class SplitPreface(unittest.TestCase):
 
     def test_C_the_preface_follows_the_description_and_comes_before_the_part_list(self):
         main = fragment(built(review_site())["semantics"], "<main", "</main>")
-        description, preface, first_part = main.find("The rules behind the output."), main.find("Preface paragraph here."), main.find('href="deterministic-paging.html"')
+        description, preface, first_part = main.find(THE_RULES_BEHIND_THE_OUTPUT), main.find("Preface paragraph here."), main.find('href="deterministic-paging.html"')
         self.assertGreaterEqual(description, 0)
         self.assertGreater(preface, description)
         self.assertGreater(first_part, preface)
@@ -701,14 +715,14 @@ class UnsafeMarkupEverywhere(unittest.TestCase):
     def test_D_a_page_source_with_a_glued_handler_fails_naming_the_file(self):
         for markup in self.BAD:
             with self.subTest(markup=markup):
-                errors = outcome(site([HOME, page("bad", "Guides")], {"bad.md": f"# Bad\n\n{markup}\n"}))[0]
-                self.assertTrue(any("bad.md" in message for message in errors), errors)
+                errors = outcome(site([HOME, page("bad", "Guides")], {BAD_MD: f"# Bad\n\n{markup}\n"}))[0]
+                self.assertTrue(any(BAD_MD in message for message in errors), errors)
 
     def test_D_the_semantics_source_with_a_glued_handler_fails_naming_the_file(self):
         for markup in self.BAD:
             with self.subTest(markup=markup):
                 errors = outcome(review_site(REVIEW_SOURCE + f"\n{markup}\n"))[0]
-                self.assertTrue(any("semantics.md" in message for message in errors), errors)
+                self.assertTrue(any(SEMANTICS_MD in message for message in errors), errors)
 
     def test_D_a_summaries_value_with_markup_fails_naming_the_file(self):
         for markup in self.BAD:
@@ -755,7 +769,7 @@ class RealSite(unittest.TestCase):
     def setUpClass(cls):
         cls.out = Path(tempfile.mkdtemp()) / "out"
         cls.errors = bs.build(ROOT, cls.out)
-        cls.pages = {f.stem: f.read_text(encoding="utf-8") for f in cls.out.glob("*.html")}
+        cls.pages = {f.stem: f.read_text(encoding="utf-8") for f in cls.out.glob(HTML_GLOB)}
         cls.config = json.loads((ROOT / "site" / "site.json").read_text(encoding="utf-8"))
 
     def split_links(self) -> list[tuple[tuple[str, ...], str, str, bool]]:
@@ -765,7 +779,7 @@ class RealSite(unittest.TestCase):
         self.assertEqual(self.errors, [])
 
     def test_T3_semantics_is_split_into_16_pages_with_plain_titles(self):
-        sections = [line for line in (ROOT / "spec" / "semantics.md").read_text(encoding="utf-8").splitlines() if line.startswith("## ")]
+        sections = [line for line in (ROOT / "spec" / SEMANTICS_MD).read_text(encoding="utf-8").splitlines() if line.startswith("## ")]
         self.assertEqual(len(sections), 16)
         links = self.split_links()
         self.assertEqual(len(links), 16)
@@ -792,7 +806,7 @@ class RealSite(unittest.TestCase):
 
     def test_T3_the_rule_index_page_is_gone_and_every_rule_anchor_is_reachable(self):
         self.assertNotIn("rules", self.pages)
-        definitions = bs.rule_definitions((ROOT / "spec" / "semantics.md").read_text(encoding="utf-8"))
+        definitions = bs.rule_definitions((ROOT / "spec" / SEMANTICS_MD).read_text(encoding="utf-8"))
         everything = "".join(self.pages.values())
         self.assertEqual([rule for rule in definitions if f'id="{bs.rule_anchor(rule)}"' not in everything], [])
 
@@ -855,20 +869,20 @@ class RealSite(unittest.TestCase):
                 self.assertNotIn("drift", plain)
 
     def test_T6_the_favicon_files_decode_and_every_page_links_them(self):
-        for name in ("favicon.svg", "favicon.ico", "apple-touch-icon.png"):
+        for name in (FAVICON_SVG, FAVICON_ICO, APPLE_TOUCH_ICON_PNG):
             self.assertTrue((self.out / name).is_file(), f"{name} is not written")
-        self.assertEqual(decode_png((self.out / "apple-touch-icon.png").read_bytes()), (180, 180, True, True))
-        self.assertEqual([(w, h) for w, h, _ in read_ico((self.out / "favicon.ico").read_bytes())], [(32, 32)])
-        self.assertTrue((self.out / "favicon.svg").read_text(encoding="utf-8").lstrip().startswith("<svg"))
+        self.assertEqual(decode_png((self.out / APPLE_TOUCH_ICON_PNG).read_bytes()), (180, 180, True, True))
+        self.assertEqual([(w, h) for w, h, _ in read_ico((self.out / FAVICON_ICO).read_bytes())], [(32, 32)])
+        self.assertTrue((self.out / FAVICON_SVG).read_text(encoding="utf-8").lstrip().startswith("<svg"))
         for slug, text in self.pages.items():
             with self.subTest(page=slug):
                 hrefs = [(tag.get("rel"), tag.get("href")) for tag in head_links(text)]
-                self.assertIn(("icon", "favicon.svg"), hrefs)
-                self.assertIn(("apple-touch-icon", "apple-touch-icon.png"), hrefs)
+                self.assertIn(("icon", FAVICON_SVG), hrefs)
+                self.assertIn(("apple-touch-icon", APPLE_TOUCH_ICON_PNG), hrefs)
 
     def test_T10_the_favicon_svg_loads_nothing_from_another_host(self):
-        self.assertTrue((self.out / "favicon.svg").is_file(), "favicon.svg is not written")
-        text = re.sub(r'xmlns(?::\w+)?="[^"]*"', "", (self.out / "favicon.svg").read_text(encoding="utf-8"))
+        self.assertTrue((self.out / FAVICON_SVG).is_file(), "favicon.svg is not written")
+        text = re.sub(XMLNS_ATTRIBUTE, "", (self.out / FAVICON_SVG).read_text(encoding="utf-8"))
         self.assertNotIn("http", text)
 
 
