@@ -2,33 +2,39 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.pluries.dev/craticula/v1/ir.schema.json",
   "title": "Craticula IR Document",
-  "description": "Canonical, vendor-neutral intermediate representation (IR) for a grid query: filter tree + sort + group + aggregation + page spec (see docs/TRD-grid-query-compiler.md AR-2 layer 2, AR-5..AR-9). This is the language-neutral source of truth (AR-1) — language implementations conform to this document, never the reverse. It is a structural contract only: resource limits (max depth, max leaves, max in-values, max page size — SEC-3) are entirely runtime-validator concerns, deliberately not encoded here as structural bounds, because SEC-3 requires them configurable per host and a schema-level maxItems cannot vary per instance. The runtime validator MUST run its limit checks (including the max-depth check against filterNode's unbounded recursion) before or during descent into the document — never only after full structural parse — so a depth/leaf bomb is rejected cleanly (SEC-6) rather than exhausting the stack first. The $id path is versioned (/v1/) per P-2: a future breaking IR revision publishes at /v2/ alongside this one, never overwriting it.",
+  "description": "The canonical, vendor-neutral intermediate representation (IR) of a grid query: a filter tree, sort, group, aggregation and page spec. It describes structure only, so resource limits (maximum depth, leaves, in-values and page size) are left to the runtime validator, which must check them before or while it descends into the document. The `$id` path is versioned (`/v1/`), and a breaking revision is published at `/v2/` next to this one, never over it.",
+  "$comment": "Canonical, vendor-neutral intermediate representation (IR) for a grid query: filter tree + sort + group + aggregation + page spec (see docs/TRD-grid-query-compiler.md AR-2 layer 2, AR-5..AR-9). This is the language-neutral source of truth (AR-1) — language implementations conform to this document, never the reverse. It is a structural contract only: resource limits (max depth, max leaves, max in-values, max page size — SEC-3) are entirely runtime-validator concerns, deliberately not encoded here as structural bounds, because SEC-3 requires them configurable per host and a schema-level maxItems cannot vary per instance. The runtime validator MUST run its limit checks (including the max-depth check against filterNode's unbounded recursion) before or during descent into the document — never only after full structural parse — so a depth/leaf bomb is rejected cleanly (SEC-6) rather than exhausting the stack first. The $id path is versioned (/v1/) per P-2: a future breaking IR revision publishes at /v2/ alongside this one, never overwriting it.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
     "filter": {
       "$ref": "#/$defs/filterNode",
-      "description": "Root of the filter tree (AR-5). Absent means no filtering is applied."
+      "description": "The root of the filter tree. When absent, no filtering is applied.",
+      "$comment": "Root of the filter tree (AR-5). Absent means no filtering is applied."
     },
     "sort": {
       "type": "array",
-      "description": "Ordered sort spec (AR-9): applied in array order, first element is the primary sort key. Absent is the only encoding of 'no sort' — an empty array is rejected (minItems: 1) so the document has one canonical form per PERF-2's cache-key hashing and ML-3's byte-comparable fixtures.",
+      "description": "The ordered sort spec, applied in array order with the first element as the primary sort key. Absent is the only way to say there is no sort, and an empty array is rejected (`minItems: 1`), so the document has one canonical form for cache-key hashing and byte-comparable fixtures.",
+      "$comment": "Ordered sort spec (AR-9): applied in array order, first element is the primary sort key. Absent is the only encoding of 'no sort' — an empty array is rejected (minItems: 1) so the document has one canonical form per PERF-2's cache-key hashing and ML-3's byte-comparable fixtures.",
       "items": { "$ref": "#/$defs/sortItem" },
       "minItems": 1
     },
     "group": {
       "$ref": "#/$defs/groupSpec",
-      "description": "Row-group spec for the AG Grid SSRM drill-down protocol (AR-8). Absent means the request is not grouped."
+      "description": "The row-group spec for the AG Grid server-side row model drill-down protocol. When absent, the request is not grouped.",
+      "$comment": "Row-group spec for the AG Grid SSRM drill-down protocol (AR-8). Absent means the request is not grouped."
     },
     "aggregations": {
       "type": "array",
-      "description": "Aggregation spec (AR-8): (field, func) pairs computed for grouped rows. Absent is the only encoding of 'no aggregations' — an empty array is rejected (minItems: 1), for the same canonical-form reason as 'sort'.",
+      "description": "The aggregation spec: pairs of a field and a function, computed for grouped rows. Absent is the only way to say there are no aggregations, and an empty array is rejected (`minItems: 1`) for the same canonical-form reason as `sort`.",
+      "$comment": "Aggregation spec (AR-8): (field, func) pairs computed for grouped rows. Absent is the only encoding of 'no aggregations' — an empty array is rejected (minItems: 1), for the same canonical-form reason as 'sort'.",
       "items": { "$ref": "#/$defs/aggregation" },
       "minItems": 1
     },
     "page": {
       "$ref": "#/$defs/pageSpec",
-      "description": "Page spec (AG-3, EXP-2): a bounded row range, or 'none' for unpaginated export/streaming output."
+      "description": "The page spec: either a bounded row range or `none`, which means unpaginated output for export or streaming.",
+      "$comment": "Page spec (AG-3, EXP-2): a bounded row range, or 'none' for unpaginated export/streaming output."
     }
   },
   "required": ["page"],
@@ -36,7 +42,8 @@
   "$defs": {
 
     "filterNode": {
-      "description": "A node of the filter tree (AR-5). Recursive by construction so a runtime validator can walk it to count depth/leaves against the configurable SEC-3 limits (default max depth 8, max leaves 64) — this schema deliberately carries no maxItems/maxDepth structural bound here, because SEC-3 limits are configurable per host and a fixed schema bound cannot vary per instance (see the root description for the required check-ordering).",
+      "description": "A node of the filter tree. It is recursive by construction, so a runtime validator can walk it and count depth and leaves against the host's configurable limits (by default a maximum depth of 8 and 64 leaves). The schema sets no depth or item limit here because a fixed bound cannot vary per host.",
+      "$comment": "A node of the filter tree (AR-5). Recursive by construction so a runtime validator can walk it to count depth/leaves against the configurable SEC-3 limits (default max depth 8, max leaves 64) — this schema deliberately carries no maxItems/maxDepth structural bound here, because SEC-3 limits are configurable per host and a fixed schema bound cannot vary per instance (see the root description for the required check-ordering).",
       "oneOf": [
         { "$ref": "#/$defs/andNode" },
         { "$ref": "#/$defs/orNode" },
@@ -46,14 +53,16 @@
     },
 
     "andNode": {
-      "description": "Logical conjunction of child nodes (AR-5: And(nodes[])).",
+      "description": "A logical AND of child nodes: every child must match.",
+      "$comment": "Logical conjunction of child nodes (AR-5: And(nodes[])).",
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "type": { "const": "and" },
         "nodes": {
           "type": "array",
-          "description": "Child filter nodes, all of which must match. No maxItems here: SEC-3's max-leaves limit is a tree-wide budget enforced by the runtime validator, not a per-node arity bound — a fixed maxItems on this array would neither express nor enforce that budget correctly.",
+          "description": "The child filter nodes, all of which must match. There is no `maxItems` here, because the maximum-leaves limit is a budget for the whole tree that the runtime validator enforces, and a per-node bound on this array could not express it.",
+          "$comment": "Child filter nodes, all of which must match. No maxItems here: SEC-3's max-leaves limit is a tree-wide budget enforced by the runtime validator, not a per-node arity bound — a fixed maxItems on this array would neither express nor enforce that budget correctly.",
           "items": { "$ref": "#/$defs/filterNode" },
           "minItems": 1
         }
@@ -62,7 +71,8 @@
     },
 
     "orNode": {
-      "description": "Logical disjunction of child nodes (AR-5: Or(nodes[])).",
+      "description": "A logical OR of child nodes: at least one child must match.",
+      "$comment": "Logical disjunction of child nodes (AR-5: Or(nodes[])).",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -78,7 +88,8 @@
     },
 
     "notNode": {
-      "description": "Logical negation of a single child node (AR-5: Not(node)).",
+      "description": "A logical negation of a single child node.",
+      "$comment": "Logical negation of a single child node (AR-5: Not(node)).",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -89,7 +100,8 @@
     },
 
     "comparisonNode": {
-      "description": "A leaf comparison against a single field (AR-5: Comparison(field, op, value|values)). Split into per-operator-category subschemas because the value shape differs: no value (unary), one typed value (binary), a typed-value array (set), or a typed from/to pair with inclusivity flags (range).",
+      "description": "A leaf comparison against a single field, made of the field, an operator and a value or values. It is split into subschemas by operator category because the value shape differs: no value, one typed value, an array of typed values, or a typed from and to pair with inclusivity flags.",
+      "$comment": "A leaf comparison against a single field (AR-5: Comparison(field, op, value|values)). Split into per-operator-category subschemas because the value shape differs: no value (unary), one typed value (binary), a typed-value array (set), or a typed from/to pair with inclusivity flags (range).",
       "oneOf": [
         { "$ref": "#/$defs/unaryComparisonNode" },
         { "$ref": "#/$defs/binaryComparisonNode" },
@@ -99,7 +111,8 @@
     },
 
     "unaryComparisonNode": {
-      "description": "Comparison operators that take no value: null/blank checks (SEM-2) and the boolean-filter shorthand ops (AR-6).",
+      "description": "Comparison operators that take no value: the null and blank checks, and the boolean-filter shorthand operators.",
+      "$comment": "Comparison operators that take no value: null/blank checks (SEM-2) and the boolean-filter shorthand ops (AR-6).",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -111,7 +124,8 @@
     },
 
     "binaryComparisonNode": {
-      "description": "Comparison operators that take exactly one typed value (AR-6).",
+      "description": "Comparison operators that take exactly one typed value.",
+      "$comment": "Comparison operators that take exactly one typed value (AR-6).",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -124,7 +138,8 @@
     },
 
     "setComparisonNode": {
-      "description": "Set-membership operators (AR-6: in, notIn) — a typed-value array that MAY be empty (SEM-8: `in []` matches no row, `notIn []` matches every row). No maxItems here: SEC-3's max-in-values limit is host-configurable, so a fixed schema bound would reject a legitimately higher-configured host's IR; the runtime validator is the sole enforcement point.",
+      "description": "The set-membership operators `in` and `notIn`, which take an array of typed values that may be empty. An empty `in` list matches no row, and an empty `notIn` list matches every row. There is no `maxItems` here, because the maximum number of in-values is a limit the host configures and the runtime validator is the only place that enforces it.",
+      "$comment": "Set-membership operators (AR-6: in, notIn) — a typed-value array that MAY be empty (SEM-8: `in []` matches no row, `notIn []` matches every row). No maxItems here: SEC-3's max-in-values limit is host-configurable, so a fixed schema bound would reject a legitimately higher-configured host's IR; the runtime validator is the sole enforcement point.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -140,7 +155,8 @@
     },
 
     "rangeComparisonNode": {
-      "description": "The inRange operator (AR-6) with explicit per-boundary inclusivity flags — never left implicit, since defaults differ by filter type (SEM-4).",
+      "description": "The `inRange` operator, with an explicit inclusivity flag for each boundary. The flags are never left implicit, because the defaults differ between filter types.",
+      "$comment": "The inRange operator (AR-6) with explicit per-boundary inclusivity flags — never left implicit, since defaults differ by filter type (SEM-4).",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -151,11 +167,13 @@
         "to": { "$ref": "#/$defs/typedValue" },
         "fromInclusive": {
           "type": "boolean",
-          "description": "Whether the 'from' boundary is inclusive (SEM-4)."
+          "description": "Whether the `from` boundary is inclusive.",
+          "$comment": "Whether the 'from' boundary is inclusive (SEM-4)."
         },
         "toInclusive": {
           "type": "boolean",
-          "description": "Whether the 'to' boundary is inclusive (SEM-4)."
+          "description": "Whether the `to` boundary is inclusive.",
+          "$comment": "Whether the 'to' boundary is inclusive (SEM-4)."
         }
       },
       "required": ["type", "field", "op", "from", "to", "fromInclusive", "toInclusive"]
@@ -165,26 +183,31 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 256,
-      "description": "The logical field name (colId) as declared in the host's GridSchema allowlist (SC-1, SC-2). Never a physical column/path — that mapping is resolved by the compiler from schema config, not carried in the IR. maxLength is a structural amplification cap, not the allowlist check itself (SC-1/SEC-1 membership is a runtime concern this schema cannot express)."
+      "description": "The logical field name (column id) as declared in the host's GridSchema allowlist. It is never a physical column or path, because the compiler resolves that mapping from the schema configuration. `maxLength` is only a size cap, and the allowlist check itself happens at runtime, because this schema cannot express it.",
+      "$comment": "The logical field name (colId) as declared in the host's GridSchema allowlist (SC-1, SC-2). Never a physical column/path — that mapping is resolved by the compiler from schema config, not carried in the IR. maxLength is a structural amplification cap, not the allowlist check itself (SC-1/SEC-1 membership is a runtime concern this schema cannot express)."
     },
 
     "unaryOperator": {
       "enum": ["blank", "notBlank", "true", "false"],
-      "description": "AR-6 closed operator set, no-value subset."
+      "description": "The no-value part of the closed operator set.",
+      "$comment": "AR-6 closed operator set, no-value subset."
     },
 
     "binaryOperator": {
       "enum": ["eq", "neq", "gt", "gte", "lt", "lte", "contains", "notContains", "startsWith", "endsWith"],
-      "description": "AR-6 closed operator set, single-value subset."
+      "description": "The single-value part of the closed operator set.",
+      "$comment": "AR-6 closed operator set, single-value subset."
     },
 
     "setOperator": {
       "enum": ["in", "notIn"],
-      "description": "AR-6 closed operator set, value-array subset."
+      "description": "The value-array part of the closed operator set.",
+      "$comment": "AR-6 closed operator set, value-array subset."
     },
 
     "operator": {
-      "description": "The full AR-6 closed operator set (17 operators, no others) — the union of every category. Provided for consumers that want a single flat enum rather than the per-category subschemas used by comparisonNode.",
+      "description": "The full closed operator set of 17 operators and no others, which is the union of every category. It is provided for consumers that want one flat enum instead of the per-category subschemas that `comparisonNode` uses.",
+      "$comment": "The full AR-6 closed operator set (17 operators, no others) — the union of every category. Provided for consumers that want a single flat enum rather than the per-category subschemas used by comparisonNode.",
       "enum": [
         "eq", "neq", "gt", "gte", "lt", "lte",
         "contains", "notContains", "startsWith", "endsWith",
@@ -196,7 +219,8 @@
     },
 
     "typedValue": {
-      "description": "A fully-typed IR value (AR-7). Every value is tagged with its declared type; compilers never infer or guess a type from JSON's native number/string distinction. Frontend adapters resolve AG Grid's stringly-typed wire values into one of these using the field's declared type before the IR is built.",
+      "description": "A fully typed IR value. Every value is tagged with its declared type, and compilers never guess a type from JSON's native number or string distinction. Frontend adapters turn AG Grid's string-typed wire values into one of these, using the field's declared type, before the IR is built.",
+      "$comment": "A fully-typed IR value (AR-7). Every value is tagged with its declared type; compilers never infer or guess a type from JSON's native number/string distinction. Frontend adapters resolve AG Grid's stringly-typed wire values into one of these using the field's declared type before the IR is built.",
       "oneOf": [
         { "$ref": "#/$defs/stringValue" },
         { "$ref": "#/$defs/int64Value" },
@@ -214,13 +238,14 @@
       "additionalProperties": false,
       "properties": {
         "type": { "const": "string" },
-        "value": { "type": "string", "maxLength": 8192, "description": "Structural amplification cap (not a SEC-3 named limit — SEC-3 covers tree shape/page size, not string length). Generous headroom over typical grid-cell text; a host needing longer values should not be routing them through a filter comparison." }
+        "value": { "type": "string", "maxLength": 8192, "description": "A size cap on the string, not one of the host-configurable limits, which cover tree shape and page size but not string length. It leaves generous room for typical grid-cell text, so a host that needs longer values should not route them through a filter comparison.", "$comment": "Structural amplification cap (not a SEC-3 named limit — SEC-3 covers tree shape/page size, not string length). Generous headroom over typical grid-cell text; a host needing longer values should not be routing them through a filter comparison." }
       },
       "required": ["type", "value"]
     },
 
     "int64Value": {
-      "description": "64-bit integer (AR-7 distinguishes int64 from decimal/double, never a generic 'number'). Bounded to the signed 64-bit range so every port can round-trip it in a native int64/long; note the TypeScript port (ML-1 step 2) must special-case values beyond +/-2^53 since JSON.parse loses precision there — deserialize int64 as a bigint or string in that port, not a JS number.",
+      "description": "A 64-bit integer, kept separate from decimal and double and bounded to the signed 64-bit range so every port can round-trip it in a native int64 or long. The TypeScript port must read values beyond +/-2^53 as a bigint or a string, because `JSON.parse` loses precision there.",
+      "$comment": "64-bit integer (AR-7 distinguishes int64 from decimal/double, never a generic 'number'). Bounded to the signed 64-bit range so every port can round-trip it in a native int64/long; note the TypeScript port (ML-1 step 2) must special-case values beyond +/-2^53 since JSON.parse loses precision there — deserialize int64 as a bigint or string in that port, not a JS number.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -231,7 +256,8 @@
     },
 
     "decimalValue": {
-      "description": "Arbitrary-precision decimal (AR-7). Carried as a numeric string rather than a JSON number to avoid float round-tripping loss.",
+      "description": "An arbitrary-precision decimal. It is carried as a numeric string, not a JSON number, to avoid floating-point round-trip loss.",
+      "$comment": "Arbitrary-precision decimal (AR-7). Carried as a numeric string rather than a JSON number to avoid float round-tripping loss.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -242,7 +268,8 @@
     },
 
     "doubleValue": {
-      "description": "IEEE-754 double-precision float (AR-7).",
+      "description": "An IEEE 754 double-precision floating-point number.",
+      "$comment": "IEEE-754 double-precision float (AR-7).",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -263,7 +290,8 @@
     },
 
     "dateValue": {
-      "description": "Local date, no time-of-day or zone component (AR-7). 'format: date' is annotation-only per the draft 2020-12 default meta-schema (not every port's validator asserts it — Ajv needs ajv-formats, Python jsonschema needs a format_checker, etc.), so 'pattern' carries the actual cross-language guarantee (G4); format is kept alongside it as a hint for tooling that does assert it.",
+      "description": "A local date with no time-of-day or zone part. `format: date` is only an annotation in the default draft 2020-12 meta-schema, and not every port's validator asserts it, so the `pattern` carries the real guarantee across languages. The `format` stays as a hint for tooling that does assert it.",
+      "$comment": "Local date, no time-of-day or zone component (AR-7). 'format: date' is annotation-only per the draft 2020-12 default meta-schema (not every port's validator asserts it — Ajv needs ajv-formats, Python jsonschema needs a format_checker, etc.), so 'pattern' carries the actual cross-language guarantee (G4); format is kept alongside it as a hint for tooling that does assert it.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -274,7 +302,8 @@
     },
 
     "datetimeValue": {
-      "description": "An instant plus its interpretation zone (AR-7, SEM-4 — dates & zones). 'value' is an ISO-8601 timestamp with an explicit offset/Z; 'zone' (an IANA time zone id) records the zone used to resolve the instant, needed for the zone rules in TRD §7.4. See dateValue for why 'pattern' accompanies 'format' here too.",
+      "description": "An instant together with the time zone used to interpret it. The `value` is an ISO 8601 timestamp with an explicit offset or `Z`, and `zone` is an IANA time zone id that records the zone used to resolve the instant. See `dateValue` for why a `pattern` accompanies `format` here too.",
+      "$comment": "An instant plus its interpretation zone (AR-7, SEM-4 — dates & zones). 'value' is an ISO-8601 timestamp with an explicit offset/Z; 'zone' (an IANA time zone id) records the zone used to resolve the instant, needed for the zone rules in TRD §7.4. See dateValue for why 'pattern' accompanies 'format' here too.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -296,7 +325,8 @@
     },
 
     "nullValue": {
-      "description": "The null value (AR-7). Distinct from the blank/notBlank operators, which are a separate SEM-2 null-handling concern at the comparison-node level rather than a value.",
+      "description": "The null value. It is different from the `blank` and `notBlank` operators, which handle nulls at the comparison-node level and are not a value.",
+      "$comment": "The null value (AR-7). Distinct from the blank/notBlank operators, which are a separate SEM-2 null-handling concern at the comparison-node level rather than a value.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -306,20 +336,23 @@
     },
 
     "groupSpec": {
-      "description": "AG Grid SSRM row-group drill-down protocol (AR-8). groupKeys.length < groupCols.length compiles a grouped query (next group column + aggregations, filtered by the consumed keys); equal length compiles the leaf query (BM-2).",
+      "description": "The AG Grid server-side row model row-group drill-down protocol. When `groupKeys` is shorter than `groupCols`, the spec compiles a grouped query: the next group column plus aggregations, filtered by the keys already consumed. When the two have equal length, it compiles the leaf query.",
+      "$comment": "AG Grid SSRM row-group drill-down protocol (AR-8). groupKeys.length < groupCols.length compiles a grouped query (next group column + aggregations, filtered by the consumed keys); equal length compiles the leaf query (BM-2).",
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "groupCols": {
           "type": "array",
-          "description": "Ordered list of row-group column field names, as configured on the grid. maxItems is a structural amplification cap, not a SEC-3 named limit (those stay host-configurable and out of this schema, per the root description): groupSpec is as client-controlled as the filter tree, GRP-5 compiles each consumed key into one leaf predicate, and a host may hand a groupSpec straight to a compiler without passing the SEC-3 validator at all — so N needs a bound that holds on every path. 64 is SEC-3's own DEFAULT max-leaves, which makes a structurally valid groupSpec unable to exceed that budget by itself; a host configuring a smaller maxLeaves still gets the tighter answer from the runtime validator.",
+          "description": "The ordered list of row-group column field names, as configured on the grid. `maxItems` is only a size cap of 64, the default maximum number of leaves, because a groupSpec is as client-controlled as the filter tree and may reach a compiler without the runtime validator. A host that configures a smaller maximum still gets the tighter answer from the runtime validator.",
+          "$comment": "Ordered list of row-group column field names, as configured on the grid. maxItems is a structural amplification cap, not a SEC-3 named limit (those stay host-configurable and out of this schema, per the root description): groupSpec is as client-controlled as the filter tree, GRP-5 compiles each consumed key into one leaf predicate, and a host may hand a groupSpec straight to a compiler without passing the SEC-3 validator at all — so N needs a bound that holds on every path. 64 is SEC-3's own DEFAULT max-leaves, which makes a structurally valid groupSpec unable to exceed that budget by itself; a host configuring a smaller maxLeaves still gets the tighter answer from the runtime validator.",
           "items": { "$ref": "#/$defs/fieldName" },
           "minItems": 1,
           "maxItems": 64
         },
         "groupKeys": {
           "type": "array",
-          "description": "Group key values already consumed by the drill-down so far, one per already-expanded group level, in groupCols order. Each key is a typedValue (AR-7) — a group key is compiled into an equality predicate against its group column (BM-2), i.e. it is a filter value like any other, so it must be typed the same way; an untyped JSON scalar here would force every compiler to re-guess the type AR-7 exists to make explicit. A drilled-into null group bucket is nullValue, not JSON null. maxItems repeats groupCols' cap for the same amplification reason: GRP-1's groupKeys.length <= groupCols.length is a cross-array comparison JSON Schema cannot express, so structural validation alone would otherwise leave this array unbounded.",
+          "description": "The group key values already consumed by the drill-down so far, one per expanded group level, in `groupCols` order. Each key is a typed value, because it compiles into an equality predicate against its group column, and a drilled-into null group bucket is `nullValue`, not JSON null. `maxItems` repeats the cap of `groupCols`, because JSON Schema cannot express that this array is no longer than `groupCols`.",
+          "$comment": "Group key values already consumed by the drill-down so far, one per already-expanded group level, in groupCols order. Each key is a typedValue (AR-7) — a group key is compiled into an equality predicate against its group column (BM-2), i.e. it is a filter value like any other, so it must be typed the same way; an untyped JSON scalar here would force every compiler to re-guess the type AR-7 exists to make explicit. A drilled-into null group bucket is nullValue, not JSON null. maxItems repeats groupCols' cap for the same amplification reason: GRP-1's groupKeys.length <= groupCols.length is a cross-array comparison JSON Schema cannot express, so structural validation alone would otherwise leave this array unbounded.",
           "items": { "$ref": "#/$defs/typedValue" },
           "maxItems": 64
         }
@@ -328,32 +361,36 @@
     },
 
     "setValuesSpec": {
-      "description": "BM-3's set-filter distinct-values request (GRP-6 in spec/semantics.md). Deliberately a $def rather than a property of the root document: the root models a row-fetch query and REQUIRES 'page', while a distinct-values query has no page at all (its limit is a ceiling, not a window), no sort and no aggregation — and restructuring the root into a two-armed oneOf would be a breaking change to a published /v1/ contract. The wire envelope this mirrors ('setValuesRequest') is Craticula's own synthetic shape, not AG Grid's: AG Grid Community has no request/response type for set-filter values at all and delegates the whole job to a host-supplied SetFilterParams.values callback. See spec/fixtures/group-aggregation/README.md for the envelope and 016-019 for its artifact oracle.",
+      "description": "A request for the distinct values of a column, for a set filter. It is a `$def` and not a property of the root document, because the root models a row-fetch query and requires `page`, while a distinct-values query has no page (its limit is a ceiling, not a window), no sort and no aggregation, and splitting the root into two alternatives would break a published `/v1/` contract. The wire envelope it mirrors is Craticula's own synthetic shape and not AG Grid's, because AG Grid Community has no request or response type for set-filter values and leaves the job to a host-supplied `SetFilterParams.values` callback.",
+      "$comment": "BM-3's set-filter distinct-values request (GRP-6 in spec/semantics.md). Deliberately a $def rather than a property of the root document: the root models a row-fetch query and REQUIRES 'page', while a distinct-values query has no page at all (its limit is a ceiling, not a window), no sort and no aggregation — and restructuring the root into a two-armed oneOf would be a breaking change to a published /v1/ contract. The wire envelope this mirrors ('setValuesRequest') is Craticula's own synthetic shape, not AG Grid's: AG Grid Community has no request/response type for set-filter values at all and delegates the whole job to a host-supplied SetFilterParams.values callback. See spec/fixtures/group-aggregation/README.md for the envelope and 016-019 for its artifact oracle.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "colId": {
           "$ref": "#/$defs/fieldName",
-          "description": "The column whose distinct values are being resolved: the SELECT DISTINCT expression, the sole ORDER BY key, and the field whose OWN conditions are dropped from the accompanying filter (GRP-6). Client-controlled, and unlike a filter's colId it is the question rather than a condition on it — so it must pass the SC-1 allowlist in EVERY GridSchema mode, Lenient included."
+          "description": "The column whose distinct values are being resolved: it is the `SELECT DISTINCT` expression, the only `ORDER BY` key, and the field whose own conditions are dropped from the accompanying filter. It is client-controlled, and unlike a filter's column id it is the question and not a condition on it, so it must pass the field allowlist in every GridSchema mode, Lenient included.",
+          "$comment": "The column whose distinct values are being resolved: the SELECT DISTINCT expression, the sole ORDER BY key, and the field whose OWN conditions are dropped from the accompanying filter (GRP-6). Client-controlled, and unlike a filter's colId it is the question rather than a condition on it — so it must pass the SC-1 allowlist in EVERY GridSchema mode, Lenient included."
         },
         "searchPrefix": {
           "type": "string",
           "minLength": 1,
           "maxLength": 8192,
-          "description": "The set filter's own inline search box text. Compiled into an ordinary startsWith predicate against colId (GRP-6), so SEM-1's per-field mechanism and SEM-7's escaping govern it exactly as they would a user's own prefix filter — it is not a construct of its own, and it survives the own-field exclusion that removes every other condition on colId. An empty search box OMITS this property; minLength:1 rejects \"\", which would otherwise compile to a predicate matching every row. maxLength repeats stringValue's own bound, since it compiles into exactly one.",
-          "$comment": "A prefix against a column not declared 'string' has no defined meaning and is rejected at the typeCoercion stage (SEM-5's uncoercible-value), which JSON Schema cannot express: it depends on the GridSchema, not on this document."
+          "description": "The text of the set filter's own inline search box. It compiles into an ordinary `startsWith` predicate against `colId`, so it follows the same case-sensitivity and escaping rules as a user's own prefix filter, and it is kept when the own-field exclusion removes every other condition on `colId`. An empty search box omits this property, and `minLength: 1` rejects an empty string, which would match every row.",
+          "$comment": "The set filter's own inline search box text. Compiled into an ordinary startsWith predicate against colId (GRP-6), so SEM-1's per-field mechanism and SEM-7's escaping govern it exactly as they would a user's own prefix filter — it is not a construct of its own, and it survives the own-field exclusion that removes every other condition on colId. An empty search box OMITS this property; minLength:1 rejects \"\", which would otherwise compile to a predicate matching every row. maxLength repeats stringValue's own bound, since it compiles into exactly one.\n\nA prefix against a column not declared 'string' has no defined meaning and is rejected at the typeCoercion stage (SEM-5's uncoercible-value), which JSON Schema cannot express: it depends on the GridSchema, not on this document."
         },
         "limit": {
           "type": "integer",
           "minimum": 1,
-          "description": "A client-requested cap on how many distinct values come back. Never authoritative: the host's configured maximum always wins and an absent value falls back to the host's configured default, i.e. the compiled cap is min(limit ?? default, maximum) — GRP-6. Exceeding the maximum is NOT a rejection (the server clamps and answers), which is why no maxItems-style bound appears here; those two numbers are SEC-3 limits and, per the root description, stay host-configurable and out of this schema. minimum:1 is structural rather than a SEC-3 limit: a non-positive cap is not 'no cap', it is a request that can never return a value."
+          "description": "A client-requested cap on how many distinct values come back. It is never authoritative: the host's configured maximum always wins, and an absent value falls back to the host's default, so the compiled cap is the smaller of the requested limit (or the default) and the maximum. Exceeding the maximum is not a rejection, because the server clamps the value, and `minimum: 1` is structural because a non-positive cap could never return a value.",
+          "$comment": "A client-requested cap on how many distinct values come back. Never authoritative: the host's configured maximum always wins and an absent value falls back to the host's configured default, i.e. the compiled cap is min(limit ?? default, maximum) — GRP-6. Exceeding the maximum is NOT a rejection (the server clamps and answers), which is why no maxItems-style bound appears here; those two numbers are SEC-3 limits and, per the root description, stay host-configurable and out of this schema. minimum:1 is structural rather than a SEC-3 limit: a non-positive cap is not 'no cap', it is a request that can never return a value."
         }
       },
       "required": ["colId"]
     },
 
     "aggregation": {
-      "description": "A single (field, func) aggregation pair (AR-8). func is limited to {sum, min, max, avg, count} in v1 — first/last are explicitly excluded (v2 roadmap).",
+      "description": "A single aggregation pair of a field and a function. In version 1 `func` is limited to `sum`, `min`, `max`, `avg` and `count`, and `first` and `last` are deliberately excluded and planned for version 2.",
+      "$comment": "A single (field, func) aggregation pair (AR-8). func is limited to {sum, min, max, avg, count} in v1 — first/last are explicitly excluded (v2 roadmap).",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -364,7 +401,8 @@
           "minLength": 1,
           "maxLength": 64,
           "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
-          "description": "Optional output key for the aggregated value; defaults to a compiler-chosen name derived from field+func when absent. Unlike 'field', alias is not gated by the GridSchema allowlist, yet it lands in generated query text as an identifier (SUM(x) AS <alias>, $group output key, ES agg name) where SEC-2's 'values are parameters' rule cannot apply — an identifier can't be parameterized. The identifier-safe pattern is therefore the only guard against alias-as-injection-vector across all four compilers."
+          "description": "An optional output key for the aggregated value, which defaults to a compiler-chosen name derived from the field and function when absent. Unlike `field`, the alias is not checked against the GridSchema allowlist, yet it lands in the generated query text as an identifier (such as `SUM(x) AS <alias>`, a `$group` output key or an Elasticsearch aggregation name). An identifier cannot be parameterized, so the identifier-safe pattern is the only guard against injection through the alias in all four compilers.",
+          "$comment": "Optional output key for the aggregated value; defaults to a compiler-chosen name derived from field+func when absent. Unlike 'field', alias is not gated by the GridSchema allowlist, yet it lands in generated query text as an identifier (SUM(x) AS <alias>, $group output key, ES agg name) where SEC-2's 'values are parameters' rule cannot apply — an identifier can't be parameterized. The identifier-safe pattern is therefore the only guard against alias-as-injection-vector across all four compilers."
         }
       },
       "required": ["field", "func"]
@@ -372,11 +410,13 @@
 
     "aggregationFunc": {
       "enum": ["sum", "min", "max", "avg", "count"],
-      "description": "AR-8 closed v1 aggregation function set. 'first'/'last' are v2 roadmap, deliberately excluded here."
+      "description": "The closed set of aggregation functions in version 1. `first` and `last` are deliberately excluded and planned for version 2.",
+      "$comment": "AR-8 closed v1 aggregation function set. 'first'/'last' are v2 roadmap, deliberately excluded here."
     },
 
     "sortItem": {
-      "description": "A single sort key (AR-9). nullsPosition is always explicit in the IR — never left to a backend's default ordering (SEM-3).",
+      "description": "A single sort key. The position of nulls is always explicit in the IR and is never left to a backend's default ordering.",
+      "$comment": "A single sort key (AR-9). nullsPosition is always explicit in the IR — never left to a backend's default ordering (SEM-3).",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -393,11 +433,13 @@
 
     "nullsPosition": {
       "enum": ["first", "last"],
-      "description": "Explicit null-ordering (AR-9, SEM-3) — never inferred from direction."
+      "description": "The explicit position of nulls, `first` or `last`. It is never inferred from the sort direction.",
+      "$comment": "Explicit null-ordering (AR-9, SEM-3) — never inferred from direction."
     },
 
     "pageSpec": {
-      "description": "AG-3 startRow/endRow paging, or the unpaginated 'none' mode required for full-export compilation (EXP-2).",
+      "description": "Either a `startRow` and `endRow` row range, or the unpaginated `none` mode needed to compile a full export.",
+      "$comment": "AG-3 startRow/endRow paging, or the unpaginated 'none' mode required for full-export compilation (EXP-2).",
       "oneOf": [
         { "$ref": "#/$defs/rangePage" },
         { "$ref": "#/$defs/nonePage" }
@@ -405,7 +447,8 @@
     },
 
     "rangePage": {
-      "description": "A bounded row range, mirroring AG Grid SSRM's startRow/endRow (AG-3). endRow is exclusive, matching the SSRM convention.",
+      "description": "A bounded row range that mirrors AG Grid's server-side row model `startRow` and `endRow`. `endRow` is exclusive, as in that model.",
+      "$comment": "A bounded row range, mirroring AG Grid SSRM's startRow/endRow (AG-3). endRow is exclusive, matching the SSRM convention.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -418,14 +461,16 @@
         "endRow": {
           "type": "integer",
           "minimum": 0,
-          "description": "Zero-based exclusive end offset. (endRow - startRow) is the requested page size. This schema cannot express either the SEC-3 max-page-size cap (host-configurable, so no fixed 'maximum' belongs here) or the endRow >= startRow invariant (cross-property comparison is inexpressible in draft 2020-12) — both are runtime-validator obligations; do not assume either is enforced by structural validation alone."
+          "description": "The zero-based, exclusive end offset, so `endRow - startRow` is the requested page size. This schema cannot express the maximum page size (a host-configurable limit, so no fixed `maximum` belongs here) or the rule that `endRow` is at least `startRow` (a comparison between two properties, which JSON Schema cannot express). Both are left to the runtime validator, so do not assume structural validation enforces either one.",
+          "$comment": "Zero-based exclusive end offset. (endRow - startRow) is the requested page size. This schema cannot express either the SEC-3 max-page-size cap (host-configurable, so no fixed 'maximum' belongs here) or the endRow >= startRow invariant (cross-property comparison is inexpressible in draft 2020-12) — both are runtime-validator obligations; do not assume either is enforced by structural validation alone."
         }
       },
       "required": ["mode", "startRow", "endRow"]
     },
 
     "nonePage": {
-      "description": "Unpaginated mode (EXP-2): compile the full filtered+sorted artifact with no row-range clause, for streaming/export scopes such as EXP-1's exportScope: 'all'.",
+      "description": "Unpaginated mode: compile the full filtered and sorted result with no row-range clause. It is meant for streaming and export scopes, such as an export with `exportScope: 'all'`.",
+      "$comment": "Unpaginated mode (EXP-2): compile the full filtered+sorted artifact with no row-range clause, for streaming/export scopes such as EXP-1's exportScope: 'all'.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
