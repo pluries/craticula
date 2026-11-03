@@ -5,16 +5,19 @@ not list them yet (the maker's review dates come first), and nothing here reads 
 Offline, standard library only.
 Run: python3 scripts/test_build_site_guides.py
 """
+import datetime
 import gzip
 import json
 import shutil
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import build_site as bs  # noqa: E402
 from site_test_support import EditorialMixin, build_registered, registered_entry, text_of, title_of  # noqa: E402
+from test_build_site import ROOT  # noqa: E402
 from test_build_site_concepts import DESCRIPTIONS as CONCEPT_DESCRIPTIONS, SLUGS as CONCEPT_SLUGS, TITLES as CONCEPT_TITLES  # noqa: E402
 from test_build_site_home import cards_of  # noqa: E402
 from test_build_site_structure import CODED, TICKET, meta_description, sidebar  # noqa: E402
@@ -47,6 +50,8 @@ class ScratchRegistration(unittest.TestCase):
         concepts = [registered_entry(s, CONCEPT_TITLES[s], "Concepts", CONCEPT_DESCRIPTIONS[s]) for s in CONCEPT_SLUGS]
         guides = [registered_entry(s, title_of(s), "Guides", DESCRIPTIONS[s]) for s in GUIDE_SLUGS]
         configuration = [registered_entry(s, title_of(s), "Configuration", DESCRIPTIONS[s]) for s in CONFIGURATION_SLUGS]
+        listed = {*CONCEPT_SLUGS, *SLUGS}
+        pages = [p for p in pages if p["slug"] not in listed]   # idempotent: the real site.json may already list the pages
         last_guide = max(i for i, p in enumerate(pages) if p.get("group") == "Guides")
         return [pages[0], *concepts, *pages[1:last_guide + 1], *guides, *configuration, *pages[last_guide + 1:]]
 
@@ -124,6 +129,35 @@ class ScratchRegistration(unittest.TestCase):
     def test_the_markdown_copies_equal_the_sources(self):
         for slug in SLUGS:
             self.assertEqual(text_of(slug), (self.out / f"{slug}.md").read_text(encoding="utf-8"))
+
+
+class RealRegistration(unittest.TestCase):
+    """The maker approved the eight pages: the real site.json lists them as authored pages of their group with a review date, and the site builds them."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.config = json.loads((ROOT / "site" / "site.json").read_text(encoding="utf-8"))
+        cls.entries = {entry["slug"]: entry for entry in cls.config["pages"]}
+        cls.out = Path(tempfile.mkdtemp()) / "out"
+        cls.addClassCleanup(shutil.rmtree, cls.out.parent, ignore_errors=True)
+        cls.errors = bs.build(ROOT, cls.out)
+
+    def test_the_real_site_json_lists_each_page_as_an_authored_page_of_its_group_with_a_valid_review_date(self):
+        for slug in SLUGS:
+            with self.subTest(page=slug):
+                entry = self.entries[slug]
+                self.assertEqual("Guides" if slug in GUIDE_SLUGS else "Configuration", entry["group"])
+                self.assertEqual(f"site/pages/{slug}.md", entry["source"])
+                self.assertIs(entry["authored"], True)
+                self.assertRegex(entry["reviewed"], r"^\d{4}-\d{2}-\d{2}$")
+                datetime.date.fromisoformat(entry["reviewed"])
+                self.assertTrue(entry["description"].strip())
+
+    def test_the_real_site_builds_the_eight_pages_without_errors(self):
+        self.assertEqual(self.errors, [])
+        for slug in SLUGS:
+            self.assertTrue((self.out / f"{slug}.html").is_file(), slug)
+            self.assertTrue((self.out / f"{slug}.md").is_file(), slug)
 
 
 if __name__ == "__main__":

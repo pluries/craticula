@@ -308,7 +308,8 @@ class RealSite(unittest.TestCase):
         listed = re.findall(r"\]\(" + re.escape(self.base) + r"/([a-z0-9-]+)\.md\)", text)
         self.assertEqual(sorted(listed), self.pages)
         self.assertEqual(self.pages, sorted(p.stem for p in self.out.glob("*.md")))
-        self.assertEqual(["Home", "Guides", "Reference"], [g for g in re.findall(r"(?m)^## (.+)$", text) if g in ("Home", *bs.GROUPS)][:3])
+        used = {entry["group"] for entry in self.config["pages"] if entry.get("group")}
+        self.assertEqual(["Home", *(g for g in bs.GROUPS if g in used)], re.findall(r"(?m)^## (.+)$", text))
 
     def test_13_llms_full_holds_each_page_in_the_agreed_blocks(self):
         docs_page = next(slug for slug in self.pages if slug != "index")

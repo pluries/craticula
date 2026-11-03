@@ -5,9 +5,12 @@ them. The real site.json does not list them yet (the maker's review date comes f
 standard library only.
 Run: python3 scripts/test_build_site_concepts.py
 """
+import datetime
+import json
 import re
 import shutil
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -36,7 +39,11 @@ class ScratchRegistration(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        site = build_registered(lambda pages: [pages[0]] + [registered_entry(slug, TITLES[slug], "Concepts", DESCRIPTIONS[slug]) for slug in SLUGS] + pages[1:])
+        def register(pages):   # idempotent: a page the real site.json already lists is replaced by the scratch entry
+            rest = [p for p in pages if p["slug"] not in SLUGS]
+            return [rest[0]] + [registered_entry(slug, TITLES[slug], "Concepts", DESCRIPTIONS[slug]) for slug in SLUGS] + rest[1:]
+
+        site = build_registered(register)
         cls.addClassCleanup(shutil.rmtree, site.tmp, ignore_errors=True)
         cls.config, cls.out, cls.errors, cls.pages = site.config, site.out, site.errors, site.pages
 
@@ -80,6 +87,35 @@ class ScratchRegistration(unittest.TestCase):
             self.assertIn(f"{slug}.md", text)
             self.assertEqual((ROOT / "site" / "pages" / f"{slug}.md").read_text(encoding="utf-8"), (self.out / f"{slug}.md").read_text(encoding="utf-8"))
         self.assertIn("## Concepts", text)
+
+
+class RealRegistration(unittest.TestCase):
+    """The maker approved the four pages: the real site.json lists them as authored Concepts pages with a review date, and the site builds them."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.config = json.loads((ROOT / "site" / "site.json").read_text(encoding="utf-8"))
+        cls.entries = {entry["slug"]: entry for entry in cls.config["pages"]}
+        cls.out = Path(tempfile.mkdtemp()) / "out"
+        cls.addClassCleanup(shutil.rmtree, cls.out.parent, ignore_errors=True)
+        cls.errors = bs.build(ROOT, cls.out)
+
+    def test_the_real_site_json_lists_each_page_as_an_authored_concepts_page_with_a_valid_review_date(self):
+        for slug in SLUGS:
+            with self.subTest(page=slug):
+                entry = self.entries[slug]
+                self.assertEqual("Concepts", entry["group"])
+                self.assertEqual(f"site/pages/{slug}.md", entry["source"])
+                self.assertIs(entry["authored"], True)
+                self.assertRegex(entry["reviewed"], r"^\d{4}-\d{2}-\d{2}$")
+                datetime.date.fromisoformat(entry["reviewed"])
+                self.assertTrue(entry["description"].strip())
+
+    def test_the_real_site_builds_the_four_pages_without_errors(self):
+        self.assertEqual(self.errors, [])
+        for slug in SLUGS:
+            self.assertTrue((self.out / f"{slug}.html").is_file(), slug)
+            self.assertTrue((self.out / f"{slug}.md").is_file(), slug)
 
 
 if __name__ == "__main__":

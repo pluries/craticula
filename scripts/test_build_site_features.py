@@ -21,6 +21,7 @@ Contract pinned here (the placeholder names are the build's template values):
 Run: python3 scripts/test_build_site_features.py
 """
 import gzip
+import html
 import json
 import re
 import sys
@@ -471,9 +472,12 @@ class RealSite(unittest.TestCase):
             with self.subTest(page=slug):
                 for level, identifier, inner in headings_of(text):
                     self.assertIn(f'<a class="anchor" href="#{identifier}" aria-label="Link to this section">', inner)
+                # the anchor mark is no part of a label: the label is the heading's own text (a heading may legitimately end with "#", as "C#" does)
+                if 'class="toc"' in text:   # the home page has no "On this page" list
+                    own_text = [html.unescape(re.sub(r"<[^>]+>", "", inner[:inner.index('<a class="anchor"')])).strip() for _, _, inner in headings_of(text, "2")]
+                    self.assertEqual(own_text, toc_labels(text))
                 for label in toc_labels(text):
                     self.assertNotIn("Link to this section", label)
-                    self.assertFalse(label.endswith("#"), label)
 
     def test_4_every_page_home_included_has_the_top_bar(self):
         repo = self.config["repo"]

@@ -29,6 +29,42 @@
       "template": "site/home.html"
     },
     {
+      "slug": "what-is-craticula",
+      "title": "What Craticula is",
+      "source": "site/pages/what-is-craticula.md",
+      "group": "Concepts",
+      "description": "What Craticula compiles, what it never does, and where it stands.",
+      "authored": true,
+      "reviewed": "2026-11-03"
+    },
+    {
+      "slug": "request-to-query",
+      "title": "How a request becomes a query",
+      "source": "site/pages/request-to-query.md",
+      "group": "Concepts",
+      "description": "The path from an AG Grid request to a statement with parameters.",
+      "authored": true,
+      "reviewed": "2026-11-03"
+    },
+    {
+      "slug": "strict-and-lenient",
+      "title": "Strict and Lenient",
+      "source": "site/pages/strict-and-lenient.md",
+      "group": "Concepts",
+      "description": "What the two schema modes do with columns the schema does not allow.",
+      "authored": true,
+      "reviewed": "2026-11-03"
+    },
+    {
+      "slug": "safety-model",
+      "title": "The safety model",
+      "source": "site/pages/safety-model.md",
+      "group": "Concepts",
+      "description": "How values, identifiers and limits keep a compiled query safe, and what is left to you.",
+      "authored": true,
+      "reviewed": "2026-11-03"
+    },
+    {
       "slug": "quickstart-csharp",
       "title": "C#",
       "source": "site/pages/quickstart-csharp.md",
@@ -73,6 +109,78 @@
       "source": "site/pages/odata-migration.md",
       "group": "Guides",
       "description": "Move a grid from OData to compiled queries and see what changes."
+    },
+    {
+      "slug": "paging-and-sorting",
+      "title": "Paging and sorting",
+      "source": "site/pages/paging-and-sorting.md",
+      "group": "Guides",
+      "description": "How rows are windowed and ordered, and why paging is deterministic.",
+      "authored": true,
+      "reviewed": "2026-11-03"
+    },
+    {
+      "slug": "grouping-and-aggregation",
+      "title": "Grouping and aggregation",
+      "source": "site/pages/grouping-and-aggregation.md",
+      "group": "Guides",
+      "description": "How a grouped grid asks for one level at a time and how aggregations behave.",
+      "authored": true,
+      "reviewed": "2026-11-03"
+    },
+    {
+      "slug": "csv-export",
+      "title": "CSV export",
+      "source": "site/pages/csv-export.md",
+      "group": "Guides",
+      "description": "Stream a grid's rows to CSV with the same request model and the same checks.",
+      "authored": true,
+      "reviewed": "2026-11-03"
+    },
+    {
+      "slug": "relational-adapters",
+      "title": "Entity Framework Core and Dapper",
+      "source": "site/pages/relational-adapters.md",
+      "group": "Guides",
+      "description": "What the two relational adapters give you, what they need and what they never do.",
+      "authored": true,
+      "reviewed": "2026-11-03"
+    },
+    {
+      "slug": "search-adapters",
+      "title": "MongoDB and OpenSearch adapters",
+      "source": "site/pages/search-adapters.md",
+      "group": "Guides",
+      "description": "Run compiled MongoDB and OpenSearch queries with the optional adapters, including deep paging.",
+      "authored": true,
+      "reviewed": "2026-11-03"
+    },
+    {
+      "slug": "the-gridschema",
+      "title": "The GridSchema",
+      "source": "site/pages/the-gridschema.md",
+      "group": "Configuration",
+      "description": "The schema that lists what a grid may touch, and which of its flags are enforced today.",
+      "authored": true,
+      "reviewed": "2026-11-03"
+    },
+    {
+      "slug": "limits",
+      "title": "Limits",
+      "source": "site/pages/limits.md",
+      "group": "Configuration",
+      "description": "The default resource limits, what each one does and how to change them.",
+      "authored": true,
+      "reviewed": "2026-11-03"
+    },
+    {
+      "slug": "dialects-and-providers",
+      "title": "Dialects and providers",
+      "source": "site/pages/dialects-and-providers.md",
+      "group": "Configuration",
+      "description": "How each database engine differs in quoting, paging, null order and case-insensitive matching.",
+      "authored": true,
+      "reviewed": "2026-11-03"
     },
     {
       "slug": "overview",
