@@ -142,3 +142,18 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 2em 0; }
   .band { padding-top: 56px; }
 }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { transition: none !important; animation: none !important; } }
+
+/* Collapsible sidebar groups and the previous / next links (#3555, DS-2, DS-8) */
+.side details > summary { cursor: pointer; list-style: none; margin: 0 0 6px; padding: 6px 12px; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); border-radius: 8px; }
+.side details > summary::-webkit-details-marker { display: none; }
+.side details > summary::after { content: "+"; float: right; font-weight: 400; }
+.side details[open] > summary::after { content: "–"; }
+.side details > summary:hover { color: var(--text); }
+.side .side-sub > details > summary { text-transform: none; letter-spacing: 0; font-size: 0.9375rem; font-weight: 500; color: var(--muted); margin: 0; }
+.side .side-sub ul { padding-left: 12px; }
+.pager { display: flex; gap: 16px; justify-content: space-between; margin-top: 56px; padding-top: 24px; border-top: 1px solid var(--line, currentColor); }
+.pager a { display: flex; flex-direction: column; gap: 4px; flex: 1 1 0; padding: 14px 16px; border: 1px solid var(--line, currentColor); border-radius: 10px; text-decoration: none; color: var(--text); }
+.pager a:hover { border-color: var(--accent); }
+.pager span { font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); }
+.pager-next { text-align: right; margin-left: auto; }
+@media (max-width: 640px) { .pager { flex-direction: column; } }

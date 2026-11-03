@@ -18,82 +18,93 @@
       "slug": "index",
       "title": "Home",
       "source": "site/pages/index.md",
-      "group": "Start here",
+      "description": "Craticula turns AG Grid server-side requests into safe native queries.",
       "template": "site/home.html"
     },
     {
       "slug": "quickstart-csharp",
-      "title": "Quickstart: C#",
+      "title": "C#",
       "source": "site/pages/quickstart-csharp.md",
-      "group": "Start here"
+      "group": "Guides",
+      "description": "Compile a grid request to SQL and MongoDB from C#.",
+      "subgroup": "Quickstarts"
     },
     {
       "slug": "quickstart-typescript",
       "title": "TypeScript",
       "source": "site/pages/quickstart-typescript.md",
-      "group": "Start here"
+      "group": "Guides",
+      "description": "What a TypeScript port will follow.",
+      "subgroup": "Quickstarts"
     },
     {
       "slug": "quickstart-python",
       "title": "Python",
       "source": "site/pages/quickstart-python.md",
-      "group": "Start here"
+      "group": "Guides",
+      "description": "What a Python port will follow.",
+      "subgroup": "Quickstarts"
     },
     {
       "slug": "quickstart-go",
       "title": "Go",
       "source": "site/pages/quickstart-go.md",
-      "group": "Start here"
+      "group": "Guides",
+      "description": "What a Go port will follow.",
+      "subgroup": "Quickstarts"
     },
     {
       "slug": "index-guidance",
       "title": "Index guidance",
       "source": "site/pages/index-guidance.md",
-      "group": "Start here"
+      "group": "Guides",
+      "description": "Which database indexes and settings keep compiled queries fast and exact."
     },
     {
       "slug": "odata-migration",
       "title": "Migrating from OData",
       "source": "site/pages/odata-migration.md",
-      "group": "Start here"
+      "group": "Guides",
+      "description": "Move a grid from OData to compiled queries and see what changes."
     },
     {
       "slug": "overview",
       "title": "Overview",
       "source": "README.md",
-      "group": "Specification"
+      "group": "Reference",
+      "description": "What Craticula is, what it compiles and where it stands."
     },
     {
       "slug": "spec",
       "title": "The spec",
       "source": "spec/README.md",
-      "group": "Specification"
+      "group": "Reference",
+      "description": "The specification, its fixtures and how to read them."
     },
     {
       "slug": "semantics",
-      "title": "Semantics",
+      "title": "Semantics overview",
       "source": "spec/semantics.md",
-      "group": "Specification"
-    },
-    {
-      "slug": "rules",
-      "title": "Rule index",
-      "generator": "rules-index",
-      "group": "Specification"
+      "group": "Reference",
+      "generator": "semantics-split",
+      "summaries": "site/summaries.json",
+      "description": "The rules every compiler follows, one page for each topic."
     },
     {
       "slug": "grid-schema",
       "title": "GridSchema reference",
+      "group": "Reference",
+      "description": "Every member of the grid schema.",
       "generator": "schema-reference",
-      "schema": "spec/grid-schema.schema.json",
-      "group": "Specification"
+      "schema": "spec/grid-schema.schema.json"
     },
     {
       "slug": "ir-schema",
       "title": "IR reference",
+      "group": "Reference",
+      "description": "Every member of the query intermediate representation.",
       "generator": "schema-reference",
-      "schema": "spec/ir.schema.json",
-      "group": "Specification"
+      "schema": "spec/ir.schema.json"
     }
   ]
 }
