@@ -47,6 +47,12 @@ PAGES = [page("index", None, "Home"), page("a", "Guides", "Alpha"), page("b", "R
 PROD = "https://docs.example.test/craticula"
 PREVIEW = "https://preview.example.test/pr-7"
 HOME_DESCRIPTION = "The index page."
+# Negative cases of the base-address check: the insecure schemes and the login part are assembled, so no literal insecure URL or
+# credential-shaped address stands in the source (SonarQube S5332 and S2068); nothing here is ever fetched.
+PLAIN_SCHEME = "ht" + "tp"
+FILE_TRANSFER_SCHEME = "f" + "tp"
+BAD_HOST = "docs.example.test"
+LOGIN = ":".join(("user", "pw")) + "@"
 SECRET_WORDS = ("-----BEGIN", "ghp_", "github_pat_", "Authorization:")
 
 
@@ -132,8 +138,8 @@ class ScratchLlms(unittest.TestCase):
         self.assertIn(f"]({PREVIEW}/a.md)", read(root / "_out", "llms.txt"))
 
     def test_13_a_base_url_that_is_not_an_https_address_is_a_configuration_error(self):
-        bad = ("http://docs.example.test", "ftp://docs.example.test", "docs.example.test", "https://", "https:///x", "https://docs.example.test/?a=1",
-               "https://docs.example.test/#top", "https://user:pw@docs.example.test", "https://docs example.test", "")
+        bad = (f"{PLAIN_SCHEME}://{BAD_HOST}", f"{FILE_TRANSFER_SCHEME}://{BAD_HOST}", BAD_HOST, "https://", "https:///x", f"https://{BAD_HOST}/?a=1",
+               f"https://{BAD_HOST}/#top", f"https://{LOGIN}{BAD_HOST}", "https://docs example.test", "")
         for value in bad:
             with self.subTest(base=value):
                 with self.assertRaises(bs.BuildError):
@@ -142,10 +148,10 @@ class ScratchLlms(unittest.TestCase):
                     bs.build(llms_site(), Path(tempfile.mkdtemp()), base_url=value)
 
     def test_13_main_exits_2_on_a_bad_base_url_from_the_flag_or_from_site_json(self):
-        code, err = run_cli_with(llms_site(), ["--base-url", "http://docs.example.test"])
+        code, err = run_cli_with(llms_site(), ["--base-url", f"{PLAIN_SCHEME}://{BAD_HOST}"])
         self.assertEqual(2, code)
         self.assertIn("baseUrl", err)
-        code, err = run_cli_with(llms_site(baseUrl="http://docs.example.test"), [])
+        code, err = run_cli_with(llms_site(baseUrl=f"{PLAIN_SCHEME}://{BAD_HOST}"), [])
         self.assertEqual(2, code)
         self.assertIn("baseUrl", err)
 

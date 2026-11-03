@@ -7,20 +7,15 @@ Run: python3 scripts/test_build_site_guides.py
 """
 import gzip
 import json
-import os
-import re
 import shutil
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import build_site as bs  # noqa: E402
-from test_build_site import ROOT  # noqa: E402
-from test_build_site_concepts import (  # noqa: E402
-    FAKE_REVIEW, FORBIDDEN_CLAIMS, LINK, PAGES_DIR, SLUGS as CONCEPT_SLUGS, TITLES as CONCEPT_TITLES, DESCRIPTIONS as CONCEPT_DESCRIPTIONS,
-    real_slugs, strip_code, text_of, where_it_comes_from)
+from site_test_support import EditorialMixin, build_registered, registered_entry, text_of, title_of  # noqa: E402
+from test_build_site_concepts import DESCRIPTIONS as CONCEPT_DESCRIPTIONS, SLUGS as CONCEPT_SLUGS, TITLES as CONCEPT_TITLES  # noqa: E402
 from test_build_site_home import cards_of  # noqa: E402
 from test_build_site_structure import CODED, TICKET, meta_description, sidebar  # noqa: E402
 
@@ -39,114 +34,27 @@ DESCRIPTIONS = {
 }
 
 
-def title_of(slug: str) -> str:
-    return text_of(slug).splitlines()[0].removeprefix("# ").strip()
-
-
-class EditorialRules(unittest.TestCase):
-    def test_each_page_starts_with_a_level_1_title_and_says_what_it_covers_and_who_needs_it_in_the_first_lines(self):
-        for slug in SLUGS:
-            with self.subTest(page=slug):
-                lines = [line for line in text_of(slug).splitlines()[:6] if line.strip()]
-                self.assertTrue(lines[0].startswith("# ") and not lines[0].startswith("## "), lines[0])
-                intro = " ".join(lines[1:])
-                self.assertRegex(intro, r"(?i)\bthis page\b")
-                self.assertRegex(intro, r"(?i)\bit is for\b|\bis for (?:a|an|the)\b|\bwho\b")
-
-    def test_every_level_2_heading_is_at_most_60_characters(self):
-        for slug in SLUGS:
-            with self.subTest(page=slug):
-                headings = [line[3:].strip() for line in text_of(slug).splitlines() if line.startswith("## ")]
-                self.assertTrue(headings)
-                for heading in headings:
-                    self.assertLessEqual(len(heading), 60, heading)
-
-    def test_no_page_holds_a_coded_reference_a_ticket_number_or_the_word_trd(self):
-        for slug in SLUGS:
-            with self.subTest(page=slug):
-                text = text_of(slug)
-                self.assertNotRegex(text, CODED)
-                self.assertNotRegex(text, TICKET)
-                self.assertNotIn("TRD", text)
-
-    def test_no_page_claims_a_published_package_a_demo_or_a_live_site(self):
-        for slug in SLUGS:
-            with self.subTest(page=slug):
-                lowered = text_of(slug).lower()
-                for claim in FORBIDDEN_CLAIMS:
-                    self.assertNotIn(claim, lowered)
-
-    def test_each_page_renders_with_no_unresolved_markup(self):
-        for slug in SLUGS:
-            with self.subTest(page=slug):
-                rendered = bs.render_markdown(text_of(slug))
-                self.assertTrue(rendered.html.strip())
-                self.assertEqual(title_of(slug), rendered.title)
-                prose = strip_code(rendered.html)
-                for leftover in ("](", "**", "{{", "```", "~~~", "&lt;h", "&lt;p&gt;"):
-                    self.assertNotIn(leftover, prose)
-
-    def test_every_relative_link_resolves_to_a_repository_file_a_built_page_or_one_of_the_twelve_drafts(self):
-        pages = real_slugs() | set(CONCEPT_SLUGS) | set(SLUGS)
-        for slug in SLUGS:
-            for target in LINK.findall(text_of(slug)):
-                with self.subTest(page=slug, link=target):
-                    if re.match(r"[a-z][a-z0-9+.-]*:", target):
-                        continue
-                    path = target.partition("#")[0]
-                    if not path:
-                        continue
-                    if path.endswith(".html") and "/" not in path:
-                        self.assertIn(path.removesuffix(".html"), pages)
-                    else:
-                        resolved = Path(os.path.normpath(PAGES_DIR / path))
-                        self.assertTrue(resolved.exists(), f"{target} does not exist")
-                        self.assertFalse(bs._is_private(resolved.relative_to(ROOT).as_posix()), f"{target} is private")
-
-    def test_each_page_ends_with_where_this_comes_from_and_names_an_existing_repository_file(self):
-        for slug in SLUGS:
-            with self.subTest(page=slug):
-                section = where_it_comes_from(text_of(slug))
-                self.assertTrue(section, "no 'Where this comes from' section")
-                self.assertEqual(1, section.count("\n## "), "it is the last level-2 section")
-                files = [t for t in LINK.findall(section) if not re.match(r"[a-z][a-z0-9+.-]*:", t) and not t.endswith(".html")]
-                existing = [t for t in files if Path(os.path.normpath(PAGES_DIR / t.partition("#")[0])).is_file()]
-                self.assertTrue(existing, f"no existing repository file linked in {section[:80]!r}")
+class EditorialRules(EditorialMixin, unittest.TestCase):
+    SLUGS = SLUGS
+    OTHER_SLUGS = CONCEPT_SLUGS
 
 
 class ScratchRegistration(unittest.TestCase):
     """The twelve drafts can be registered: a scratch copy of the site sources with them added builds clean."""
 
     @classmethod
-    def setUpClass(cls):
-        cls.tmp = Path(tempfile.mkdtemp())
-        cls.addClassCleanup(shutil.rmtree, cls.tmp, ignore_errors=True)
-        cls.root = cls.tmp / "repo"
-        cls.root.mkdir()
-        for entry in ROOT.iterdir():
-            if entry.name not in ("site", ".git", "github"):
-                os.symlink(entry, cls.root / entry.name)
-        shutil.copytree(ROOT / "site", cls.root / "site", ignore=shutil.ignore_patterns("_build"))
-        config_path = cls.root / "site" / "site.json"
-        cls.config = json.loads(config_path.read_text(encoding="utf-8"))
-        cls.config["pages"] = cls.registered(cls.config["pages"])
-        config_path.write_text(json.dumps(cls.config), encoding="utf-8")
-        cls.out = cls.tmp / "out"
-        cls.errors = bs.build(cls.root, cls.out)
-        cls.pages = {f.stem: f.read_text(encoding="utf-8") for f in cls.out.glob("*.html")}
-
-    @staticmethod
-    def entry(slug: str, title: str, group: str, description: str) -> dict:
-        return {"slug": slug, "title": title, "source": f"site/pages/{slug}.md", "group": group, "description": description,
-                "authored": True, "reviewed": FAKE_REVIEW}
-
-    @classmethod
     def registered(cls, pages: list[dict]) -> list[dict]:
-        concepts = [cls.entry(s, CONCEPT_TITLES[s], "Concepts", CONCEPT_DESCRIPTIONS[s]) for s in CONCEPT_SLUGS]
-        guides = [cls.entry(s, title_of(s), "Guides", DESCRIPTIONS[s]) for s in GUIDE_SLUGS]
-        configuration = [cls.entry(s, title_of(s), "Configuration", DESCRIPTIONS[s]) for s in CONFIGURATION_SLUGS]
+        concepts = [registered_entry(s, CONCEPT_TITLES[s], "Concepts", CONCEPT_DESCRIPTIONS[s]) for s in CONCEPT_SLUGS]
+        guides = [registered_entry(s, title_of(s), "Guides", DESCRIPTIONS[s]) for s in GUIDE_SLUGS]
+        configuration = [registered_entry(s, title_of(s), "Configuration", DESCRIPTIONS[s]) for s in CONFIGURATION_SLUGS]
         last_guide = max(i for i, p in enumerate(pages) if p.get("group") == "Guides")
         return [pages[0], *concepts, *pages[1:last_guide + 1], *guides, *configuration, *pages[last_guide + 1:]]
+
+    @classmethod
+    def setUpClass(cls):
+        site = build_registered(cls.registered)
+        cls.addClassCleanup(shutil.rmtree, site.tmp, ignore_errors=True)
+        cls.config, cls.out, cls.errors, cls.pages = site.config, site.out, site.errors, site.pages
 
     def docs_links(self) -> list[tuple[tuple[str, ...], str, str, bool]]:
         return sidebar(self.pages["quickstart-csharp"]).links
