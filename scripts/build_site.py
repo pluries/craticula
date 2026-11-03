@@ -726,8 +726,8 @@ def load_config(root: Path) -> dict:
         if key not in config:
             raise BuildError(f"{path}: missing '{key}'")
     packages = config.setdefault("packages", {})
-    if not isinstance(packages, dict) or not all(isinstance(k, str) and isinstance(v, str) and v.startswith(("https://", "http://")) for k, v in packages.items()):
-        raise BuildError(f"{path}: 'packages' must map a registry name to an http(s) address")
+    if not isinstance(packages, dict) or not all(isinstance(k, str) and isinstance(v, str) and v.startswith("https://") for k, v in packages.items()):
+        raise BuildError(f"{path}: 'packages' must map a registry name to an https address")
     config.setdefault("ruleSource", None)
     config.setdefault("ruleIdPrefixes", [])
     for entry in config["pages"]:

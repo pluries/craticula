@@ -239,7 +239,7 @@
       return;
     }
     search.list.textContent = "";
-    const items = found.map(hitItem);
+    const items = found.map((result, position) => hitItem(result, position));
     search.list.append(...items);
     search.hits = items.map((item) => item.firstChild);
     search.selected = 0;
