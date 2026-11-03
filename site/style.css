@@ -328,3 +328,16 @@ html[data-theme="light"] .theme-button .i-light, html[data-theme="dark"] .theme-
   html.js .menu-toggle { display: inline-flex; }
 }
 html:not(.js) .search-button, html:not(.js) .theme-button { display: none; }
+
+/* Home page (#3557): eyebrow, group cards, the numbered path */
+.eyebrow { margin: 0; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 0.8125rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); }
+.group-cards { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+a.card { display: block; color: inherit; text-decoration: none; }
+a.card:hover { border-color: var(--accent); }
+.path { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; }
+.path li { border-top: 2px solid var(--accent); padding-top: 16px; }
+.path .step { display: block; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 0.8125rem; color: var(--muted); }
+.path h3 { margin: 4px 0 8px; font-family: "Bricolage Grotesque", sans-serif; font-size: 1.375rem; }
+.path h3 a { color: var(--text); text-decoration: none; }
+.path h3 a:hover { color: var(--link); }
+.path p { margin: 0; color: var(--soft); }

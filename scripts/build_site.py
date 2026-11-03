@@ -687,6 +687,25 @@ def render_topbar(config: dict, pages: list["Page"]) -> str:
             f'<button type="button" class="icon-btn theme-button" aria-label="Theme: Auto. Change theme">{ICON_THEME}</button></div></div></header>')
 
 
+def render_group_cards(config: dict, pages: list["Page"]) -> str:
+    """DS-3: one card per group that has pages, linking its first page; empty without a `groups` key in site.json. A group that has pages
+    and no description fails the build."""
+    groups = config.get("groups")
+    if groups is None:
+        return ""
+    order = ordered_pages(pages)
+    cards = []
+    for name in GROUPS:
+        first = next((p for p in order if p.group == name), None)
+        if first is None:
+            continue
+        description = groups.get(name)
+        if not isinstance(description, str) or not description.strip():
+            raise BuildError(f"site/site.json: the group '{name}' has pages and needs a one-sentence description under 'groups'")
+        cards.append(f'<a class="card" href="{html.escape(first.slug)}.html"><h3>{html.escape(name)}</h3><p>{html.escape(description)}</p></a>')
+    return f'<div class="cards group-cards">{"".join(cards)}</div>'
+
+
 def render_menu_button(slug: str) -> str:
     """DS-15: the button that opens the sidebar on a phone; the home page has no sidebar."""
     if slug == "index":
@@ -728,6 +747,13 @@ def load_config(root: Path) -> dict:
     packages = config.setdefault("packages", {})
     if not isinstance(packages, dict) or not all(isinstance(k, str) and isinstance(v, str) and v.startswith("https://") for k, v in packages.items()):
         raise BuildError(f"{path}: 'packages' must map a registry name to an https address")
+    if "groups" in config:
+        groups = config["groups"]
+        if not isinstance(groups, dict):
+            raise BuildError(f"{path}: 'groups' must map a group name to a one-sentence description")
+        for name, text in groups.items():
+            if isinstance(text, str) and CODED_REFERENCE.search(text):
+                raise BuildError(f"{path}: 'groups': the description of '{name}' holds a coded reference")
     config.setdefault("ruleSource", None)
     config.setdefault("ruleIdPrefixes", [])
     for entry in config["pages"]:
@@ -1208,6 +1234,7 @@ def build(root: Path, out_dir: Path) -> list[str]:
     texts: dict[str, str] = {}
     index_entries: list[dict] = []
     topbar = render_topbar(config, pages)
+    group_cards = render_group_cards(config, pages)
 
     for page in pages:
         try:
@@ -1267,6 +1294,7 @@ def build(root: Path, out_dir: Path) -> list[str]:
             "toc": render_toc(rendered),
             "prev_next": render_pager(pages, page.slug),
             "topbar": topbar,
+            "group_cards": group_cards,
             "menu_button": render_menu_button(page.slug),
             "scripts": SCRIPT_TAGS if scripts_ready else "",
             "content": rendered.html,

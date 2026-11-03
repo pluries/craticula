@@ -2,6 +2,12 @@
   "title": "Craticula",
   "repo": "https://github.com/pluries/craticula",
   "branch": "main",
+  "groups": {
+    "Concepts": "What Craticula is, how a request becomes a query, Strict and Lenient, and the safety model.",
+    "Guides": "Quickstarts, index guidance and moving from OData.",
+    "Configuration": "The GridSchema, limits, and dialects and providers.",
+    "Reference": "The specification, one page for each rule of how requests behave, and both schemas."
+  },
   "ruleSource": "spec/semantics.md",
   "ruleIdPrefixes": [
     "SEM",
