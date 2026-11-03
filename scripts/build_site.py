@@ -752,7 +752,11 @@ def load_config(root: Path) -> dict:
         if not isinstance(groups, dict):
             raise BuildError(f"{path}: 'groups' must map a group name to a one-sentence description")
         for name, text in groups.items():
-            if isinstance(text, str) and CODED_REFERENCE.search(text):
+            if name not in GROUPS:
+                raise BuildError(f"{path}: 'groups': '{name}' is not one of {', '.join(GROUPS)}")
+            if not isinstance(text, str):
+                raise BuildError(f"{path}: 'groups': the description of '{name}' must be a string")
+            if CODED_REFERENCE.search(text):
                 raise BuildError(f"{path}: 'groups': the description of '{name}' holds a coded reference")
     config.setdefault("ruleSource", None)
     config.setdefault("ruleIdPrefixes", [])
