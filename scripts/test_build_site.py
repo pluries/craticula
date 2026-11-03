@@ -653,8 +653,10 @@ class NoInjection(unittest.TestCase):
         self.assertEqual(built.count("On this page"), 1)
 
     def test_T6_a_heading_that_holds_a_placeholder_does_not_expand_in_the_toc(self):
-        built = build_side({"index.md": "# Home\n\n## About {{sidebar}}\n"}, [grouped("index", None, "Home")])["index"]
-        self.assertIn('href="index.html"', built)
+        # #3555: the home page is outside the sidebar, so a second page in a group carries the sidebar link.
+        built = build_side({"index.md": "# Home\n\n## About {{sidebar}}\n", "two.md": "# Two\n"},
+                           [grouped("index", None, "Home"), grouped("two", "Guides", "Two")])["index"]
+        self.assertEqual(built.count('href="two.html"'), 1)
         self.assertEqual(built.count("<aside>"), 1)
         self.assertIn("{{sidebar}}", built)
 
