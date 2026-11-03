@@ -706,7 +706,10 @@ class SiteDesign(unittest.TestCase):
                 self.assertNotIn("Source:", page)
                 self.assertNotIn("fonts.googleapis.com", page)
                 self.assertNotIn("fonts.gstatic.com", page)
-                self.assertNotIn("<script", page)
+                # #3556: the only scripts are the site's own files (theme.js, site.js), relative, with no inline body (DSN-1, DSN-7).
+                self.assertEqual([src for src in re.findall(r"<script\b[^>]*\bsrc=\"([^\"]*)\"", page)], re.findall(r"<script\b[^>]*\bsrc=\"((?:theme|site)\.js)\"", page))
+                self.assertEqual(page.count("></script>"), page.count("<script"))  # no inline body
+                self.assertEqual(len(re.findall(r"<script\b", page)), len(re.findall(r"<script\b[^>]*\bsrc=", page)))
                 for tag in re.findall(r"<link\b[^>]*>", page):
                     self.assertNotRegex(tag, r"href=\"https?://")
                 for tag in re.findall(r"<(?:img|source|iframe|video|audio|embed|object)\b[^>]*>", page):
@@ -777,9 +780,11 @@ class SiteDesign(unittest.TestCase):
                     self.assertGreaterEqual(contrast(colours[name], colours[ground]), 4.5)
         self.assertGreaterEqual(contrast(colours["--accent-ink"], colours["--accent"]), 4.5)
 
-    def test_T5_the_site_is_dark_only(self):
-        self.assertNotIn("prefers-color-scheme: light", self.css)
-        self.assertNotIn("prefers-color-scheme:light", self.css)
+    def test_T5_dark_is_a_media_query_and_an_attribute_over_a_light_root(self):
+        # #3556 (DS-5): the former "dark only" test; the site now offers Dark, Light and Auto.
+        self.assertRegex(self.css, r"prefers-color-scheme:\s*dark")
+        self.assertIn('[data-theme="dark"]', self.css)
+        self.assertIn('[data-theme="light"]', self.css)
 
     def test_T5_the_contrast_helper_matches_known_ratios(self):
         self.assertAlmostEqual(contrast("#000000", "#ffffff"), 21.0, places=1)

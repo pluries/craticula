@@ -431,6 +431,17 @@ def _side_link(page: "Page", current_slug: str) -> str:
     return f'<li><a href="{html.escape(page.slug)}.html"{current}>{html.escape(page.title)}</a></li>'
 
 
+def _sidebar_item(entry, current_slug: str) -> tuple[str, bool]:
+    """The list item of one entry of a group (a page, or a subgroup and its pages) and whether it holds the current page."""
+    if not isinstance(entry, tuple):
+        return _side_link(entry, current_slug), entry.slug == current_slug
+    sub_name, members = entry
+    sub_open = any(member.slug == current_slug for member in members)
+    open_attribute = " open" if sub_open else ""
+    links = "".join(_side_link(member, current_slug) for member in members)
+    return f'<li class="side-sub"><details{open_attribute}><summary>{html.escape(sub_name)}</summary><ul>{links}</ul></details></li>', sub_open
+
+
 def render_sidebar(pages: list["Page"], current_slug: str) -> str:
     """DS-2: the groups in their fixed order (empty ones left out) as native collapsible blocks; a subgroup nests one level
     deeper; the group and subgroup that hold the current page are open, and the current page is marked aria-current."""
@@ -439,21 +450,10 @@ def render_sidebar(pages: list["Page"], current_slug: str) -> str:
     for name in GROUPS:
         if not layout[name]:
             continue
-        items: list[str] = []
-        group_open = False
-        for entry in layout[name]:
-            if isinstance(entry, tuple):
-                sub_name, members = entry
-                sub_open = any(member.slug == current_slug for member in members)
-                group_open = group_open or sub_open
-                open_attribute = " open" if sub_open else ""
-                links = "".join(_side_link(member, current_slug) for member in members)
-                items.append(f'<li class="side-sub"><details{open_attribute}><summary>{html.escape(sub_name)}</summary><ul>{links}</ul></details></li>')
-            else:
-                group_open = group_open or entry.slug == current_slug
-                items.append(_side_link(entry, current_slug))
-        open_attribute = " open" if group_open else ""
-        blocks.append(f'<div class="side-group"><details{open_attribute}><summary>{html.escape(name)}</summary><ul>{"".join(items)}</ul></details></div>')
+        rendered = [_sidebar_item(entry, current_slug) for entry in layout[name]]
+        open_attribute = " open" if any(holds for _, holds in rendered) else ""
+        items = "".join(item for item, _ in rendered)
+        blocks.append(f'<div class="side-group"><details{open_attribute}><summary>{html.escape(name)}</summary><ul>{items}</ul></details></div>')
     return "".join(blocks)
 
 
@@ -614,24 +614,26 @@ def _png_chunk(name: bytes, data: bytes) -> bytes:
     return struct.pack(">I", len(data)) + name + data + struct.pack(">I", zlib.crc32(name + data) & 0xFFFFFFFF)
 
 
+def _pixel(column: int, row: int, size: int) -> tuple[int, int, int, int]:
+    """One RGBA pixel of the brand mark: the mean of 4 x 4 samples, transparent where none falls inside it."""
+    samples, scale = 4, size / 32
+    inside = [colour for sample_y in range(samples) for sample_x in range(samples)
+              if (colour := _in_mark((column + (sample_x + 0.5) / samples) / scale, (row + (sample_y + 0.5) / samples) / scale)) is not None]
+    if not inside:
+        return 0, 0, 0, 0
+    count = len(inside)
+    return (sum(c[0] for c in inside) // count, sum(c[1] for c in inside) // count, sum(c[2] for c in inside) // count,
+            255 * count // (samples * samples))
+
+
 @functools.lru_cache(maxsize=None)
 def favicon_png(size: int) -> bytes:
     """The brand mark as an RGBA PNG of `size` x `size` pixels, drawn with 4 x 4 samples per pixel (no image library)."""
-    samples, scale = 4, size / 32
     rows = []
     for row in range(size):
         line = bytearray([0])
         for column in range(size):
-            covered, red, green, blue = 0, 0, 0, 0
-            for sample_y in range(samples):
-                for sample_x in range(samples):
-                    colour = _in_mark((column + (sample_x + 0.5) / samples) / scale, (row + (sample_y + 0.5) / samples) / scale)
-                    if colour is not None:
-                        covered, red, green, blue = covered + 1, red + colour[0], green + colour[1], blue + colour[2]
-            if covered:
-                line.extend((red // covered, green // covered, blue // covered, 255 * covered // (samples * samples)))
-            else:
-                line.extend((0, 0, 0, 0))
+            line.extend(_pixel(column, row, size))
         rows.append(bytes(line))
     header = struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0)
     return PNG_SIGNATURE + _png_chunk(b"IHDR", header) + _png_chunk(b"IDAT", zlib.compress(b"".join(rows), 9)) + _png_chunk(b"IEND", b"")
@@ -647,6 +649,71 @@ HEAD_LINKS = ('<link rel="icon" type="image/svg+xml" href="favicon.svg"><link re
               '<link rel="apple-touch-icon" href="apple-touch-icon.png">')
 
 
+# ---------------------------------------------------------------- page features (#3556)
+
+SCRIPTS = ("theme.js", "site.js")
+SCRIPT_TAGS = '<script src="theme.js"></script><script src="site.js" defer></script>'
+REGISTRY_NAMES = {"nuget": "NuGet", "npm": "npm", "pypi": "PyPI", "go": "Go"}
+_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{}</svg>'
+ICON_GITHUB = ('<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7'
+               'c-2.78.6-3.37-1.34-3.37-1.34-.45-1.15-1.11-1.46-1.11-1.46-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.89 1.52 2.34 1.08 2.9.83.09-.65.35-1.08.63-1.33'
+               '-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02A9.5 9.5 0 0 1 12 6.8c.85 0 1.7.11 2.5.34 1.9-1.29 2.74-1.02 2.74-1.02'
+               '.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.69-4.57 4.94.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></svg>')
+ICON_SEARCH = _ICON.format('<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>')
+ICON_PACKAGE = _ICON.format('<path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="m3 8 9 5 9-5M12 13v8"/>')
+ICON_MENU = _ICON.format('<path d="M4 6h16M4 12h16M4 18h16"/>')
+ICON_THEME = ('<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+              '<g class="i-auto"><circle cx="12" cy="12" r="8"/><path d="M12 4v16" /></g><g class="i-light"><circle cx="12" cy="12" r="4"/>'
+              '<path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></g>'
+              '<g class="i-dark"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5Z"/></g></svg>')
+LOGO = ('<svg width="30" height="30" viewBox="0 0 28 28" aria-hidden="true"><rect x="1.5" y="1.5" width="25" height="25" rx="7" fill="none" stroke="currentColor" stroke-width="2"/>'
+        '<path d="M9 6v16M14 6v16M19 6v16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>')
+_HEADING_OPEN = re.compile(r'<h([234]) id="([^"]+)">(.*?)</h\1>', re.S)
+_TAG = re.compile(r"</?[A-Za-z][^>]*>")
+
+
+def render_topbar(config: dict, pages: list["Page"]) -> str:
+    """DS-1: the top bar of every page: logo, Docs and Reference, the repository and the published registries, search and theme."""
+    order = ordered_pages(pages)
+    docs = order[0].slug if order else "index"
+    reference = next((p.slug for p in order if p.group == "Reference"), docs)
+    registries = "".join(
+        f'<a class="icon-btn" href="{html.escape(url, quote=True)}" aria-label="{html.escape(REGISTRY_NAMES.get(key, key))} package">{ICON_PACKAGE}</a>'
+        for key, url in config.get("packages", {}).items())
+    return (f'<header class="top"><div class="wrap-wide"><a class="brand" href="index.html">{LOGO}{html.escape(config["title"])}</a>'
+            f'<nav class="top-nav" aria-label="Main"><a href="{html.escape(docs)}.html">Docs</a><a href="{html.escape(reference)}.html">Reference</a></nav>'
+            f'<div class="top-actions"><a class="icon-btn" href="{html.escape(config["repo"], quote=True)}" aria-label="GitHub repository">{ICON_GITHUB}</a>{registries}'
+            f'<button type="button" class="icon-btn search-button" aria-label="Search the documentation (Ctrl+K)">{ICON_SEARCH}</button>'
+            f'<button type="button" class="icon-btn theme-button" aria-label="Theme: Auto. Change theme">{ICON_THEME}</button></div></div></header>')
+
+
+def render_menu_button(slug: str) -> str:
+    """DS-15: the button that opens the sidebar on a phone; the home page has no sidebar."""
+    if slug == "index":
+        return ""
+    return f'<button type="button" class="menu-toggle" aria-controls="sidebar" aria-expanded="false" aria-label="Open the page menu">{ICON_MENU}<span>Menu</span></button>'
+
+
+def add_anchors(page_html: str) -> str:
+    """DS-6: a link anchor in each heading of level 2 to 4, shown on hover and on keyboard focus."""
+    return _HEADING_OPEN.sub(lambda m: (f'<h{m.group(1)} id="{m.group(2)}">{m.group(3)} '
+                                        f'<a class="anchor" href="#{m.group(2)}" aria-label="Link to this section">#</a></h{m.group(1)}>'), page_html)
+
+
+def plain_text(page_html: str) -> str:
+    """The text of a rendered page without markup and without coded references, for the search index."""
+    text = html.unescape(_TAG.sub(" ", page_html))
+    return " ".join(CODED_REFERENCE.sub("", text).split())
+
+
+def search_entry(page: "Page") -> dict:
+    """DS-4, DS-12: the search index entry of a page (the headings keep their text; coded references never reach the index)."""
+    rendered = page.rendered
+    headings = [{"text": " ".join(CODED_REFERENCE.sub("", text).split()), "anchor": anchor} for level, text, anchor in rendered.headings if 2 <= level <= 4]
+    return {"slug": page.slug, "title": page.title, "description": page.description, "group": "" if page.slug == "index" else (page.group or ""), "headings": headings,
+            "text": plain_text(rendered.html)}
+
+
 def load_config(root: Path) -> dict:
     path = root / "site" / "site.json"
     try:
@@ -658,6 +725,9 @@ def load_config(root: Path) -> dict:
     for key in ("title", "repo", "branch", "pages"):
         if key not in config:
             raise BuildError(f"{path}: missing '{key}'")
+    packages = config.setdefault("packages", {})
+    if not isinstance(packages, dict) or not all(isinstance(k, str) and isinstance(v, str) and v.startswith(("https://", "http://")) for k, v in packages.items()):
+        raise BuildError(f"{path}: 'packages' must map a registry name to an http(s) address")
     config.setdefault("ruleSource", None)
     config.setdefault("ruleIdPrefixes", [])
     for entry in config["pages"]:
@@ -678,9 +748,7 @@ def load_config(root: Path) -> dict:
         if not SLUG.match(entry["slug"]):
             raise BuildError(f"{path}: page slug '{entry['slug']}' must match [a-z0-9][a-z0-9-]*")
         group = entry.get("group")
-        if entry["slug"] == "index" and group is None:
-            pass
-        elif group not in GROUPS:
+        if group not in GROUPS and not (entry["slug"] == "index" and group is None):
             raise BuildError(f"{path}: page '{entry['slug']}' needs a 'group' that is one of {', '.join(GROUPS)}")
         subgroup = entry.get("subgroup")
         if subgroup is not None and (not isinstance(subgroup, str) or not subgroup.strip()):
@@ -916,11 +984,11 @@ def _is_private(rel: str) -> bool:
 
 def resolve_link(href: str, source: str, pages_by_source: dict[str, Page], root: Path, config: dict,
                  anchors_of, errors: list[str], line: int, own_anchors: set[str], raw: bool = False,
-                 pages_by_slug: dict[str, Page] | None = None, page_anchors=None, label: str | None = None,
-                 splits: dict[str, "SplitLinks"] | None = None, own_split: "SplitLinks | None" = None) -> str:
+                 label: str | None = None, context: "LinkContext | None" = None) -> str:
     """The href to emit for `href` found in `source`, or the original one after recording an error."""
     where = f"{label or source}:{line}"
-    splits = splits or {}
+    context = context or LinkContext()
+    pages_by_slug, page_anchors, splits, own_split = context.pages_by_slug, context.page_anchors, context.splits, context.own_split
 
     def split_href(links: "SplitLinks", fragment: str, name: str) -> str:
         if not fragment:
@@ -976,6 +1044,15 @@ def resolve_link(href: str, source: str, pages_by_source: dict[str, Page], root:
 
 
 @dataclass
+class LinkContext:
+    """What a link needs to know about the built pages: by name, their anchors, the split sources and the split the current page is part of."""
+    pages_by_slug: dict[str, Page] | None = None
+    page_anchors: "Callable[[str], set[str]] | None" = None
+    splits: dict[str, "SplitLinks"] = field(default_factory=dict)
+    own_split: "SplitLinks | None" = None
+
+
+@dataclass
 class SplitLinks:
     """Where the anchors of a split source went: the index page's slug and, for an anchor, the page that holds its heading and
     whether the anchor still exists on that page (None when the source has no such anchor)."""
@@ -1010,7 +1087,7 @@ def build(root: Path, out_dir: Path) -> list[str]:
             continue
         try:
             parts = semantics_split(read(page.source), json.loads(read(p["summaries"])))
-        except (OSError, UnicodeDecodeError, ValueError) as error:
+        except (OSError, ValueError) as error:
             raise BuildError(f"page '{page.slug}': cannot read {page.source} or {p['summaries']}: {error}") from error
         preface = semantics_preface(read(page.source))
         text_cache[page.slug] = split_index(page, parts, preface)
@@ -1107,6 +1184,12 @@ def build(root: Path, out_dir: Path) -> list[str]:
     for stale in out_dir.glob("*.html"):  # a page removed from site.json must not linger in the output
         stale.unlink()
     (out_dir / "style.css").write_text(style, encoding="utf-8")
+    scripts_ready = all((root / "site" / "js" / name).is_file() for name in SCRIPTS)
+    for name in SCRIPTS:
+        if (root / "site" / "js" / name).is_file():
+            (out_dir / name).write_bytes((root / "site" / "js" / name).read_bytes())
+        elif (out_dir / name).exists():
+            (out_dir / name).unlink()
     (out_dir / "favicon.svg").write_text(FAVICON_SVG, encoding="utf-8")
     (out_dir / "favicon.ico").write_bytes(favicon_ico())
     (out_dir / "apple-touch-icon.png").write_bytes(favicon_png(180))
@@ -1123,6 +1206,8 @@ def build(root: Path, out_dir: Path) -> list[str]:
 
     nav = "".join(f'<li><a href="{html.escape(p.slug)}.html">{html.escape(p.title)}</a></li>' for p in pages if p.generator != "semantics-part")
     texts: dict[str, str] = {}
+    index_entries: list[dict] = []
+    topbar = render_topbar(config, pages)
 
     for page in pages:
         try:
@@ -1147,18 +1232,23 @@ def build(root: Path, out_dir: Path) -> list[str]:
         # Second pass with the real resolver, now that the page's own anchors are known; the line of each link is taken
         # from the first pass's record, in order.
         lines = iter(line for line, _ in rendered.links)
-        label = f"{page.source} (page '{page.slug}')" if page.generator == "semantics-part" else (f"site/site.json#{page.slug}" if generated else None)
+        label = f"site/site.json#{page.slug}" if generated else None
+        if page.generator == "semantics-part":
+            label = f"{page.source} (page '{page.slug}')"
 
         def resolver(href: str, image: bool = False, source=page.source if page.generator in (None, "semantics-part", "semantics-split") else "site/_generated",
                      own=own, sink=link_errors, lines=lines, label=label, own_split=own_split_of.get(page.slug)) -> str:
             return resolve_link(href, source, pages_by_source, root, config, anchors_of, sink, next(lines, 0), own, raw=image,
-                                pages_by_slug=pages_by_slug, page_anchors=page_anchors, label=label, splits=splits, own_split=own_split)
+                                label=label, context=LinkContext(pages_by_slug, page_anchors, splits, own_split))
 
         rendered = render_markdown(text, resolve=resolver)
         errors.extend(link_errors)
         if page.alias:
             rendered.html = f'<a id="{html.escape(page.alias)}"></a>' + rendered.html
             rendered.anchors.add(page.alias)
+        page.rendered = rendered
+        index_entries.append(search_entry(page))
+        rendered.html = add_anchors(rendered.html)
         for level, heading, _ in rendered.headings:
             if level == 2 and len(heading) > MAX_TOC_LABEL:
                 errors.append(f"page '{page.slug}': the heading '{heading[:40]}…' is {len(heading)} characters; a level-2 heading is at most {MAX_TOC_LABEL}")
@@ -1176,12 +1266,17 @@ def build(root: Path, out_dir: Path) -> list[str]:
             "sidebar": render_sidebar(pages, page.slug),
             "toc": render_toc(rendered),
             "prev_next": render_pager(pages, page.slug),
+            "topbar": topbar,
+            "menu_button": render_menu_button(page.slug),
+            "scripts": SCRIPT_TAGS if scripts_ready else "",
             "content": rendered.html,
             "source": html.escape(page.source),
             "source_url": html.escape(f"{config['repo'].rstrip('/')}/blob/{config['branch']}/{page.source}"),
         }
         page_html = fill_template(templates[page.template or "site/template.html"], values)
         (out_dir / f"{page.slug}.html").write_text(page_html, encoding="utf-8")
+
+    (out_dir / "search-index.json").write_text(json.dumps(index_entries, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
 
     if config["ruleSource"]:
         try:
