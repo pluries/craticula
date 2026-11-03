@@ -647,6 +647,71 @@ HEAD_LINKS = ('<link rel="icon" type="image/svg+xml" href="favicon.svg"><link re
               '<link rel="apple-touch-icon" href="apple-touch-icon.png">')
 
 
+# ---------------------------------------------------------------- page features (#3556)
+
+SCRIPTS = ("theme.js", "site.js")
+SCRIPT_TAGS = '<script src="theme.js"></script><script src="site.js" defer></script>'
+REGISTRY_NAMES = {"nuget": "NuGet", "npm": "npm", "pypi": "PyPI", "go": "Go"}
+_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{}</svg>'
+ICON_GITHUB = ('<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7'
+               'c-2.78.6-3.37-1.34-3.37-1.34-.45-1.15-1.11-1.46-1.11-1.46-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.89 1.52 2.34 1.08 2.9.83.09-.65.35-1.08.63-1.33'
+               '-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02A9.5 9.5 0 0 1 12 6.8c.85 0 1.7.11 2.5.34 1.9-1.29 2.74-1.02 2.74-1.02'
+               '.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.69-4.57 4.94.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></svg>')
+ICON_SEARCH = _ICON.format('<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>')
+ICON_PACKAGE = _ICON.format('<path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="m3 8 9 5 9-5M12 13v8"/>')
+ICON_MENU = _ICON.format('<path d="M4 6h16M4 12h16M4 18h16"/>')
+ICON_THEME = ('<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+              '<g class="i-auto"><circle cx="12" cy="12" r="8"/><path d="M12 4v16" /></g><g class="i-light"><circle cx="12" cy="12" r="4"/>'
+              '<path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></g>'
+              '<g class="i-dark"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5Z"/></g></svg>')
+LOGO = ('<svg width="30" height="30" viewBox="0 0 28 28" aria-hidden="true"><rect x="1.5" y="1.5" width="25" height="25" rx="7" fill="none" stroke="currentColor" stroke-width="2"/>'
+        '<path d="M9 6v16M14 6v16M19 6v16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>')
+_HEADING_OPEN = re.compile(r'<h([234]) id="([^"]+)">(.*?)</h\1>', re.S)
+_TAG = re.compile(r"</?[A-Za-z][^>]*>")
+
+
+def render_topbar(config: dict, pages: list["Page"]) -> str:
+    """DS-1: the top bar of every page: logo, Docs and Reference, the repository and the published registries, search and theme."""
+    order = ordered_pages(pages)
+    docs = order[0].slug if order else "index"
+    reference = next((p.slug for p in order if p.group == "Reference"), docs)
+    registries = "".join(
+        f'<a class="icon-btn" href="{html.escape(url, quote=True)}" aria-label="{html.escape(REGISTRY_NAMES.get(key, key))} package">{ICON_PACKAGE}</a>'
+        for key, url in config.get("packages", {}).items())
+    return (f'<header class="top"><div class="wrap-wide"><a class="brand" href="index.html">{LOGO}{html.escape(config["title"])}</a>'
+            f'<nav class="top-nav" aria-label="Main"><a href="{html.escape(docs)}.html">Docs</a><a href="{html.escape(reference)}.html">Reference</a></nav>'
+            f'<div class="top-actions"><a class="icon-btn" href="{html.escape(config["repo"], quote=True)}" aria-label="GitHub repository">{ICON_GITHUB}</a>{registries}'
+            f'<button type="button" class="icon-btn search-button" aria-label="Search the documentation (Ctrl+K)">{ICON_SEARCH}</button>'
+            f'<button type="button" class="icon-btn theme-button" aria-label="Theme: Auto. Change theme">{ICON_THEME}</button></div></div></header>')
+
+
+def render_menu_button(slug: str) -> str:
+    """DS-15: the button that opens the sidebar on a phone; the home page has no sidebar."""
+    if slug == "index":
+        return ""
+    return f'<button type="button" class="menu-toggle" aria-controls="sidebar" aria-expanded="false" aria-label="Open the page menu">{ICON_MENU}<span>Menu</span></button>'
+
+
+def add_anchors(page_html: str) -> str:
+    """DS-6: a link anchor in each heading of level 2 to 4, shown on hover and on keyboard focus."""
+    return _HEADING_OPEN.sub(lambda m: (f'<h{m.group(1)} id="{m.group(2)}">{m.group(3)} '
+                                        f'<a class="anchor" href="#{m.group(2)}" aria-label="Link to this section">#</a></h{m.group(1)}>'), page_html)
+
+
+def plain_text(page_html: str) -> str:
+    """The text of a rendered page without markup and without coded references, for the search index."""
+    text = _TAG.sub(" ", html.unescape(_TAG.sub(" ", page_html)))
+    return " ".join(CODED_REFERENCE.sub("", text).split())
+
+
+def search_entry(page: "Page") -> dict:
+    """DS-4, DS-12: the search index entry of a page (the headings keep their text; coded references never reach the index)."""
+    rendered = page.rendered
+    headings = [{"text": " ".join(CODED_REFERENCE.sub("", text).split()), "anchor": anchor} for level, text, anchor in rendered.headings if 2 <= level <= 4]
+    return {"slug": page.slug, "title": page.title, "description": page.description, "group": "" if page.slug == "index" else (page.group or ""), "headings": headings,
+            "text": plain_text(rendered.html)}
+
+
 def load_config(root: Path) -> dict:
     path = root / "site" / "site.json"
     try:
@@ -658,6 +723,9 @@ def load_config(root: Path) -> dict:
     for key in ("title", "repo", "branch", "pages"):
         if key not in config:
             raise BuildError(f"{path}: missing '{key}'")
+    packages = config.setdefault("packages", {})
+    if not isinstance(packages, dict) or not all(isinstance(k, str) and isinstance(v, str) and v.startswith(("https://", "http://")) for k, v in packages.items()):
+        raise BuildError(f"{path}: 'packages' must map a registry name to an http(s) address")
     config.setdefault("ruleSource", None)
     config.setdefault("ruleIdPrefixes", [])
     for entry in config["pages"]:
@@ -1107,6 +1175,12 @@ def build(root: Path, out_dir: Path) -> list[str]:
     for stale in out_dir.glob("*.html"):  # a page removed from site.json must not linger in the output
         stale.unlink()
     (out_dir / "style.css").write_text(style, encoding="utf-8")
+    scripts_ready = all((root / "site" / "js" / name).is_file() for name in SCRIPTS)
+    for name in SCRIPTS:
+        if (root / "site" / "js" / name).is_file():
+            (out_dir / name).write_bytes((root / "site" / "js" / name).read_bytes())
+        elif (out_dir / name).exists():
+            (out_dir / name).unlink()
     (out_dir / "favicon.svg").write_text(FAVICON_SVG, encoding="utf-8")
     (out_dir / "favicon.ico").write_bytes(favicon_ico())
     (out_dir / "apple-touch-icon.png").write_bytes(favicon_png(180))
@@ -1123,6 +1197,8 @@ def build(root: Path, out_dir: Path) -> list[str]:
 
     nav = "".join(f'<li><a href="{html.escape(p.slug)}.html">{html.escape(p.title)}</a></li>' for p in pages if p.generator != "semantics-part")
     texts: dict[str, str] = {}
+    index_entries: list[dict] = []
+    topbar = render_topbar(config, pages)
 
     for page in pages:
         try:
@@ -1159,6 +1235,9 @@ def build(root: Path, out_dir: Path) -> list[str]:
         if page.alias:
             rendered.html = f'<a id="{html.escape(page.alias)}"></a>' + rendered.html
             rendered.anchors.add(page.alias)
+        page.rendered = rendered
+        index_entries.append(search_entry(page))
+        rendered.html = add_anchors(rendered.html)
         for level, heading, _ in rendered.headings:
             if level == 2 and len(heading) > MAX_TOC_LABEL:
                 errors.append(f"page '{page.slug}': the heading '{heading[:40]}…' is {len(heading)} characters; a level-2 heading is at most {MAX_TOC_LABEL}")
@@ -1176,12 +1255,17 @@ def build(root: Path, out_dir: Path) -> list[str]:
             "sidebar": render_sidebar(pages, page.slug),
             "toc": render_toc(rendered),
             "prev_next": render_pager(pages, page.slug),
+            "topbar": topbar,
+            "menu_button": render_menu_button(page.slug),
+            "scripts": SCRIPT_TAGS if scripts_ready else "",
             "content": rendered.html,
             "source": html.escape(page.source),
             "source_url": html.escape(f"{config['repo'].rstrip('/')}/blob/{config['branch']}/{page.source}"),
         }
         page_html = fill_template(templates[page.template or "site/template.html"], values)
         (out_dir / f"{page.slug}.html").write_text(page_html, encoding="utf-8")
+
+    (out_dir / "search-index.json").write_text(json.dumps(index_entries, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
 
     if config["ruleSource"]:
         try:
