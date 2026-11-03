@@ -42,7 +42,7 @@ separate, optional per-ecosystem adapter packages.
   (sort, text, number and date filters, paging; see [`spec/fixtures/community-infinite`](spec/fixtures/community-infinite/README.md)).
   Row grouping, aggregation, pivot and the set filter are Enterprise features and are not part of that promise.
 - **Backends:** PostgreSQL, SQL Server, MySQL/MariaDB, SQLite, MongoDB, OpenSearch,
-  Elasticsearch. Oracle is open (see the TRD's open questions).
+  Elasticsearch. Oracle is community-tested: the same SQL pipeline, with `FETCH FIRST` paging (12c and later).
 - **Reference implementation:** C#/.NET, ported to TypeScript, Python, and Go after the spec
   freezes at 1.0.
 - **Semantics** (case sensitivity, null handling/ordering, dates & zones, deterministic
