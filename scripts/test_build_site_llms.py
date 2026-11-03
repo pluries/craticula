@@ -325,14 +325,41 @@ class RealSite(unittest.TestCase):
                 self.assertNotIn("{{include", text)
                 self.assertNotRegex(text, r"</?(?:p|h[1-6]|ul|li|table|pre)[ >]")
 
-    def test_6_no_output_holds_a_private_path_a_private_host_or_a_credential(self):
+    def private_link_targets(self, text: str) -> list[str]:
+        """The Markdown link targets and hrefs of an output that point into a private path (relative, or on the repository's GitHub address)."""
+        found = []
+        for target in re.findall(r"\]\(([^)\s]+)", text) + re.findall(r'href="([^"]+)"', text):
+            path = target.partition("#")[0].partition("?")[0]
+            match = re.match(r"https://github\.com/[^/]+/[^/]+/(?:blob|tree|raw)/[^/]+/(.*)$", path)
+            path = match.group(1) if match else path
+            while path.startswith(("./", "../")):
+                path = path.split("/", 1)[1]
+            if not re.match(r"[a-z][a-z0-9+.-]*:", path) and bs._is_private(path):
+                found.append(target)
+        return found
+
+    def test_6_no_output_links_into_a_private_path_holds_a_private_host_or_a_credential(self):
+        # Public pages may name a private folder in prose (the README layout, "see docs/TRD-..." in a schema description): those sentences
+        # already stand in the public README and spec. What DSN-6 forbids is a link into the private part, a private host or a credential.
         outputs = ["llms.txt", "llms-full.txt", *(f"{slug}.md" for slug in self.pages)]
-        private = [entry if "." in Path(entry).name else entry + "/" for entry in bs.PRIVATE_PATHS]
         for name in outputs:
             text = read(self.out, name)
             with self.subTest(output=name):
-                for token in (*private, "dev.azure.com", "visualstudio.com", "ssh.dev.azure", *SECRET_WORDS):
+                self.assertEqual([], self.private_link_targets(text))
+                for token in ("dev.azure.com", "visualstudio.com", "ssh.dev.azure", *SECRET_WORDS):
                     self.assertNotIn(token, text)
+
+    def test_6_llms_txt_lists_only_the_built_pages_and_names_no_private_path_at_all(self):
+        text = read(self.out, "llms.txt")
+        for entry in bs.PRIVATE_PATHS:
+            self.assertNotIn(entry if "." in Path(entry).name else entry + "/", text)
+        targets = re.findall(r"\]\(([^)\s]+)\)", text)
+        self.assertEqual(sorted(f"{self.base}/{slug}.md" for slug in self.pages), sorted(targets))
+
+    def test_6_the_link_scan_itself_finds_a_private_target(self):
+        sample = "[a](docs/x.md) [b](../../.claude/rules/y.md#z) [c](https://github.com/o/r/blob/main/jenkins/release.Jenkinsfile) [d](README.md)"
+        self.assertEqual(["docs/x.md", "../../.claude/rules/y.md#z", "https://github.com/o/r/blob/main/jenkins/release.Jenkinsfile"],
+                         self.private_link_targets(sample))
 
     def test_6_two_builds_of_the_real_site_give_identical_bytes(self):
         again = Path(tempfile.mkdtemp()) / "again"

@@ -2,6 +2,7 @@
   "title": "Craticula",
   "repo": "https://github.com/pluries/craticula",
   "branch": "main",
+  "baseUrl": "https://craticula.pluries.dev",
   "groups": {
     "Concepts": "What Craticula is, how a request becomes a query, Strict and Lenient, and the safety model.",
     "Guides": "Quickstarts, index guidance and moving from OData.",

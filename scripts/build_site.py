@@ -59,6 +59,7 @@ import json
 import os
 import re
 import struct
+import urllib.parse
 import sys
 import zlib
 from dataclasses import dataclass, field
@@ -733,6 +734,47 @@ def search_entry(page: "Page") -> dict:
             "text": plain_text(rendered.html)}
 
 
+def normalise_base_url(value: object, where: str) -> str:
+    """DS-13: the address the llms files link to: https, a host, no credentials, no query, no fragment; one trailing slash is dropped."""
+    if not isinstance(value, str):
+        raise BuildError(f"{where}: baseUrl must be an https address")
+    address = value[:-1] if value.endswith("/") else value
+    try:
+        parts = urllib.parse.urlsplit(address)
+    except ValueError as error:
+        raise BuildError(f"{where}: baseUrl '{value}' is not an address") from error
+    if parts.scheme != "https" or not parts.hostname or "@" in parts.netloc or parts.query or parts.fragment or address.endswith("/") or re.search(r"\s", address):
+        raise BuildError(f"{where}: baseUrl '{value}' must be an https address without credentials, query or fragment")
+    return address
+
+
+def render_llms_txt(config: dict, pages: list["Page"], base: str) -> str:
+    """DS-13: `llms.txt` in the llmstxt.org shape: title, summary, then the home page and one section per sidebar group."""
+    home = next((p for p in pages if p.slug == "index"), None)
+    summary = config.get("summary") or (home.description if home else "")
+    prefix = f"{base}/" if base else ""
+
+    def line(page: "Page") -> str:
+        return f"- [{page.title}]({prefix}{page.slug}.md): {page.description}"
+
+    sections = [f"# {config['title']}\n\n> {summary}"]
+    if home:
+        sections.append("## Home\n\n" + line(home))
+    layout = _layout(pages)
+    for name in GROUPS:
+        members = [p for p in ordered_pages(pages) if p.group == name]
+        if layout[name]:
+            sections.append(f"## {name}\n\n" + "\n".join(line(p) for p in members))
+    return "\n\n".join(sections) + "\n"
+
+
+def render_llms_full(pages: list["Page"], texts: dict[str, str]) -> str:
+    """DS-13: `llms-full.txt`: the home page, then every other page in sidebar order, each as a titled block."""
+    home = [p for p in pages if p.slug == "index"]
+    blocks = [f"==== {p.title} | {p.slug}.md ====\n\n{texts[p.slug].rstrip(chr(10))}" for p in [*home, *ordered_pages(pages)] if p.slug in texts]
+    return "\n\n".join(blocks) + "\n"
+
+
 def load_config(root: Path) -> dict:
     path = root / "site" / "site.json"
     try:
@@ -758,6 +800,10 @@ def load_config(root: Path) -> dict:
                 raise BuildError(f"{path}: 'groups': the description of '{name}' must be a string")
             if CODED_REFERENCE.search(text):
                 raise BuildError(f"{path}: 'groups': the description of '{name}' holds a coded reference")
+    if "baseUrl" in config:
+        config["baseUrl"] = normalise_base_url(config["baseUrl"], str(path))
+    if "summary" in config and (not isinstance(config["summary"], str) or not config["summary"].strip()):
+        raise BuildError(f"{path}: 'summary' must be one non-empty sentence")
     config.setdefault("ruleSource", None)
     config.setdefault("ruleIdPrefixes", [])
     for entry in config["pages"]:
@@ -1095,9 +1141,10 @@ def fill_template(template: str, values: dict[str, str]) -> str:
     return re.sub(r"\{\{(\w+)\}\}", lambda m: values.get(m.group(1), m.group(0)), template)
 
 
-def build(root: Path, out_dir: Path) -> list[str]:
+def build(root: Path, out_dir: Path, base_url: str | None = None) -> list[str]:
     """Build the site; returns the list of errors (empty when every link resolves and every rule id exists)."""
     config = load_config(root)
+    base = normalise_base_url(base_url, "--base-url") if base_url is not None else config.get("baseUrl", "")
 
     def read(rel: str) -> str:
         return (root / rel).read_text(encoding="utf-8")
@@ -1211,8 +1258,9 @@ def build(root: Path, out_dir: Path) -> list[str]:
     except (OSError, UnicodeDecodeError):
         spec_version = ""
     out_dir.mkdir(parents=True, exist_ok=True)
-    for stale in out_dir.glob("*.html"):  # a page removed from site.json must not linger in the output
-        stale.unlink()
+    for pattern in ("*.html", "*.md", "llms.txt", "llms-full.txt"):  # a page removed from site.json must not linger in the output
+        for stale in out_dir.glob(pattern):
+            stale.unlink()
     (out_dir / "style.css").write_text(style, encoding="utf-8")
     scripts_ready = all((root / "site" / "js" / name).is_file() for name in SCRIPTS)
     for name in SCRIPTS:
@@ -1236,6 +1284,7 @@ def build(root: Path, out_dir: Path) -> list[str]:
 
     nav = "".join(f'<li><a href="{html.escape(p.slug)}.html">{html.escape(p.title)}</a></li>' for p in pages if p.generator != "semantics-part")
     texts: dict[str, str] = {}
+    page_texts: dict[str, str] = {}
     index_entries: list[dict] = []
     topbar = render_topbar(config, pages)
     group_cards = render_group_cards(config, pages)
@@ -1307,7 +1356,11 @@ def build(root: Path, out_dir: Path) -> list[str]:
         }
         page_html = fill_template(templates[page.template or "site/template.html"], values)
         (out_dir / f"{page.slug}.html").write_text(page_html, encoding="utf-8")
+        (out_dir / f"{page.slug}.md").write_text(text, encoding="utf-8")
+        page_texts[page.slug] = text
 
+    (out_dir / "llms.txt").write_text(render_llms_txt(config, pages, base), encoding="utf-8")
+    (out_dir / "llms-full.txt").write_text(render_llms_full(pages, page_texts), encoding="utf-8")
     (out_dir / "search-index.json").write_text(json.dumps(index_entries, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
 
     if config["ruleSource"]:
@@ -1324,12 +1377,13 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Build the Craticula docs site (see the module docstring).")
     parser.add_argument("--root", type=Path, default=default_root, help="repository root (default: this checkout)")
     parser.add_argument("--out", type=Path, default=None, help="output folder (default: <root>/site/_build)")
+    parser.add_argument("--base-url", default=None, help="the https address the llms files link to (default: baseUrl of site/site.json; none = relative links)")
     args = parser.parse_args(argv)
 
     root = args.root.resolve()
     out_dir = (args.out or root / "site" / "_build").resolve()
     try:
-        errors = build(root, out_dir)
+        errors = build(root, out_dir, args.base_url)
     except BuildError as error:
         print(f"build_site: {error}", file=sys.stderr)
         return 2
