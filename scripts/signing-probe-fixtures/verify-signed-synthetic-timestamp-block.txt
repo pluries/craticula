@@ -1,0 +1,31 @@
+X.509 certificate chain validation will use the fallback certificate bundle at '/usr/lib/dotnet/sdk/10.0.114/trustedroots/codesignctl.pem'.
+X.509 certificate chain validation will use the fallback certificate bundle at '/usr/lib/dotnet/sdk/10.0.114/trustedroots/timestampctl.pem'.
+
+Verifying Craticula.SigningProbe.0.0.1
+Content hash: 79mM2EgGeK3dobCmWGrjLWM2u3ess0Qv7tknmiEinu5X+Xs8MuAAhGwXGwL3vrpfEtILe1aJA2zS92dfeoHTIw==
+Craticula.SigningProbe.0.0.1.nupkg
+Signature Hash Algorithm: SHA256
+
+Signature type: Author
+Verifying the author primary signature with certificate: 
+  Subject Name: O=throwaway test, CN=Scratch Open Source Developer
+  SHA1 hash: E7D0B28843E91E9FFDDD6808CBC07DDC86B9DEBB
+  SHA256 hash: 19FF9BE9E142B83BB41148D10D2DF62247AD0B772E9C44BF121ED09F7D12E538
+  Issued by: O=throwaway test, CN=Scratch Open Source Developer
+  Valid from: 11/1/2026 3:18:01 PM to 12/6/2027 3:18:01 PM
+Signature type: Timestamp
+Verifying the author primary signature's timestamp with timestamping service certificate: 
+  Subject Name: CN=Synthetic Timestamp Service
+  SHA256 hash: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+  Valid from: 1/2/2020 1:00:00 AM to 1/2/2030 1:00:00 AM
+
+debug: The author primary signature's certificate chain validation failed with error(s): UntrustedRoot
+
+Finished with 1 errors and 2 warnings.
+warn : NU3042: The following X.509 root certificate is untrusted because it is not present in the certificate bundle at /usr/lib/dotnet/sdk/10.0.114/trustedroots/codesignctl.pem.  For more information, see documentation for NU3042.
+warn :     Subject:  O=throwaway test, CN=Scratch Open Source Developer
+warn :     Fingerprint (SHA-256):  19FF9BE9E142B83BB41148D10D2DF62247AD0B772E9C44BF121ED09F7D12E538
+warn :     Certificate (PEM):
+error: NU3018: The author primary signature's signing certificate is not trusted by the trust provider.
+
+Package signature validation failed.

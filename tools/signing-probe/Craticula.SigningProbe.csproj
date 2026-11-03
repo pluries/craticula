@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Story #3320, spec FR-05: a throwaway package the maker signs with the author certificate to prove that nuget.org accepts it.
+       Not one of the ten packages. It lives outside csharp/ on purpose: the license check (scripts/check-licenses.py) needs a
+       restored obj/project.assets.json for every project under csharp/, and CI restores only the solution. csharp/Directory.Build.props
+       therefore does not apply here, hence the properties below. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <IsPackable>true</IsPackable>
+    <PackageId>Craticula.SigningProbe</PackageId>
+    <Version>0.0.1</Version>
+    <Authors>pluries</Authors>
+    <Description>Signing probe, not for use</Description>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/pluries/craticula</PackageProjectUrl>
+  </PropertyGroup>
+
+  <!-- The package goes to nuget.org and stays there: no build-machine path (the PDB path inside the dll) and no private commit
+       hash (the nuspec repository element, the informational version) may travel with it. -->
+  <PropertyGroup>
+    <DebugType>none</DebugType>
+    <EnableSourceControlManagerQueries>false</EnableSourceControlManagerQueries>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+</Project>

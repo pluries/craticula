@@ -69,6 +69,9 @@ pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
 table { border-collapse: collapse; display: block; overflow-x: auto; margin: 0 0 1.3em; font-size: 0.9375rem; }
 th, td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; vertical-align: top; }
 th { background: var(--surface); color: var(--text); }
+/* A cell breaks a word only when the word alone is wider than the table; `anywhere` (inherited from .prose) would shrink every column to one letter. */
+.prose th, .prose td { overflow-wrap: break-word; }
+.prose th { white-space: nowrap; }
 blockquote { margin: 0 0 1.3em; padding: 14px 20px; border: 1px solid #6B4A22; border-radius: 12px; background: #261F14; color: #E8D9B8; }
 blockquote p { margin: 0; color: inherit; }
 hr { border: 0; border-top: 1px solid var(--line); margin: 2em 0; }
