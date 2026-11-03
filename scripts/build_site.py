@@ -70,7 +70,7 @@ from typing import Callable
 PRIVATE_PATHS = ("docs", ".claude", "CLAUDE.md", ".mcp.json", ".githooks", ".azuredevops", ".sonarlint", ".vscode",
                  "scripts/publish-github.sh", "scripts/sync-release-commit.sh", "scripts/apply-public-change.sh",
                  "scripts/test_apply_public_change.py", "scripts/test_publish_mirror_real.py", "scripts/test_jenkinsfile.py",
-                 "scripts/test_release_steps.py", "scripts/release-steps-fixtures",
+                 "scripts/test_release_steps.py", "scripts/test_release_steps_publish.py", "scripts/release-steps-fixtures",
                  "csharp/tests/Craticula.Conformance.Tests/JenkinsfileTests.cs", "Jenkinsfile", "jenkins")
 EXTERNAL = re.compile(r"^(?:[a-zA-Z][a-zA-Z0-9+.-]*:)")
 ALLOWED_SCHEMES = ("http:", "https:", "mailto:")
