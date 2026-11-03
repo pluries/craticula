@@ -1072,6 +1072,12 @@ class ThisRepository(unittest.TestCase):
         self.assertEqual({e.rstrip("/") for e in match.group(1).split()}, set(bs.PRIVATE_PATHS),
                          "PRIVATE_PATHS differs from the PRIVATE array of scripts/publish-github.sh")
 
+    def test_the_release_steps_tests_are_private_paths(self):
+        # #3486: the tests of the private jenkins/release-steps.sh are never linked from the public site.
+        for path in ("scripts/test_release_steps.py", "scripts/test_release_steps_publish.py", "scripts/release-steps-fixtures/curl"):
+            with self.subTest(path=path):
+                self.assertTrue(bs._is_private(path))
+
     def test_site_is_public_and_docs_is_private(self):
         self.assertTrue(bs._is_private("docs/TRD.md"))
         self.assertTrue(bs._is_private("docs"))

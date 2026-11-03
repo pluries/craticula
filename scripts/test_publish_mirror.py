@@ -336,6 +336,16 @@ class ScriptTests(unittest.TestCase):
         self.assertEqual([], [path for path in tree if path.startswith("scripts/release-steps-fixtures")])
         self.assertIn("scripts/test_release_verify.py", tree)
 
+    def test_the_release_publish_test_stays_out_of_the_public_history(self):
+        # #3486: it tests the push and release commands of jenkins/release-steps.sh, which is private, like its sibling test.
+        self.write("scripts/test_release_steps_publish.py", "# tests a private script\n")
+        self.write("scripts/test_release_verify.py", "# stays\n")
+        self.commit("TECHNICAL #7 add the release publish tests")
+        self.publish()
+        tree = self.git("ls-tree", "-r", "--name-only", "main", cwd=self.pub).stdout.split()
+        self.assertNotIn("scripts/test_release_steps_publish.py", tree)
+        self.assertIn("scripts/test_release_verify.py", tree)
+
     def public_tree(self):
         return self.git("ls-tree", "-r", "--name-only", "main", cwd=self.pub).stdout.split()
 
