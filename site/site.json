@@ -2,6 +2,13 @@
   "title": "Craticula",
   "repo": "https://github.com/pluries/craticula",
   "branch": "main",
+  "baseUrl": "https://craticula.pluries.dev",
+  "groups": {
+    "Concepts": "What Craticula is, how a request becomes a query, Strict and Lenient, and the safety model.",
+    "Guides": "Quickstarts, index guidance and moving from OData.",
+    "Configuration": "The GridSchema, limits, and dialects and providers.",
+    "Reference": "The specification, one page for each rule of how requests behave, and both schemas."
+  },
   "ruleSource": "spec/semantics.md",
   "ruleIdPrefixes": [
     "SEM",
@@ -18,82 +25,201 @@
       "slug": "index",
       "title": "Home",
       "source": "site/pages/index.md",
-      "group": "Start here",
+      "description": "Craticula turns AG Grid server-side requests into safe native queries.",
       "template": "site/home.html"
     },
     {
+      "slug": "what-is-craticula",
+      "title": "What Craticula is",
+      "source": "site/pages/what-is-craticula.md",
+      "group": "Concepts",
+      "description": "What Craticula compiles, what it never does, and where it stands.",
+      "authored": true,
+      "reviewed": "2026-11-03"
+    },
+    {
+      "slug": "request-to-query",
+      "title": "How a request becomes a query",
+      "source": "site/pages/request-to-query.md",
+      "group": "Concepts",
+      "description": "The path from an AG Grid request to a statement with parameters.",
+      "authored": true,
+      "reviewed": "2026-11-03"
+    },
+    {
+      "slug": "strict-and-lenient",
+      "title": "Strict and Lenient",
+      "source": "site/pages/strict-and-lenient.md",
+      "group": "Concepts",
+      "description": "What the two schema modes do with columns the schema does not allow.",
+      "authored": true,
+      "reviewed": "2026-11-03"
+    },
+    {
+      "slug": "safety-model",
+      "title": "The safety model",
+      "source": "site/pages/safety-model.md",
+      "group": "Concepts",
+      "description": "How values, identifiers and limits keep a compiled query safe, and what is left to you.",
+      "authored": true,
+      "reviewed": "2026-11-03"
+    },
+    {
       "slug": "quickstart-csharp",
-      "title": "Quickstart: C#",
+      "title": "C#",
       "source": "site/pages/quickstart-csharp.md",
-      "group": "Start here"
+      "group": "Guides",
+      "description": "Compile a grid request to SQL and MongoDB from C#.",
+      "subgroup": "Quickstarts"
     },
     {
       "slug": "quickstart-typescript",
       "title": "TypeScript",
       "source": "site/pages/quickstart-typescript.md",
-      "group": "Start here"
+      "group": "Guides",
+      "description": "What a TypeScript port will follow.",
+      "subgroup": "Quickstarts"
     },
     {
       "slug": "quickstart-python",
       "title": "Python",
       "source": "site/pages/quickstart-python.md",
-      "group": "Start here"
+      "group": "Guides",
+      "description": "What a Python port will follow.",
+      "subgroup": "Quickstarts"
     },
     {
       "slug": "quickstart-go",
       "title": "Go",
       "source": "site/pages/quickstart-go.md",
-      "group": "Start here"
+      "group": "Guides",
+      "description": "What a Go port will follow.",
+      "subgroup": "Quickstarts"
     },
     {
       "slug": "index-guidance",
       "title": "Index guidance",
       "source": "site/pages/index-guidance.md",
-      "group": "Start here"
+      "group": "Guides",
+      "description": "Which database indexes and settings keep compiled queries fast and exact."
     },
     {
       "slug": "odata-migration",
       "title": "Migrating from OData",
       "source": "site/pages/odata-migration.md",
-      "group": "Start here"
+      "group": "Guides",
+      "description": "Move a grid from OData to compiled queries and see what changes."
+    },
+    {
+      "slug": "paging-and-sorting",
+      "title": "Paging and sorting",
+      "source": "site/pages/paging-and-sorting.md",
+      "group": "Guides",
+      "description": "How rows are windowed and ordered, and why paging is deterministic.",
+      "authored": true,
+      "reviewed": "2026-11-03"
+    },
+    {
+      "slug": "grouping-and-aggregation",
+      "title": "Grouping and aggregation",
+      "source": "site/pages/grouping-and-aggregation.md",
+      "group": "Guides",
+      "description": "How a grouped grid asks for one level at a time and how aggregations behave.",
+      "authored": true,
+      "reviewed": "2026-11-03"
+    },
+    {
+      "slug": "csv-export",
+      "title": "CSV export",
+      "source": "site/pages/csv-export.md",
+      "group": "Guides",
+      "description": "Stream a grid's rows to CSV with the same request model and the same checks.",
+      "authored": true,
+      "reviewed": "2026-11-03"
+    },
+    {
+      "slug": "relational-adapters",
+      "title": "Entity Framework Core and Dapper",
+      "source": "site/pages/relational-adapters.md",
+      "group": "Guides",
+      "description": "What the two relational adapters give you, what they need and what they never do.",
+      "authored": true,
+      "reviewed": "2026-11-03"
+    },
+    {
+      "slug": "search-adapters",
+      "title": "MongoDB and OpenSearch adapters",
+      "source": "site/pages/search-adapters.md",
+      "group": "Guides",
+      "description": "Run compiled MongoDB and OpenSearch queries with the optional adapters, including deep paging.",
+      "authored": true,
+      "reviewed": "2026-11-03"
+    },
+    {
+      "slug": "the-gridschema",
+      "title": "The GridSchema",
+      "source": "site/pages/the-gridschema.md",
+      "group": "Configuration",
+      "description": "The schema that lists what a grid may touch, and which of its flags are enforced today.",
+      "authored": true,
+      "reviewed": "2026-11-03"
+    },
+    {
+      "slug": "limits",
+      "title": "Limits",
+      "source": "site/pages/limits.md",
+      "group": "Configuration",
+      "description": "The default resource limits, what each one does and how to change them.",
+      "authored": true,
+      "reviewed": "2026-11-03"
+    },
+    {
+      "slug": "dialects-and-providers",
+      "title": "Dialects and providers",
+      "source": "site/pages/dialects-and-providers.md",
+      "group": "Configuration",
+      "description": "How each database engine differs in quoting, paging, null order and case-insensitive matching.",
+      "authored": true,
+      "reviewed": "2026-11-03"
     },
     {
       "slug": "overview",
       "title": "Overview",
       "source": "README.md",
-      "group": "Specification"
+      "group": "Reference",
+      "description": "What Craticula is, what it compiles and where it stands."
     },
     {
       "slug": "spec",
       "title": "The spec",
       "source": "spec/README.md",
-      "group": "Specification"
+      "group": "Reference",
+      "description": "The specification, its fixtures and how to read them."
     },
     {
       "slug": "semantics",
-      "title": "Semantics",
+      "title": "Semantics overview",
       "source": "spec/semantics.md",
-      "group": "Specification"
-    },
-    {
-      "slug": "rules",
-      "title": "Rule index",
-      "generator": "rules-index",
-      "group": "Specification"
+      "group": "Reference",
+      "generator": "semantics-split",
+      "summaries": "site/summaries.json",
+      "description": "The rules every compiler follows, one page for each topic."
     },
     {
       "slug": "grid-schema",
       "title": "GridSchema reference",
+      "group": "Reference",
+      "description": "Every member of the grid schema.",
       "generator": "schema-reference",
-      "schema": "spec/grid-schema.schema.json",
-      "group": "Specification"
+      "schema": "spec/grid-schema.schema.json"
     },
     {
       "slug": "ir-schema",
       "title": "IR reference",
+      "group": "Reference",
+      "description": "Every member of the query intermediate representation.",
       "generator": "schema-reference",
-      "schema": "spec/ir.schema.json",
-      "group": "Specification"
+      "schema": "spec/ir.schema.json"
     }
   ]
 }

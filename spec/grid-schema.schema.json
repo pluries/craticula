@@ -2,33 +2,39 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.pluries.dev/craticula/v1/grid-schema.schema.json",
   "title": "Craticula GridSchema",
-  "description": "The host-declared field allowlist and per-field configuration every compilation requires (SC-1..SC-5). This is a spec-level assumption authored for the conformance fixture suite (#1630) ahead of the actual GridSchema model/validator (#1631) — #1631 must conform to this shape, not the other way around, since this schema exists first. That precedence applies to what existed then; members added later were added here and in the model by the same story ('source' in #1638, per-field 'format' in #1653), so for those two the two are one change and neither leads. Every field a compilation touches (in filters, sort, group, aggregations) MUST appear in 'fields'; a colId absent from 'fields' is what the allowlist (SC-1) exists to reject.",
+  "description": "The field allowlist and per-field configuration that the host declares and every compilation requires. Every field a compilation touches (in filters, sort, group or aggregations) must be listed in `fields`; a column id that is not listed is either rejected or removed, depending on `mode`. The `source` and per-field `format` members were added after the first version of this schema, together with the model that reads them.",
+  "$comment": "The host-declared field allowlist and per-field configuration every compilation requires (SC-1..SC-5). This is a spec-level assumption authored for the conformance fixture suite (#1630) ahead of the actual GridSchema model/validator (#1631) — #1631 must conform to this shape, not the other way around, since this schema exists first. That precedence applies to what existed then; members added later were added here and in the model by the same story ('source' in #1638, per-field 'format' in #1653), so for those two the two are one change and neither leads. Every field a compilation touches (in filters, sort, group, aggregations) MUST appear in 'fields'; a colId absent from 'fields' is what the allowlist (SC-1) exists to reject.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
     "mode": {
       "enum": ["strict", "lenient"],
       "default": "strict",
-      "description": "SC-1: Strict throws on an unlisted colId; Lenient silently strips it. Strict is the default per the TRD's own [DEFAULT] marker."
+      "description": "Controls what happens when a request names a column id that is not listed in `fields`. Strict mode throws an error, and Lenient mode silently strips the unknown column. Strict is the default.",
+      "$comment": "SC-1: Strict throws on an unlisted colId; Lenient silently strips it. Strict is the default per the TRD's own [DEFAULT] marker."
     },
     "source": {
       "type": "string",
       "minLength": 1,
-      "description": "The physical collection every compiled query reads from: the SQL table or view named in FROM, the MongoDB collection, the Search index. Host-declared and never client-influenced — exactly like the per-field 'physical' mappings (SC-4) beside it, which is why it belongs here and not on the wire request: no AG Grid payload carries it and a compiler cannot invent it. Required — a query with no source cannot be emitted at all. Added in #1638: before it existed, every expected artifact in the fixture suite named a table ('FROM employees') that appeared in none of that fixture's inputs, recoverable only from the directory name."
+      "description": "The physical collection every compiled query reads from: the SQL table or view named in FROM, the MongoDB collection, or the search index. The host declares it and a client never influences it, just like the per-field `physical` mappings, so it lives here and not on the wire request. It is required, because a query with no source cannot be emitted.",
+      "$comment": "The physical collection every compiled query reads from: the SQL table or view named in FROM, the MongoDB collection, the Search index. Host-declared and never client-influenced — exactly like the per-field 'physical' mappings (SC-4) beside it, which is why it belongs here and not on the wire request: no AG Grid payload carries it and a compiler cannot invent it. Required — a query with no source cannot be emitted at all. Added in #1638: before it existed, every expected artifact in the fixture suite named a table ('FROM employees') that appeared in none of that fixture's inputs, recoverable only from the directory name."
     },
     "stableKey": {
       "type": "string",
       "minLength": 1,
-      "description": "SEM-6: the field appended as a trailing sort tiebreaker whenever the request's own sort, after SEM-6's reduction (a field listed once, the sort stopping at an exact stable key), doesn't already reach a unique key. Required per grid — every GridSchema fixture must declare one, and it must itself be a key present in 'fields'."
+      "description": "A field that is unique per row (no two rows share a value, null included). When the request's sort does not already end in an exact ordering on it, it is appended as a final ascending sort key with nulls last, so that paging is deterministic. A repeated field in the sort is dropped, and nothing after the stable key is kept once it orders exactly (any non-text field, or a case-sensitive text field); it is required for every grid and must be one of the keys in `fields`.",
+      "$comment": "SEM-6: the field appended as a trailing sort tiebreaker whenever the request's own sort, after SEM-6's reduction (a field listed once, the sort stopping at an exact stable key), doesn't already reach a unique key. Required per grid — every GridSchema fixture must declare one, and it must itself be a key present in 'fields'."
     },
     "staticFilter": {
       "$ref": "./ir.schema.json#/$defs/filterNode",
-      "description": "SC-5: a host-authored IR filter fragment ANDed into every compiled query (the tenancy/soft-delete hook). Never client-influenced — this field only ever appears in schema.json, never in an agGridRequest.json. Absent means no static filter for this fixture."
+      "description": "A host-written condition, in the same filter-node shape as the IR, that is ANDed into every query. Use it for rules such as limiting rows to one tenant or hiding soft-deleted rows. Clients cannot change it.",
+      "$comment": "SC-5: a host-authored IR filter fragment ANDed into every compiled query (the tenancy/soft-delete hook). Never client-influenced — this field only ever appears in schema.json, never in an agGridRequest.json. Absent means no static filter for this fixture."
     },
     "fields": {
       "type": "object",
       "minProperties": 1,
-      "description": "SC-2: the exhaustive allowlist, keyed by logical colId.",
+      "description": "The complete allowlist of fields, keyed by logical column id.",
+      "$comment": "SC-2: the exhaustive allowlist, keyed by logical colId.",
       "additionalProperties": {
         "$ref": "#/$defs/fieldConfig"
       }
@@ -44,38 +50,45 @@
       "properties": {
         "type": {
           "enum": ["string", "int64", "decimal", "double", "boolean", "date", "datetime"],
-          "description": "The declared type used by the AG Grid adapter to coerce this field's wire values into a typedValue (SEM-5) — matches the type tags in ir.schema.json's $defs/typedValue one-for-one."
+          "description": "The declared type the AG Grid adapter uses to turn this field's wire values into typed values. It matches the type tags of the IR typed values one for one.",
+          "$comment": "The declared type used by the AG Grid adapter to coerce this field's wire values into a typedValue (SEM-5) — matches the type tags in ir.schema.json's $defs/typedValue one-for-one."
         },
         "filterable": { "type": "boolean", "default": true },
         "sortable": { "type": "boolean", "default": true },
         "groupable": { "type": "boolean", "default": false },
         "aggregatable": {
           "type": "array",
-          "description": "Subset of AR-8's closed v1 aggregation functions this field may be aggregated with. Empty/absent means not aggregatable.",
+          "description": "The aggregation functions this field may be aggregated with, taken from the closed set of version 1 functions (`sum`, `min`, `max`, `avg`, `count`). An empty or absent list means the field cannot be aggregated.",
+          "$comment": "Subset of AR-8's closed v1 aggregation functions this field may be aggregated with. Empty/absent means not aggregatable.",
           "items": { "enum": ["sum", "min", "max", "avg", "count"] },
           "uniqueItems": true
         },
         "physical": {
           "$ref": "#/$defs/physicalMapping",
-          "description": "SC-4: per-backend physical mapping. A field need only declare mappings for the backends the fixture actually targets."
+          "description": "The per-backend physical mapping of this field. A field only needs mappings for the backends it is actually compiled for.",
+          "$comment": "SC-4: per-backend physical mapping. A field need only declare mappings for the backends the fixture actually targets."
         },
         "text": {
           "$ref": "#/$defs/textOptions",
-          "description": "SC-3: only meaningful when type is 'string'."
+          "description": "Text matching options for this field. They only apply when `type` is `string`.",
+          "$comment": "SC-3: only meaningful when type is 'string'."
         },
         "exportable": {
           "type": "boolean",
           "default": true,
-          "description": "EXP-1: whether this field is included by default in a CSV/TSV export when the request's exportColumns is absent (§6.1: 'all schema fields flagged exportable are emitted in schema order'). true by default."
+          "description": "Whether this field is included by default in a CSV or TSV export when the request does not list its own export columns. In that case every field flagged exportable is written, in schema order. The default is true.",
+          "$comment": "EXP-1: whether this field is included by default in a CSV/TSV export when the request's exportColumns is absent (§6.1: 'all schema fields flagged exportable are emitted in schema order'). true by default."
         },
         "label": {
           "type": "string",
           "minLength": 1,
-          "description": "EXP-1: the export header text for this field when exportColumns doesn't supply its own header override ('headers from schema labels'). Falls back to the field's colId when absent."
+          "description": "The header text for this field in an export, used when the request's export columns do not supply their own header override. When absent, the header falls back to the field's column id.",
+          "$comment": "EXP-1: the export header text for this field when exportColumns doesn't supply its own header override ('headers from schema labels'). Falls back to the field's colId when absent."
         },
         "format": {
           "$ref": "#/$defs/formatOptions",
-          "description": "EXP-5: per-field format overrides for the CSV/TSV writer. Absent means the invariant-culture default. Host-declared and never client-influenced — no AG Grid request carries a format, which is why EXP-5 puts the override in schema config. Like 'label', it reaches no compiler and appears in no expected artifact: page-export/026 is 013's inputs with these overrides added and pins a byte-identical postgres.artifact.json. Added in #1653."
+          "description": "Per-field format overrides for the CSV or TSV writer. When absent, the writer uses its default, which does not depend on any culture. The host declares it, no AG Grid request carries a format, and it only affects the export writer and never the compiled query.",
+          "$comment": "EXP-5: per-field format overrides for the CSV/TSV writer. Absent means the invariant-culture default. Host-declared and never client-influenced — no AG Grid request carries a format, which is why EXP-5 puts the override in schema config. Like 'label', it reaches no compiler and appears in no expected artifact: page-export/026 is 013's inputs with these overrides added and pins a byte-identical postgres.artifact.json. Added in #1653."
         }
       },
       "required": ["type"]
@@ -86,7 +99,8 @@
       "additionalProperties": false,
       "properties": {
         "sql": {
-          "description": "SC-4: plain column, qualified column (t.col), or a raw SQL expression escape hatch — always declared server-side, never client-influenced.",
+          "description": "Where the field lives in SQL: a plain column, a qualified column such as `t.col`, or a raw SQL expression as an escape hatch. It is always declared by the host on the server and never influenced by a client.",
+          "$comment": "SC-4: plain column, qualified column (t.col), or a raw SQL expression escape hatch — always declared server-side, never client-influenced.",
           "oneOf": [
             { "type": "object", "additionalProperties": false, "required": ["column"], "properties": { "column": { "type": "string", "minLength": 1 } } },
             { "type": "object", "additionalProperties": false, "required": ["qualifiedColumn"], "properties": { "qualifiedColumn": { "type": "string", "minLength": 1 } } },
@@ -97,7 +111,7 @@
           "type": "object",
           "additionalProperties": false,
           "required": ["path"],
-          "properties": { "path": { "type": "string", "minLength": 1, "description": "SC-4 nested document path, e.g. 'address.city'." } }
+          "properties": { "path": { "type": "string", "minLength": 1, "description": "The nested document path of the field in MongoDB, for example `address.city`.", "$comment": "SC-4 nested document path, e.g. 'address.city'." } }
         },
         "search": {
           "type": "object",
@@ -105,8 +119,8 @@
           "required": ["field"],
           "properties": {
             "field": { "type": "string", "minLength": 1 },
-            "keywordSubField": { "type": "string", "description": "SC-3: the .keyword-style exact-match/substring sub-field name, for term/wildcard/prefix/regexp ops on an analyzed field." },
-            "normalizedSubField": { "type": "string", "description": "SC-3 (plural sub-field names): a keyword sub-field maintained via an ICU-folding normalizer at index time, used for case-insensitive ORDER BY / range comparisons (SEM-1) where ES/OpenSearch's query-time case_insensitive parameter is unavailable (range queries, in the pinned 7.10-era subset). Distinct from keywordSubField — only declare it for a field that needs case-insensitive ordering." }
+            "keywordSubField": { "type": "string", "description": "The name of the exact-value sub-field (often `.keyword`) that holds the unsplit text. It is used for exact, prefix, wildcard and regex matching on a field that the index also tokenises.", "$comment": "SC-3: the .keyword-style exact-match/substring sub-field name, for term/wildcard/prefix/regexp ops on an analyzed field." },
+            "normalizedSubField": { "type": "string", "description": "The name of a keyword sub-field that the index fills through a case- and accent-folding normalizer at indexing time. It is used for case-insensitive sorting and range comparisons, because Elasticsearch and OpenSearch range queries cannot ignore case at query time in the supported 7.10-era versions. It is separate from `keywordSubField`; declare it only for a field that needs case-insensitive ordering, and note that it costs extra index work.", "$comment": "SC-3 (plural sub-field names): a keyword sub-field maintained via an ICU-folding normalizer at index time, used for case-insensitive ORDER BY / range comparisons (SEM-1) where ES/OpenSearch's query-time case_insensitive parameter is unavailable (range queries, in the pinned 7.10-era subset). Distinct from keywordSubField — only declare it for a field that needs case-insensitive ordering." }
           }
         }
       }
@@ -115,18 +129,21 @@
     "formatOptions": {
       "type": "object",
       "additionalProperties": false,
-      "description": "EXP-5's two per-field overrides, and only those two: the requirement names a date pattern and a decimal separator, so a third (thousands separator, boolean spelling, culture name) would be an invention every language port then has to reproduce.",
+      "description": "The two per-field format overrides for exports: a date pattern and a decimal separator. Nothing else is offered, because anything more (a thousands separator, boolean spelling, a culture name) would be an invention that every language port has to reproduce.",
+      "$comment": "EXP-5's two per-field overrides, and only those two: the requirement names a date pattern and a decimal separator, so a third (thousands separator, boolean spelling, culture name) would be an invention every language port then has to reproduce.",
       "properties": {
         "datePattern": {
           "type": "string",
           "minLength": 1,
-          "description": "EXP-5's date pattern, replacing the writer's ISO 8601 default for this field only. Only meaningful when type is 'date' or 'datetime'. Written in the LDML/CLDR field letters every platform's formatter shares — yyyy, MM, dd, HH, mm, ss and literal separators — so 'dd/MM/yyyy' means the same to .NET, Java and a JavaScript port; a pattern outside that shared subset is not portable and must not appear in a fixture. A pattern no formatter can apply is rejected when the schema is parsed, not when the first date cell is written, which a streaming export cannot recover from. Note that an offset specifier (z/K) renders the host machine's offset when applied to a value that carries none, so it is meaningful only for a column an adapter yields with an offset."
+          "description": "A date pattern for this field in an export, replacing the ISO 8601 default. It only applies when `type` is `date` or `datetime`. Use only the common pattern letters (`yyyy`, `MM`, `dd`, `HH`, `mm`, `ss` and literal separators), so `dd/MM/yyyy` gives the same output on .NET, Java and JavaScript; a pattern the formatter cannot apply is rejected when the schema is parsed, and an offset letter (`z`, `K`) shows the server's own offset for a value that has none.",
+          "$comment": "EXP-5's date pattern, replacing the writer's ISO 8601 default for this field only. Only meaningful when type is 'date' or 'datetime'. Written in the LDML/CLDR field letters every platform's formatter shares — yyyy, MM, dd, HH, mm, ss and literal separators — so 'dd/MM/yyyy' means the same to .NET, Java and a JavaScript port; a pattern outside that shared subset is not portable and must not appear in a fixture. A pattern no formatter can apply is rejected when the schema is parsed, not when the first date cell is written, which a streaming export cannot recover from. Note that an offset specifier (z/K) renders the host machine's offset when applied to a value that carries none, so it is meaningful only for a column an adapter yields with an offset."
         },
         "decimalSeparator": {
           "type": "string",
           "minLength": 1,
           "maxLength": 1,
-          "description": "EXP-5's decimal separator for this field, overriding the writer-wide default ('.', invariant culture). Only meaningful when type is 'decimal' or 'double' — an integral value has no fractional part to separate. Equal to the writer's active delimiter this is EXP-5's collision, and it is the same defect as the writer-wide one: the export is refused before its first byte by the writer, the only party that knows the delimiter. See schemas/writer-config.schema.json for the writer-wide default this overrides."
+          "description": "The decimal separator for this field in an export, overriding the writer-wide default, which is `.` and does not depend on any culture. It only applies when `type` is `decimal` or `double`, because an integral value has no fractional part. If it equals the delimiter the writer is using, the writer refuses the export before writing its first byte, since only the writer knows the delimiter.",
+          "$comment": "EXP-5's decimal separator for this field, overriding the writer-wide default ('.', invariant culture). Only meaningful when type is 'decimal' or 'double' — an integral value has no fractional part to separate. Equal to the writer's active delimiter this is EXP-5's collision, and it is the same defect as the writer-wide one: the export is refused before its first byte by the writer, the only party that knows the delimiter. See schemas/writer-config.schema.json for the writer-wide default this overrides."
         }
       }
     },
@@ -138,12 +155,14 @@
         "caseSensitivity": {
           "enum": ["insensitive", "sensitive"],
           "default": "insensitive",
-          "description": "SEM-1: per-field opt-in to case-sensitive comparison; insensitive is the IR-level default."
+          "description": "Per-field opt-in to case-sensitive comparison. The default is `insensitive`.",
+          "$comment": "SEM-1: per-field opt-in to case-sensitive comparison; insensitive is the IR-level default."
         },
         "searchMode": {
           "enum": ["substring", "analyzed"],
           "default": "substring",
-          "description": "SEM-7: substring is contains' pinned default (wildcard/ngram); analyzed is the explicit per-field opt-in to tokenized relevance matching."
+          "description": "How `contains` matches text in this field. `substring` (default) finds the text anywhere inside the value; `analyzed` searches by whole words with relevance scoring, and is only available where the backend supports it (search engines).",
+          "$comment": "SEM-7: substring is contains' pinned default (wildcard/ngram); analyzed is the explicit per-field opt-in to tokenized relevance matching."
         }
       }
     }

@@ -36,10 +36,10 @@ schema.
 ## Read the output
 
 - `ILIKE` and `COLLATE Latin1_General_CI_AS` are how each database spells the default case-insensitive match
-  ([SEM-1](semantics.html#sem-1)); the two statements agree on which rows they return.
+  ([Case sensitivity](semantics.html#sem-1)); the two statements agree on which rows they return.
 - `ORDER BY "amount" DESC NULLS FIRST, "id" ASC NULLS LAST` ends in `id`, the schema's stable key, so paging is deterministic
-  ([SEM-6](semantics.html#sem-6)). SQL Server has no `NULLS FIRST`, so it spells the same order with a leading `CASE`
-  ([SEM-3](semantics.html#sem-3)).
+  ([Deterministic paging](semantics.html#sem-6)). SQL Server has no `NULLS FIRST`, so it spells the same order with a leading `CASE`
+  ([Null ordering](semantics.html#sem-3)).
 - The decimal `100` is printed `'100'` because a decimal parameter is carried as a string, so no precision is lost on the way
   to the driver (AR-7). Bind it as a decimal in your driver.
 - `"password"` was refused because the schema lists no such column; the request never reached a compiler.
@@ -62,5 +62,5 @@ For the whole path with a browser grid, ten providers on seven database engines 
 ## Next
 
 - What each database needs from you before the statements are right: [index and database guidance](index-guidance.html).
-- The rules behind the output: [semantics](semantics.html) and the [rule index](rules.html).
+- The rules behind the output: [semantics](semantics.html).
 - Every setting of the schema: the [GridSchema reference](grid-schema.html).
