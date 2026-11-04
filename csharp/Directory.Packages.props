@@ -50,7 +50,7 @@
          Oracle.ManagedDataAccess.Core is under Oracle's own free-use terms (not open source), so it is allowed in test code
          only (ADR 0003). 23.26.301 is the newest release at least two weeks old on 2026-10-22 (published 2026-09-08; 23.26.400
          is from 2026-10-20). Testcontainers.Oracle stays on the version of the other modules. -->
-    <PackageVersion Include="Oracle.ManagedDataAccess.Core" Version="23.26.301" />
+    <PackageVersion Include="Oracle.ManagedDataAccess.Core" Version="23.26.400" />
     <PackageVersion Include="Testcontainers.Oracle" Version="4.16.0" />
     <!-- #1660 (NuGetAudit, NU1903): a security pin, not a new library. Microsoft.Data.SqlClient 7.1.0 (and 7.1.1, the
          newest on 2026-10-15) depends on System.Security.Cryptography.Pkcs 9.0.18, which carries a high and a moderate
