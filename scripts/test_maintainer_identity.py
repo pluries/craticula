@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parent.parent
 NAME = "Christian Stephan"
 PERSONAL_SITE = "https://cstephan.dev"
 PROFILE = "https://www.linkedin.com/in/christian-stephan"
-GITHUB = "https://github.com/chrisstephanrm"
+GITHUB = "https://github.com/cstephan-dev"
 FILES = ("site/home.html", "README.md", "NOTICE")
 
 
