@@ -1,11 +1,11 @@
 # GitHub asks the owner below to review every pull request that changes a matching path.
 # The last matching pattern wins, so the catch-all comes first.
-*                 @chrisstephanrm
+*                 @cstephan-dev
 
-/csharp/src/      @chrisstephanrm
-/spec/            @chrisstephanrm
-/conformance/     @chrisstephanrm
-/scripts/         @chrisstephanrm
-/.github/         @chrisstephanrm
-/SECURITY.md      @chrisstephanrm
-/LICENSE          @chrisstephanrm
+/csharp/src/      @cstephan-dev
+/spec/            @cstephan-dev
+/conformance/     @cstephan-dev
+/scripts/         @cstephan-dev
+/.github/         @cstephan-dev
+/SECURITY.md      @cstephan-dev
+/LICENSE          @cstephan-dev
