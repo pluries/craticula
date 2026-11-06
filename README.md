@@ -10,6 +10,9 @@
 > secure backend queries — SQL, MongoDB, OpenSearch/Elasticsearch — from one canonical IR,
 > across four languages.
 
+**Maintainer:** Christian Stephan ([cstephan.dev](https://cstephan.dev), [LinkedIn](https://www.linkedin.com/in/christian-stephan)). Craticula is open source under Apache-2.0;
+the project site is [craticula.pluries.dev](https://craticula.pluries.dev).
+
 **Status:** early design. The maintainers keep a technical requirements document (TRD: architecture,
 security model, roadmap, open questions) privately; its requirement ids (AR-1, SEM-1, GRP-7 and so on)
 are cited throughout this repository, and the normative rules are in [`spec/semantics.md`](spec/semantics.md).

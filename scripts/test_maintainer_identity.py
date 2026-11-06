@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parent.parent
 NAME = "Christian Stephan"
 PERSONAL_SITE = "https://cstephan.dev"
 PROFILE = "https://www.linkedin.com/in/christian-stephan"
-FILES = ("site/template.html", "site/home.html", "README.md", "NOTICE")
+FILES = ("site/home.html", "README.md", "NOTICE")
 
 
 def read(relative: str) -> str:
@@ -16,6 +16,7 @@ def read(relative: str) -> str:
     return path.read_text(encoding="utf-8")
 
 
+# the footer stays as DS-16 fixes it (licence, repository, spec version): the maintainer line is on the home page
 class MaintainerIdentityTests(unittest.TestCase):
     def test_every_public_entry_point_names_the_maintainer(self):
         for relative in FILES:
@@ -23,7 +24,7 @@ class MaintainerIdentityTests(unittest.TestCase):
                 self.assertIn(NAME, read(relative))
 
     def test_the_site_and_the_readme_link_to_both_profiles(self):
-        for relative in ("site/template.html", "site/home.html", "README.md"):
+        for relative in ("site/home.html", "README.md"):
             with self.subTest(file=relative):
                 text = read(relative)
                 self.assertIn(PERSONAL_SITE, text)
