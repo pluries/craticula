@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parent.parent
 NAME = "Christian Stephan"
 PERSONAL_SITE = "https://cstephan.dev"
 PROFILE = "https://www.linkedin.com/in/christian-stephan"
+GITHUB = "https://github.com/chrisstephanrm"
 FILES = ("site/home.html", "README.md", "NOTICE")
 
 
@@ -29,6 +30,7 @@ class MaintainerIdentityTests(unittest.TestCase):
                 text = read(relative)
                 self.assertIn(PERSONAL_SITE, text)
                 self.assertIn(PROFILE, text)
+                self.assertIn(GITHUB, text)
 
     def test_the_notice_file_carries_the_copyright_line(self):
         text = read("NOTICE")
