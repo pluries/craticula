@@ -447,5 +447,214 @@ class ScorecardWorkflowTests(unittest.TestCase):
         self.assertRegex(text, r"(?m)^        with:\n          persist-credentials: false$")
 
 
+class NugetPublishWorkflowTests(unittest.TestCase):
+    """nuget-publish.yml (story #3706, task #3709; spec FR-36, NFR-04, ADR 0010): run by the maker for a staged tag. Job `fetch`
+    reads the draft release (the only job with a write permission, no environment, no OIDC token); job `publish` holds the OIDC
+    token inside the environment `nuget`, checks the packages and only then asks for a key. Line checks only, stdlib only."""
+
+    FILE = WORKFLOWS / "nuget-publish.yml"
+    ACTIONS = ("actions/checkout", "actions/upload-artifact", "actions/download-artifact", "actions/setup-dotnet", "NuGet/login")
+    STEP = re.compile(r"(?m)^      - ")
+
+    def text(self) -> str:
+        self.assertTrue(self.FILE.is_file(), ".github/workflows/nuget-publish.yml does not exist")
+        lines = self.FILE.read_text(encoding="utf-8").splitlines()
+        return "\n".join(line for line in lines if not line.strip().startswith("#")) + "\n"
+
+    def jobs(self) -> tuple[str, str]:
+        text = self.text()
+        self.assertIn("\njobs:\n", text)
+        body = "\n" + text.split("\njobs:\n", 1)[1]
+        self.assertRegex(body, r"(?m)^  fetch:$")
+        self.assertRegex(body, r"(?m)^  publish:$")
+        fetch, publish = body.split("\n  publish:\n", 1)
+        return fetch.split("\n  fetch:\n", 1)[1], publish
+
+    def steps(self, job: str) -> list[str]:
+        self.assertIn("\n    steps:\n", job)
+        return [chunk for chunk in self.STEP.split(job.split("\n    steps:\n", 1)[1]) if chunk.strip()]
+
+    def pinned_in_release(self) -> dict[str, str]:
+        found = {}
+        for line in (WORKFLOWS / "release.yml").read_text(encoding="utf-8").splitlines():
+            match = USES.match(line)
+            if match and "@" in match.group("ref"):
+                repo, sha = match.group("ref").split("@")
+                found[repo] = sha
+        return found
+
+    @staticmethod
+    def run_lines(text: str) -> list[str]:
+        """The lines of every `run:` value (one line, or the body of a block)."""
+        found, block_column = [], None
+        for line in text.splitlines():
+            if not line.strip():
+                continue
+            indent = len(line) - len(line.lstrip(" "))
+            if block_column is not None:
+                if indent > block_column:
+                    found.append(line.strip())
+                    continue
+                block_column = None
+            match = RUN_KEY.match(line)
+            if match:
+                value = match.group("value")
+                if re.match(r"^[|>][+-]?\d*[+-]?\s*(?:#.*)?$", value):
+                    block_column = len(match.group("indent")) + (2 if line.lstrip().startswith("- ") else 0)
+                else:
+                    found.append(value)
+        return found
+
+    # ---- shape of the workflow
+    def test_the_only_trigger_is_a_manual_run_with_one_required_string_input_called_tag(self):
+        text = self.text()
+        self.assertRegex(text, r"(?m)^on:\n  workflow_dispatch:\n    inputs:\n      tag:\n(?:        .+\n)+(?!      )")
+        block = text.split("    inputs:\n", 1)[1].split("\n\n", 1)[0].split("\npermissions:", 1)[0]
+        self.assertEqual(["tag"], re.findall(r"(?m)^      ([A-Za-z_][\w-]*):$", block), "exactly one input")
+        self.assertRegex(block, r"(?m)^        required: true$")
+        self.assertRegex(block, r"(?m)^        type: string$")
+        for event in ("push", "pull_request", "pull_request_target", "schedule", "workflow_call", "release", "workflow_run"):
+            with self.subTest(event=event):
+                self.assertNotRegex(text, rf"(?m)^\s+{event}:")
+
+    def test_top_level_permissions_are_contents_read_and_runs_never_cancel_each_other(self):
+        text = self.text()
+        self.assertRegex(text, r"(?m)^permissions:\n  contents: read\n(?!  )")
+        self.assertRegex(text, r"(?m)^concurrency:\n  group: \S.*\n  cancel-in-progress: false\n(?!  )")
+
+    def test_there_are_exactly_two_jobs_fetch_and_publish_with_publish_after_fetch_and_a_timeout_each(self):
+        fetch, publish = self.jobs()
+        body = self.text().split("\njobs:\n", 1)[1]
+        self.assertEqual(["fetch", "publish"], re.findall(r"(?m)^  ([a-z][\w-]*):$", body))
+        self.assertRegex(publish, r"(?m)^    needs: fetch$")
+        for name, job in (("fetch", fetch), ("publish", publish)):
+            with self.subTest(job=name):
+                self.assertRegex(job, r"(?m)^    timeout-minutes: \d+$")
+                self.assertRegex(job, r"(?m)^    runs-on: ubuntu-latest$")
+
+    # ---- fetch
+    def test_fetch_has_exactly_contents_write_and_neither_an_environment_nor_an_oidc_token(self):
+        fetch, _ = self.jobs()
+        self.assertRegex(fetch, r"(?m)^    permissions:\n      contents: write\n(?!      )")
+        self.assertNotRegex(fetch, r"(?m)^    environment:")
+        self.assertNotIn("id-token", fetch)
+        self.assertNotIn("actions/checkout", fetch, "the job that may write executes no code of the repository")
+
+    def test_fetch_validates_the_tag_in_its_first_step_before_anything_is_downloaded(self):
+        fetch, _ = self.jobs()
+        first = self.steps(fetch)[0]
+        self.assertIn("run:", first)
+        self.assertNotIn("uses:", first)
+        self.assertIn("^dotnet-v", first)
+        self.assertRegex(first, r"(?m)^          TAG: \$\{\{ inputs\.tag \}\}$")
+        self.assertIn("exit 1", first)
+        self.assertLess(fetch.index("^dotnet-v"), fetch.index("gh api"))
+        self.assertLess(fetch.index("^dotnet-v"), fetch.index("download"))
+
+    def test_the_tag_reaches_the_shell_only_through_env_never_inside_a_run_block(self):
+        text = self.text()
+        self.assertTrue(self.run_lines(text), "the workflow has run steps")
+        self.assertEqual([], [line for line in self.run_lines(text) if "${{" in line])
+        self.assertEqual([], event_expression_in_run(text))
+
+    def test_fetch_exposes_the_tag_and_the_version_as_job_outputs(self):
+        fetch, _ = self.jobs()
+        self.assertRegex(fetch, r"(?m)^    outputs:\n(?:      \w+: .+\n)*      tag: .+\n")
+        self.assertRegex(fetch, r"(?m)^      version: .+$")
+
+    def test_fetch_finds_the_draft_with_the_api_because_a_draft_is_not_found_by_the_release_download_command(self):
+        fetch, _ = self.jobs()
+        self.assertNotRegex(fetch, r"gh release download")
+        self.assertIn("gh api", fetch)
+        for needle in ("draft", "tag_name", "per_page=100", ".nupkg", "SHA256SUMS.signed"):
+            self.assertIn(needle, fetch)
+
+    def test_fetch_uploads_the_download_as_the_artifact_staged_and_fails_when_there_is_nothing(self):
+        fetch, _ = self.jobs()
+        uploads = [step for step in self.steps(fetch) if "actions/upload-artifact@" in step]
+        self.assertEqual(1, len(uploads))
+        self.assertRegex(uploads[0], r"(?m)^          name: staged$")
+        self.assertRegex(uploads[0], r"(?m)^          if-no-files-found: error$")
+
+    # ---- publish
+    def test_publish_runs_in_the_environment_nuget_with_exactly_the_oidc_token_and_read_access(self):
+        _, publish = self.jobs()
+        self.assertRegex(publish, r"(?m)^    environment: nuget$")
+        block = re.search(r"(?m)^    permissions:\n((?:      .+\n)+)", publish)
+        self.assertIsNotNone(block, "publish declares its permissions")
+        self.assertEqual({"id-token: write", "contents: read"}, {line.strip() for line in block.group(1).splitlines()})
+        self.assertEqual(2, len(block.group(1).splitlines()))
+
+    def test_publish_steps_run_in_the_agreed_order_the_check_before_the_login_and_the_login_before_the_push(self):
+        _, publish = self.jobs()
+        order = ["actions/download-artifact@", "actions/checkout@", "actions/setup-dotnet@", "python3 scripts/check-staged-packages.py", "NuGet/login@",
+                 "dotnet nuget push"]
+        positions = [publish.index(item) for item in order]
+        self.assertEqual(sorted(positions), positions, "the steps are not in the agreed order")
+        steps = self.steps(publish)
+        self.assertEqual(6, len(steps))
+        self.assertEqual(1, publish.count("dotnet nuget push"), "one push command")
+
+    def test_publish_downloads_the_artifact_staged_and_checks_out_only_the_scripts_at_the_tag_without_credentials(self):
+        _, publish = self.jobs()
+        download = next(step for step in self.steps(publish) if "actions/download-artifact@" in step)
+        self.assertRegex(download, r"(?m)^          name: staged$")
+        checkout = next(step for step in self.steps(publish) if "actions/checkout@" in step)
+        self.assertRegex(checkout, r"(?m)^          ref: \$\{\{ needs\.fetch\.outputs\.tag \}\}$")
+        self.assertRegex(checkout, r"(?m)^          sparse-checkout:\s*(?:\|\s*\n\s*)?scripts\s*$")
+        self.assertRegex(checkout, r"(?m)^          persist-credentials: false$")
+
+    def test_the_check_step_gets_the_version_through_env_and_reads_the_certificate_file_of_the_tag(self):
+        _, publish = self.jobs()
+        check = next(step for step in self.steps(publish) if "check-staged-packages.py" in step)
+        self.assertRegex(check, r"(?m)^          VERSION: \$\{\{ needs\.fetch\.outputs\.version \}\}$")
+        for option in ("--version", "--dir", "--sums", "--certificate scripts/release-certificate.json"):
+            self.assertIn(option, check)
+        self.assertNotIn("continue-on-error", check)
+        self.assertNotIn("|| true", check)
+
+    def test_nuget_login_exists_only_in_publish_takes_the_user_from_a_variable_and_runs_after_the_check(self):
+        fetch, publish = self.jobs()
+        self.assertNotIn("NuGet/login", fetch)
+        self.assertEqual(1, self.text().count("NuGet/login@"))
+        login = next(step for step in self.steps(publish) if "NuGet/login@" in step)
+        self.assertRegex(login, r"(?m)^          user: \$\{\{ vars\.NUGET_USER \}\}$")
+        self.assertRegex(login, r"(?m)^        id: \w+$")
+
+    def test_the_push_skips_duplicates_and_is_the_only_place_that_names_the_api_key(self):
+        _, publish = self.jobs()
+        push = next(step for step in self.steps(publish) if "dotnet nuget push" in step)
+        self.assertIn("--skip-duplicate", push)
+        self.assertRegex(push, r"(?m)^          NUGET_API_KEY: \$\{\{ steps\.\w+\.outputs\.NUGET_API_KEY \}\}$")
+        other = "".join(step for step in self.steps(publish) if "dotnet nuget push" not in step)
+        self.assertNotIn("NUGET_API_KEY", other)
+        self.assertNotIn("NUGET_API_KEY", self.jobs()[0])
+        self.assertNotRegex(self.text(), r"(?m)^\s*(?:run:\s*)?echo .*NUGET_API_KEY")
+        self.assertNotRegex(self.text(), r"set -x|set -o xtrace")
+
+    # ---- supply chain
+    def test_no_secret_is_referenced_anywhere(self):
+        self.assertEqual([], secret_references(self.text()))
+
+    def test_every_action_is_pinned_to_the_sha_release_yml_uses_and_no_other_action_appears(self):
+        text = self.text()
+        self.assertEqual([], unpinned_uses(text))
+        used = {}
+        for line in text.splitlines():
+            match = USES.match(line)
+            if match:
+                repo, sha = match.group("ref").split("@")
+                used[repo] = sha
+        self.assertEqual(set(self.ACTIONS), set(used))
+        known = self.pinned_in_release()
+        for repo in self.ACTIONS:
+            self.assertEqual(known[repo], used[repo], repo)
+
+    def test_no_step_hides_a_failure(self):
+        text = self.text()
+        self.assertNotIn("continue-on-error", text)
+        self.assertNotIn("|| true", text)
+
+
 if __name__ == "__main__":
     unittest.main()
