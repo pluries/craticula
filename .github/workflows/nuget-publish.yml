@@ -1,6 +1,7 @@
 # Pushes the ten staged, author-signed packages to nuget.org with a temporary key from Trusted Publishing (story #3706, ADR 0010).
 # The maker runs it by hand for a tag that the release job in Jenkins has staged as a draft release, and approves the environment `nuget`.
 # No NuGet key is stored anywhere. The nuget.org policy names this file and the environment `nuget`; the environment is limited to `main`.
+# Three jobs: `fetch` reads the draft, `check` runs the scripts of main without any token, and `publish` holds the OIDC token and runs no repository code.
 name: NuGet publish
 
 on:
@@ -29,6 +30,13 @@ jobs:
       tag: ${{ steps.check.outputs.tag }}
       version: ${{ steps.check.outputs.version }}
     steps:
+      - name: Only from main
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::This workflow runs only from refs/heads/main; this run is on '$GITHUB_REF'."
+            exit 1
+          fi
+
       - name: Check the tag
         id: check
         env:
@@ -62,7 +70,7 @@ jobs:
               Craticula.*.nupkg) target="staged/packages/$name" ;;
               *) continue ;;
             esac
-            [[ "$name" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "unexpected asset name" >&2; exit 1; }
+            [[ "$asset_id" =~ ^[0-9]+$ && "$name" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "unexpected asset" >&2; exit 1; }
             gh api -H "Accept: application/octet-stream" "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" > "$target"
           done < <(jq -r '.[] | "\(.id) \(.name)"' <<< "$assets")
           test -f staged/SHA256SUMS.signed
@@ -72,15 +80,15 @@ jobs:
         with:
           name: staged
           path: staged
+          retention-days: 1
           if-no-files-found: error
 
-  publish:
+  check:
     needs: fetch
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment: nuget
+    # No OIDC token and no environment: the scripts of main run here, never the ones a release tag points at.
     permissions:
-      id-token: write
       contents: read
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -90,7 +98,6 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.fetch.outputs.tag }}
           sparse-checkout: scripts
           persist-credentials: false
 
@@ -104,6 +111,23 @@ jobs:
         run: |
           python3 scripts/check-staged-packages.py --version "$VERSION" --dir staged/packages --sums staged/SHA256SUMS.signed --certificate scripts/release-certificate.json
 
+  publish:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: nuget
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: staged
+          path: staged
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+
       # Trusted Publishing: the user is the nuget.org profile name (a repository variable, not a secret).
       - name: NuGet login (OIDC)
         id: login
@@ -115,6 +139,7 @@ jobs:
         env:
           NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
         run: |
+          test "$(find staged/packages -maxdepth 1 -name '*.nupkg' | wc -l)" -eq 10
           for f in staged/packages/*.nupkg; do
             dotnet nuget push "$f" --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
           done

@@ -3,7 +3,8 @@
 Usage: check-staged-packages.py --version X.Y.Z --dir DIR --sums FILE --certificate FILE [--dotnet CMD]
 DIR holds exactly the ten packages of the version. SUMS is the list `SHA256SUMS.signed` in sha256sum format: ten lines, a lower-case SHA-256, two
 spaces, the file name, exactly the ten names, each hash equal to the real hash of the file. Every package must carry a signature of the certificate
-whose fingerprint is in the certificate file, with a timestamp (the same rules as release-verify.py, whose functions this script loads).
+whose fingerprint is in the certificate file, with a timestamp (the same rules as release-verify.py, whose functions this script loads), and
+the id and the version in its nuspec must be those of its file name.
 One report line per package on stdout, then one line per extra entry and per problem of the list, then PASS or FAIL. All problems are reported in one run.
 Exit 0: all ten packages pass. 1: a check failed, nothing may be pushed. 2: usage or environment error (a line on stderr).
 Nothing here reads or prints a key, a one-time code or a token."""
@@ -12,11 +13,14 @@ import datetime
 import importlib.util
 import re
 import sys
+import xml.etree.ElementTree as ElementTree
+import zipfile
 from pathlib import Path
 
 PROGRAM = "check-staged-packages.py"
 SUMS_LINE = re.compile(r"([0-9a-f]{64})  (.+)")
 TIMESTAMP_FAILURE = "the SDK output does not confirm a timestamp"
+MAX_NUSPEC_BYTES = 1024 * 1024
 
 
 def load_release_verify():
@@ -97,7 +101,50 @@ def check_package(args, package_id, fingerprint, listed):
         return f"{prefix} package missing", False
     parts, signed_ok = signature_parts(args, path, fingerprint)
     hash_report, hash_ok = hash_part(path, listed.get(f"{package_id}.{args.version}.nupkg"))
-    return f"{prefix} {', '.join(parts + [hash_report])}", signed_ok and hash_ok
+    identity_report, identity_ok = identity_part(path, package_id, args.version)
+    return f"{prefix} {', '.join(parts + [hash_report, identity_report])}", signed_ok and hash_ok and identity_ok
+
+
+def read_nuspec(path):
+    """The bytes of the one nuspec at the root of the package, or a short reason why there is none."""
+    try:
+        with zipfile.ZipFile(path) as archive:
+            names = [info.filename for info in archive.infolist() if info.filename.endswith(".nuspec") and "/" not in info.filename]
+            if len(names) != 1:
+                return None, "no nuspec" if not names else "more than one nuspec"
+            if archive.getinfo(names[0]).file_size > MAX_NUSPEC_BYTES:
+                return None, "nuspec is too large"
+            return archive.read(names[0]), None
+    except (zipfile.BadZipFile, OSError, RuntimeError, EOFError, NotImplementedError):
+        return None, "the package is not a readable zip"
+
+
+def nuspec_value(root, name):
+    for element in root.iter():
+        if element.tag.rsplit("}", 1)[-1] == name and element.text and element.text.strip():
+            return element.text.strip()
+    return None
+
+
+def identity_part(path, package_id, version):
+    """Returns (report part, ok): the id and the version inside the package must be those of its file name."""
+    data, reason = read_nuspec(path)
+    if data is None:
+        return f"identity FAIL ({reason})", False
+    if b"<!DOCTYPE" in data.upper():
+        return "identity FAIL (nuspec holds a DOCTYPE)", False
+    try:
+        root = ElementTree.fromstring(data)
+    except ElementTree.ParseError:
+        return "identity FAIL (nuspec cannot be parsed)", False
+    found_id, found_version = nuspec_value(root, "id"), nuspec_value(root, "version")
+    if found_id is None or found_version is None:
+        return "identity FAIL (nuspec has no id or no version)", False
+    if found_id.lower() != package_id.lower():
+        return f"identity FAIL (the package is {release_verify.printable(found_id)[:80]}, not {package_id})", False
+    if found_version != version:
+        return f"identity FAIL (the package is version {release_verify.printable(found_version)[:80]}, not {version})", False
+    return "identity OK", True
 
 
 def parse_args(argv):
