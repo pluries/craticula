@@ -9,11 +9,14 @@ Contract pinned here:
   check-staged-packages.py --version V --dir DIR --sums FILE --certificate FILE [--dotnet CMD]
   Exit 0 all checks pass, 1 a check failed (nothing may be pushed), 2 a usage or environment error (a line on stderr that starts with
   `check-staged-packages.py: `). All problems are reported in one run. Output lines:
-    `<id> <version>: signature OK, timestamp OK, sha256 OK` per package that passes, and `PASS: 10 packages verified`;
-    a failing package has a line that starts with `<id> <version>:` and holds `signature FAIL`, `timestamp FAIL` or `sha256 FAIL`
-    (`package missing` for a missing file); `unexpected entry in the directory: <name>` for every extra entry; a line holding `sums`
+    `<id> <version>: signature OK, timestamp OK, sha256 OK, identity OK` per package that passes, and `PASS: 10 packages verified`;
+    a failing package has a line that starts with `<id> <version>:` and holds `signature FAIL`, `timestamp FAIL`, `sha256 FAIL` or
+    `identity FAIL (<short reason>)` (`package missing` for a missing file); a package with several failures is still one problem; `unexpected entry in the directory: <name>` for every extra entry; a line holding `sums`
     for every problem of the list itself (and naming the file name it is about); the last line `FAIL: <n> problem(s); nothing may be
     pushed`, n counting failing packages, extra entries and list problems.
+  Identity: the zip holds exactly one `*.nuspec` at its root, parsed with xml.etree and read without regard to the XML namespace; its
+  metadata id equals the expected id (case-insensitive) and its metadata version equals the expected version exactly. A missing, second or
+  unparsable nuspec, a missing id or version, another id or version and an unreadable zip are `identity FAIL`.
   DIR holds exactly the ten <id>.<version>.nupkg of pack_smoke.PACKAGES. SUMS is in sha256sum format: ten lines `<64 lower-case hex>`,
   two spaces, the file name; exactly the ten names, none twice, each hash equal to the SHA-256 of DIR/<name>.
 """
@@ -40,7 +43,7 @@ OTHER_FINGERPRINT = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba98765
 VERSION = "1.0.0"
 SECRET_MARKER = "SYNTHETIC-SECRET-MARKER-5512"
 PACKAGES = list(pack_smoke.PACKAGES)
-PASS_LINE = "signature OK, timestamp OK, sha256 OK"
+PASS_LINE = "signature OK, timestamp OK, sha256 OK, identity OK"
 PASS_SUMMARY = "PASS: 10 packages verified"
 ENV_ERROR = re.compile(r"(?m)^check-staged-packages\.py: ")
 
@@ -76,10 +79,25 @@ class Staged:
     def name(self, package_id, version=None):
         return f"{package_id}.{version or self.version}.nupkg"
 
-    def write_package(self, file_name, package_id, marker=b""):
+    @staticmethod
+    def nuspec(package_id, version, namespace=True, id_element=True, version_element=True):
+        ns = ' xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd"' if namespace else ""
+        parts = (f"<id>{package_id}</id>" if id_element else "") + (f"<version>{version}</version>" if version_element else "")
+        return f'<?xml version="1.0"?><package{ns}><metadata>{parts}</metadata></package>'.encode()
+
+    def write_package(self, file_name, package_id, marker=b"", nuspecs=None):
+        """A tiny zip: by default one root nuspec with the right id and version and a signature entry; `nuspecs` replaces the nuspec entries
+        (a dict of entry name to bytes)."""
+        entries = nuspecs if nuspecs is not None else {f"{package_id}.nuspec": self.nuspec(package_id, self.version)}
         with zipfile.ZipFile(self.dir / file_name, "w") as archive:
-            archive.writestr(f"{package_id}.nuspec", f"<package><id>{package_id}</id></package>".encode())
+            for name, data in entries.items():
+                archive.writestr(name, data)
             archive.writestr(".signature.p7s", b"synthetic signature " + package_id.encode() + marker)
+
+    def replace_package(self, package_id, **kwargs):
+        """Rewrites a package and the list, so that only the identity (or the other thing the test changes) can fail."""
+        self.write_package(self.name(package_id), package_id, **kwargs)
+        self.write_sums()
 
     def sums_lines(self, names=None):
         return [f"{sha256((self.dir / name).read_bytes())}  {name}" for name in (names or [self.name(i) for i in PACKAGES])]
@@ -297,6 +315,97 @@ class SignatureChecks(unittest.TestCase):
             self.assertIn("sha256 FAIL", lines_of(result, "Craticula.Dapper")[0])
             self.assertIn("unexpected entry in the directory: stray.txt", result.stdout)
             self.assertEqual(final_line(3), result.stdout.splitlines()[-1])
+
+
+class IdentityChecks(unittest.TestCase):
+    """The package says what it is: the nuspec inside the zip names the expected id and version."""
+    ID = "Craticula.Mongo"
+
+    def failing(self, **kwargs):
+        with tempfile.TemporaryDirectory() as tmp:
+            staged = Staged(tmp)
+            staged.replace_package(self.ID, **kwargs)
+            result = staged.run()
+            self.assertEqual(1, result.returncode, out(result))
+            line = lines_of(result, self.ID)[0]
+            self.assertRegex(line, r"identity FAIL \(.+\)")
+            self.assertNotIn("identity OK", line)
+            self.assertEqual(9, len([row for row in result.stdout.splitlines() if PASS_LINE in row]))
+            self.assertEqual(final_line(1), result.stdout.splitlines()[-1])
+            return line
+
+    def test_a_signed_package_whose_nuspec_says_another_version_fails_although_the_file_name_and_the_list_match(self):
+        line = self.failing(nuspecs={f"{self.ID}.nuspec": Staged.nuspec(self.ID, "0.9.0")})
+        self.assertIn("signature OK", line)
+        self.assertIn("sha256 OK", line)
+
+    def test_another_id_fails(self):
+        self.failing(nuspecs={f"{self.ID}.nuspec": Staged.nuspec("Craticula.Other", VERSION)})
+
+    def test_the_version_is_compared_exactly_but_the_id_is_not_case_sensitive(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            staged = Staged(tmp, version="1.1.0-rc.1")
+            staged.replace_package(self.ID, nuspecs={f"{self.ID}.nuspec": Staged.nuspec(self.ID.lower(), "1.1.0-rc.1")})
+            result = staged.run()
+            self.assertEqual(0, result.returncode, out(result))
+            staged.replace_package(self.ID, nuspecs={f"{self.ID}.nuspec": Staged.nuspec(self.ID, "1.1.0-RC.1")})
+            result = staged.run()
+            self.assertEqual(1, result.returncode, out(result))
+            self.assertIn("identity FAIL", lines_of(result, self.ID, "1.1.0-rc.1")[0])
+
+    def test_no_nuspec_two_nuspecs_or_a_nuspec_that_is_not_at_the_root_fail(self):
+        cases = {
+            "no nuspec": {"readme.txt": b"x"},
+            "two nuspecs": {f"{self.ID}.nuspec": Staged.nuspec(self.ID, VERSION), "second.nuspec": Staged.nuspec(self.ID, VERSION)},
+            "only a nested nuspec": {f"sub/{self.ID}.nuspec": Staged.nuspec(self.ID, VERSION)},
+        }
+        for name, entries in cases.items():
+            with self.subTest(case=name):
+                self.failing(nuspecs=entries)
+
+    def test_an_unparsable_nuspec_or_one_without_an_id_or_a_version_fails(self):
+        cases = {
+            "unparsable": b"<package><metadata><id>",
+            "not xml": b"this is not xml at all",
+            "no id": Staged.nuspec(self.ID, VERSION, id_element=False),
+            "no version": Staged.nuspec(self.ID, VERSION, version_element=False),
+            "an empty id": Staged.nuspec("", VERSION),
+        }
+        for name, data in cases.items():
+            with self.subTest(case=name):
+                self.failing(nuspecs={f"{self.ID}.nuspec": data})
+
+    def test_a_nuspec_without_a_namespace_is_read_like_one_with_a_namespace(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            staged = Staged(tmp)
+            staged.replace_package(self.ID, nuspecs={f"{self.ID}.nuspec": Staged.nuspec(self.ID, VERSION, namespace=False)})
+            result = staged.run()
+            self.assertEqual(0, result.returncode, out(result))
+            self.assertEqual(PASS_SUMMARY, result.stdout.splitlines()[-1])
+
+    def test_a_zip_that_cannot_be_read_fails_the_identity_with_the_list_rewritten_to_match(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            staged = Staged(tmp)
+            (staged.dir / staged.name(self.ID)).write_bytes(b"this is not a zip file")
+            staged.write_sums()
+            result = staged.run()
+            self.assertEqual(1, result.returncode, out(result))
+            line = lines_of(result, self.ID)[0]
+            self.assertRegex(line, r"identity FAIL \(.+\)")
+            self.assertEqual(9, len([row for row in result.stdout.splitlines() if PASS_LINE in row]))
+            self.assertEqual(final_line(1), result.stdout.splitlines()[-1])
+
+    def test_a_package_with_a_signature_failure_and_a_wrong_identity_is_one_failing_package(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            staged = Staged(tmp)
+            staged.modes[self.ID] = "unsigned"
+            staged.replace_package(self.ID, nuspecs={f"{self.ID}.nuspec": Staged.nuspec(self.ID, "0.9.0")})
+            result = staged.run()
+            line = lines_of(result, self.ID)[0]
+            self.assertEqual(1, result.returncode, out(result))
+            self.assertIn("signature FAIL", line)
+            self.assertIn("identity FAIL", line)
+            self.assertEqual(final_line(1), result.stdout.splitlines()[-1])
 
 
 class InputsAndEnvironment(unittest.TestCase):
