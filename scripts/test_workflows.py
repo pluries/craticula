@@ -455,7 +455,7 @@ class NugetPublishWorkflowTests(unittest.TestCase):
 
     FILE = WORKFLOWS / "nuget-publish.yml"
     ACTIONS = ("actions/checkout", "actions/upload-artifact", "actions/download-artifact", "actions/setup-dotnet", "NuGet/login")
-    STEP = re.compile(r"(?m)^      - ")
+    STEP = re.compile(r"(?m)^ {6}- ")
     CHECK_COMMAND = ('python3 scripts/check-staged-packages.py --version "$VERSION" --dir staged/packages --sums staged/SHA256SUMS.signed '
                      '--certificate scripts/release-certificate.json')
 
@@ -469,7 +469,7 @@ class NugetPublishWorkflowTests(unittest.TestCase):
         self.assertIn("\njobs:\n", text)
         body = "\n" + text.split("\njobs:\n", 1)[1]
         for name in ("fetch", "check", "publish"):
-            self.assertRegex(body, rf"(?m)^  {name}:$")
+            self.assertRegex(body, rf"(?m)^ {{2}}{name}:$")
         fetch, rest = body.split("\n  check:\n", 1)
         check, publish = rest.split("\n  publish:\n", 1)
         return fetch.split("\n  fetch:\n", 1)[1], check, publish
@@ -488,25 +488,29 @@ class NugetPublishWorkflowTests(unittest.TestCase):
         return found
 
     @staticmethod
-    def run_lines(text: str) -> list[str]:
+    def is_block_header(value: str) -> bool:
+        return re.match(r"^[|>][+-]?\d*[+-]?\s*(?:#.*)?$", value) is not None
+
+    @classmethod
+    def run_lines(cls, text: str) -> list[str]:
         """The lines of every `run:` value (one line, or the body of a block)."""
         found, block_column = [], None
         for line in text.splitlines():
             if not line.strip():
                 continue
             indent = len(line) - len(line.lstrip(" "))
-            if block_column is not None:
-                if indent > block_column:
-                    found.append(line.strip())
-                    continue
-                block_column = None
+            if block_column is not None and indent > block_column:
+                found.append(line.strip())
+                continue
+            block_column = None
             match = RUN_KEY.match(line)
-            if match:
-                value = match.group("value")
-                if re.match(r"^[|>][+-]?\d*[+-]?\s*(?:#.*)?$", value):
-                    block_column = len(match.group("indent")) + (2 if line.lstrip().startswith("- ") else 0)
-                else:
-                    found.append(value)
+            if not match:
+                continue
+            value = match.group("value")
+            if cls.is_block_header(value):
+                block_column = len(match.group("indent")) + (2 if line.lstrip().startswith("- ") else 0)
+            else:
+                found.append(value)
         return found
 
     def uses_step(self, job: str, action: str) -> str:
@@ -515,44 +519,44 @@ class NugetPublishWorkflowTests(unittest.TestCase):
         return matching[0]
 
     def permission_lines(self, job: str) -> list[str]:
-        block = re.search(r"(?m)^    permissions:\n((?:      .+\n)+)", job)
+        block = re.search(r"(?m)^ {4}permissions:\n((?: {6}.+\n)+)", job)
         self.assertIsNotNone(block, "the job declares its permissions")
         return [line.strip() for line in block.group(1).splitlines()]
 
     # ---- shape of the workflow
     def test_the_only_trigger_is_a_manual_run_with_one_required_string_input_called_tag(self):
         text = self.text()
-        self.assertRegex(text, r"(?m)^on:\n  workflow_dispatch:\n    inputs:\n      tag:\n(?:        .+\n)+(?!      )")
+        self.assertRegex(text, r"(?m)^on:\n {2}workflow_dispatch:\n {4}inputs:\n {6}tag:\n(?: {8}.+\n)+(?! {6})")
         block = text.split("    inputs:\n", 1)[1].split("\n\n", 1)[0].split("\npermissions:", 1)[0]
-        self.assertEqual(["tag"], re.findall(r"(?m)^      ([A-Za-z_][\w-]*):$", block), "exactly one input")
-        self.assertRegex(block, r"(?m)^        required: true$")
-        self.assertRegex(block, r"(?m)^        type: string$")
+        self.assertEqual(["tag"], re.findall(r"(?m)^ {6}([A-Za-z_][\w-]*):$", block), "exactly one input")
+        self.assertRegex(block, r"(?m)^ {8}required: true$")
+        self.assertRegex(block, r"(?m)^ {8}type: string$")
         for event in ("push", "pull_request", "pull_request_target", "schedule", "workflow_call", "release", "workflow_run"):
             with self.subTest(event=event):
                 self.assertNotRegex(text, rf"(?m)^\s+{event}:")
 
     def test_top_level_permissions_are_contents_read_and_runs_never_cancel_each_other(self):
         text = self.text()
-        self.assertRegex(text, r"(?m)^permissions:\n  contents: read\n(?!  )")
-        self.assertRegex(text, r"(?m)^concurrency:\n  group: \S.*\n  cancel-in-progress: false\n(?!  )")
+        self.assertRegex(text, r"(?m)^permissions:\n {2}contents: read\n(?! {2})")
+        self.assertRegex(text, r"(?m)^concurrency:\n {2}group: \S.*\n {2}cancel-in-progress: false\n(?! {2})")
 
     def test_there_are_exactly_three_jobs_in_a_chain_each_with_a_timeout_on_ubuntu(self):
         fetch, check, publish = self.jobs()
         body = self.text().split("\njobs:\n", 1)[1]
-        self.assertEqual(["fetch", "check", "publish"], re.findall(r"(?m)^  ([a-z][\w-]*):$", body))
-        self.assertNotRegex(fetch, r"(?m)^    needs:")
-        self.assertRegex(check, r"(?m)^    needs: fetch$")
-        self.assertRegex(publish, r"(?m)^    needs: check$")
+        self.assertEqual(["fetch", "check", "publish"], re.findall(r"(?m)^ {2}([a-z][\w-]*):$", body))
+        self.assertNotRegex(fetch, r"(?m)^ {4}needs:")
+        self.assertRegex(check, r"(?m)^ {4}needs: fetch$")
+        self.assertRegex(publish, r"(?m)^ {4}needs: check$")
         for name, job in (("fetch", fetch), ("check", check), ("publish", publish)):
             with self.subTest(job=name):
-                self.assertRegex(job, r"(?m)^    timeout-minutes: \d+$")
-                self.assertRegex(job, r"(?m)^    runs-on: ubuntu-latest$")
+                self.assertRegex(job, r"(?m)^ {4}timeout-minutes: \d+$")
+                self.assertRegex(job, r"(?m)^ {4}runs-on: ubuntu-latest$")
 
     # ---- fetch
     def test_fetch_has_exactly_contents_write_and_neither_an_environment_nor_an_oidc_token_nor_a_checkout(self):
         fetch, _, _ = self.jobs()
         self.assertEqual(["contents: write"], self.permission_lines(fetch))
-        self.assertNotRegex(fetch, r"(?m)^    environment:")
+        self.assertNotRegex(fetch, r"(?m)^ {4}environment:")
         self.assertNotIn("id-token", fetch)
         self.assertNotIn("actions/checkout", fetch, "the job that may write executes no code of the repository")
 
@@ -568,7 +572,7 @@ class NugetPublishWorkflowTests(unittest.TestCase):
         self.assertIn("run:", tag)
         self.assertNotIn("uses:", tag)
         self.assertIn("^dotnet-v", tag)
-        self.assertRegex(tag, r"(?m)^          TAG: \$\{\{ inputs\.tag \}\}$")
+        self.assertRegex(tag, r"(?m)^ {10}TAG: \$\{\{ inputs\.tag \}\}$")
         self.assertIn("exit 1", tag)
         self.assertLess(fetch.index("refs/heads/main"), fetch.index("^dotnet-v"))
         self.assertLess(fetch.index("^dotnet-v"), fetch.index("gh api"))
@@ -582,8 +586,8 @@ class NugetPublishWorkflowTests(unittest.TestCase):
 
     def test_fetch_exposes_the_tag_and_the_version_as_job_outputs(self):
         fetch, _, _ = self.jobs()
-        self.assertRegex(fetch, r"(?m)^    outputs:\n(?:      \w+: .+\n)*      tag: .+\n")
-        self.assertRegex(fetch, r"(?m)^      version: .+$")
+        self.assertRegex(fetch, r"(?m)^ {4}outputs:\n(?: {6}\w+: .+\n)* {6}tag: .+\n")
+        self.assertRegex(fetch, r"(?m)^ {6}version: .+$")
 
     def lookup_step(self) -> str:
         fetch, _, _ = self.jobs()
@@ -621,16 +625,16 @@ class NugetPublishWorkflowTests(unittest.TestCase):
         fetch, _, _ = self.jobs()
         upload = self.uses_step(fetch, "actions/upload-artifact")
         self.assertEqual(upload, self.steps(fetch)[-1], "the upload is the last step")
-        self.assertRegex(upload, r"(?m)^          name: staged$")
-        self.assertRegex(upload, r"(?m)^          path: staged$")
-        self.assertRegex(upload, r"(?m)^          retention-days: 1$")
-        self.assertRegex(upload, r"(?m)^          if-no-files-found: error$")
+        self.assertRegex(upload, r"(?m)^ {10}name: staged$")
+        self.assertRegex(upload, r"(?m)^ {10}path: staged$")
+        self.assertRegex(upload, r"(?m)^ {10}retention-days: 1$")
+        self.assertRegex(upload, r"(?m)^ {10}if-no-files-found: error$")
 
     # ---- check
     def test_check_holds_only_read_access_and_neither_an_environment_nor_an_oidc_token(self):
         _, check, _ = self.jobs()
         self.assertEqual(["contents: read"], self.permission_lines(check))
-        self.assertNotRegex(check, r"(?m)^    environment:")
+        self.assertNotRegex(check, r"(?m)^ {4}environment:")
         self.assertNotIn("id-token", check)
         self.assertNotIn("NuGet/login", check)
         self.assertNotIn("NUGET_API_KEY", check)
@@ -645,18 +649,18 @@ class NugetPublishWorkflowTests(unittest.TestCase):
     def test_check_downloads_the_artifact_and_checks_out_only_the_scripts_of_the_run_itself_without_credentials(self):
         _, check, _ = self.jobs()
         download = self.uses_step(check, "actions/download-artifact")
-        self.assertRegex(download, r"(?m)^          name: staged$")
-        self.assertRegex(download, r"(?m)^          path: staged$")
+        self.assertRegex(download, r"(?m)^ {10}name: staged$")
+        self.assertRegex(download, r"(?m)^ {10}path: staged$")
         checkout = self.uses_step(check, "actions/checkout")
         self.assertNotRegex(checkout, r"(?m)^\s*ref:", "no ref: the checkout takes the commit of the run, which is main")
         self.assertNotIn("needs.fetch.outputs.tag", checkout)
-        self.assertRegex(checkout, r"(?m)^          sparse-checkout:\s*(?:\|\s*\n\s*)?scripts\s*$")
-        self.assertRegex(checkout, r"(?m)^          persist-credentials: false$")
+        self.assertRegex(checkout, r"(?m)^ {10}sparse-checkout:\s*(?:\|\s*\n\s*)?scripts\s*$")
+        self.assertRegex(checkout, r"(?m)^ {10}persist-credentials: false$")
 
     def test_the_check_step_runs_the_script_of_main_with_the_version_from_the_job_outputs_through_env(self):
         _, check, _ = self.jobs()
         step = self.steps(check)[-1]
-        self.assertRegex(step, r"(?m)^          VERSION: \$\{\{ needs\.fetch\.outputs\.version \}\}$")
+        self.assertRegex(step, r"(?m)^ {10}VERSION: \$\{\{ needs\.fetch\.outputs\.version \}\}$")
         self.assertIn(self.CHECK_COMMAND, " ".join(step.split()))
         self.assertNotIn("continue-on-error", step)
         self.assertNotIn("|| true", step)
@@ -664,7 +668,7 @@ class NugetPublishWorkflowTests(unittest.TestCase):
     # ---- publish
     def test_publish_runs_in_the_environment_nuget_with_the_oidc_token_and_nothing_else(self):
         _, _, publish = self.jobs()
-        self.assertRegex(publish, r"(?m)^    environment: nuget$")
+        self.assertRegex(publish, r"(?m)^ {4}environment: nuget$")
         self.assertEqual(["id-token: write"], self.permission_lines(publish), "not even contents: read")
 
     def test_publish_runs_no_repository_code_and_checks_nothing_out(self):
@@ -679,16 +683,16 @@ class NugetPublishWorkflowTests(unittest.TestCase):
         self.assertEqual(4, len(steps))
         for step, marker in zip(steps, ("actions/download-artifact@", "actions/setup-dotnet@", "NuGet/login@", "dotnet nuget push")):
             self.assertIn(marker, step)
-        self.assertRegex(steps[0], r"(?m)^          name: staged$")
+        self.assertRegex(steps[0], r"(?m)^ {10}name: staged$")
 
     def test_nuget_login_exists_once_only_in_publish_takes_the_user_from_a_variable_and_follows_the_check_job(self):
         fetch, check, publish = self.jobs()
         self.assertNotIn("NuGet/login", fetch + check)
         self.assertEqual(1, self.text().count("NuGet/login@"))
         login = self.uses_step(publish, "NuGet/login")
-        self.assertRegex(login, r"(?m)^          user: \$\{\{ vars\.NUGET_USER \}\}$")
-        self.assertRegex(login, r"(?m)^        id: \w+$")
-        self.assertRegex(publish, r"(?m)^    needs: check$")
+        self.assertRegex(login, r"(?m)^ {10}user: \$\{\{ vars\.NUGET_USER \}\}$")
+        self.assertRegex(login, r"(?m)^ {8}id: \w+$")
+        self.assertRegex(publish, r"(?m)^ {4}needs: check$")
 
     def test_the_push_counts_ten_packages_first_loops_over_exactly_the_staged_ones_and_skips_duplicates(self):
         _, _, publish = self.jobs()
@@ -700,7 +704,7 @@ class NugetPublishWorkflowTests(unittest.TestCase):
         self.assertEqual(1, push.count("dotnet nuget push"), "one push command")
         self.assertIn("--skip-duplicate", push)
         self.assertLess(push.index(count), push.index("dotnet nuget push"), "the count comes before the first push")
-        self.assertRegex(push, r"(?m)^          NUGET_API_KEY: \$\{\{ steps\.\w+\.outputs\.NUGET_API_KEY \}\}$")
+        self.assertRegex(push, r"(?m)^ {10}NUGET_API_KEY: \$\{\{ steps\.\w+\.outputs\.NUGET_API_KEY \}\}$")
 
     def test_the_api_key_is_named_only_in_the_push_step_and_never_echoed_or_traced(self):
         fetch, check, publish = self.jobs()
