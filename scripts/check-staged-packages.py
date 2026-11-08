@@ -18,7 +18,7 @@ import zipfile
 from pathlib import Path
 
 PROGRAM = "check-staged-packages.py"
-SUMS_LINE = re.compile(r"([0-9a-f]{64})  (.+)")
+SUMS_LINE = re.compile(r"([0-9a-f]{64}) {2}(.+)")
 TIMESTAMP_FAILURE = "the SDK output does not confirm a timestamp"
 MAX_NUSPEC_BYTES = 1024 * 1024
 
@@ -115,7 +115,7 @@ def read_nuspec(path):
             if archive.getinfo(names[0]).file_size > MAX_NUSPEC_BYTES:
                 return None, "nuspec is too large"
             return archive.read(names[0]), None
-    except (zipfile.BadZipFile, OSError, RuntimeError, EOFError, NotImplementedError):
+    except (zipfile.BadZipFile, OSError, RuntimeError, EOFError):
         return None, "the package is not a readable zip"
 
 
