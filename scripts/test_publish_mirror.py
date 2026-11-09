@@ -329,12 +329,16 @@ class ScriptTests(unittest.TestCase):
         self.write("scripts/test_release_steps.py", "# tests a private script\n")
         self.write("scripts/release-steps-fixtures/dotnet", "#!/usr/bin/env python3\n")
         self.write("scripts/test_release_verify.py", "# stays\n")
+        self.write("csharp/tests/Craticula.Conformance.Tests/ReleaseStepsTests.cs", "// wrapper of the private tests\n")
+        self.write("csharp/tests/Craticula.Conformance.Tests/ReleaseScriptsTests.cs", "// wrapper of the public tests\n")
         self.commit("TECHNICAL #7 add the release steps tests")
         self.publish()
         tree = self.git("ls-tree", "-r", "--name-only", "main", cwd=self.pub).stdout.split()
         self.assertNotIn("scripts/test_release_steps.py", tree)
         self.assertEqual([], [path for path in tree if path.startswith("scripts/release-steps-fixtures")])
         self.assertIn("scripts/test_release_verify.py", tree)
+        self.assertNotIn("csharp/tests/Craticula.Conformance.Tests/ReleaseStepsTests.cs", tree)
+        self.assertIn("csharp/tests/Craticula.Conformance.Tests/ReleaseScriptsTests.cs", tree)
 
     def test_the_release_certificate_file_reaches_the_public_history_and_the_release_job_files_do_not(self):
         # #3488, FR-33: the fingerprint is public; the job definition and its Jenkinsfile are private
