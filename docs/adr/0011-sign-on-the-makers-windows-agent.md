@@ -1,6 +1,6 @@
 # ADR-0011: The release packages are signed by a Jenkins agent on the maker's Windows machine
 
-Status: Proposed   Date: 2026-11-10
+Status: Accepted   Date: 2026-11-10
 Work items: #3765   Classification: Public
 
 Accepting this record is the maintainer's decision. It was written for readers outside the project: it names no private path or host.
