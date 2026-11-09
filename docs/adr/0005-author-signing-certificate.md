@@ -3,6 +3,8 @@
 Status: Proposed   Date: 2026-11-01
 Work items: #3320   Classification: Public
 
+Amended by ADR-0011: the packages are signed by a Jenkins agent on the maintainer's Windows machine instead of by hand and an upload; the certificate and the one-time code are unchanged.
+
 Accepting this record is the maintainer's decision. It was written for readers outside the project: it names no private path or host.
 
 ## Context
