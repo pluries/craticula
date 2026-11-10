@@ -639,6 +639,13 @@ class NugetPublishWorkflowTests(unittest.TestCase):
         self.assertNotIn("NuGet/login", check)
         self.assertNotIn("NUGET_API_KEY", check)
 
+    def test_the_run_is_titled_with_the_tag_so_the_release_pipeline_can_find_the_run_it_started(self):
+        # ADR-0012: the pipeline lists the runs of this workflow and picks the one whose title names its tag.
+        self.assertRegex(self.text(), r"(?m)^run-name: NuGet publish \$\{\{ inputs\.tag \}\}$")
+        top = self.text().split("\njobs:", 1)[0]
+        self.assertNotIn("run-name", self.text().split("\njobs:", 1)[1], "only the top-level run-name")
+        self.assertIn("run-name:", top)
+
     def test_check_has_exactly_four_steps_checkout_download_dotnet_and_the_check_in_that_order(self):
         # The checkout comes first: into a workspace that is not a repository yet it deletes everything that is already there, which
         # removed the downloaded `staged` folder in the first real run (task #3709, found 2026-11-10).
