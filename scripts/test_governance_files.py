@@ -354,11 +354,6 @@ class DependabotTests(unittest.TestCase):
             with self.subTest(package=name):
                 self.assertRegex(text, rf"- dependency-name: {re.escape(name)}\n\s+(update-types|versions): \[")
 
-    def test_the_release_please_action_major_is_held_with_a_scope(self):
-        # #3263: a bare ignore would also block its security updates; only the major is held.
-        self.assertRegex(self.text(), r"- dependency-name: googleapis/release-please-action\n\s+update-types: \[\"version-update:semver-major\"\]")
-        self.assertTrue((ROOT / ".github" / "workflows" / "release-please.yml").exists())
-
     def test_the_held_packages_are_still_named_in_the_props_file(self):
         props = (ROOT / "csharp" / "Directory.Packages.props").read_text(encoding="utf-8")
         for name in self.HELD:
@@ -377,9 +372,7 @@ class DependabotTests(unittest.TestCase):
         for update in ecosystems.values():
             self.assertEqual("weekly", update["schedule"]["interval"])
             self.assertLessEqual(update["open-pull-requests-limit"], 10)
-        action_ignores = ecosystems["github-actions"]["ignore"]
-        self.assertEqual({"googleapis/release-please-action"}, {i["dependency-name"] for i in action_ignores})
-        self.assertTrue(all(i.get("update-types") == ["version-update:semver-major"] for i in action_ignores))
+        self.assertNotIn("ignore", ecosystems["github-actions"])
         ignores = ecosystems["nuget"]["ignore"]
         self.assertEqual(set(self.HELD), {i["dependency-name"] for i in ignores})
         for entry in ignores:

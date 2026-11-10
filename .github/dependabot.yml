@@ -39,9 +39,3 @@ updates:
         update-types:
           - minor
           - patch
-    ignore:
-      # A new major of the Release Please action is held (#3263): how commits are counted after a sync-back (ADR 0001) was checked
-      # against the library bundled in the pinned 4.x action, and no release has run yet. Minor and patch updates still arrive, and
-      # so do security updates: the ignore is scoped to the major.
-      - dependency-name: googleapis/release-please-action
-        update-types: ["version-update:semver-major"]
