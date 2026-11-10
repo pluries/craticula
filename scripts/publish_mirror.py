@@ -15,7 +15,7 @@ import subprocess
 import sys
 
 # The only paths a public (Release Please) commit may touch; they are brought back to private main by
-# scripts/sync-release-commit.sh. Keep in step with release-please-config.json (task #2407).
+# scripts/sync-release-commit.sh. Release Please is gone (#3777); this guard goes with the mirror cleanup.
 # README.md is allowed for one line only: the marked `Latest release:` line (see readme_problem below).
 ALLOWED_PATHS = ("csharp/src/Directory.Build.props", "CHANGELOG.md", ".release-please-manifest.json", "README.md")
 PROPS_PATH = ALLOWED_PATHS[0]
