@@ -103,7 +103,11 @@ class Staged:
         return [f"{sha256((self.dir / name).read_bytes())}  {name}" for name in (names or [self.name(i) for i in PACKAGES])]
 
     def write_sums(self, lines=None, text=None):
-        content = text if text is not None else "\n".join(self.sums_lines() if lines is None else lines) + "\n"
+        if text is not None:
+            content = text
+        else:
+            chosen = self.sums_lines() if lines is None else lines
+            content = "\n".join(chosen) + "\n"
         self.sums.write_text(content, encoding="utf-8")
 
     def alter(self, package_id):
