@@ -639,11 +639,13 @@ class NugetPublishWorkflowTests(unittest.TestCase):
         self.assertNotIn("NuGet/login", check)
         self.assertNotIn("NUGET_API_KEY", check)
 
-    def test_check_has_exactly_four_steps_download_checkout_dotnet_and_the_check_in_that_order(self):
+    def test_check_has_exactly_four_steps_checkout_download_dotnet_and_the_check_in_that_order(self):
+        # The checkout comes first: into a workspace that is not a repository yet it deletes everything that is already there, which
+        # removed the downloaded `staged` folder in the first real run (task #3709, found 2026-11-10).
         _, check, _ = self.jobs()
         steps = self.steps(check)
         self.assertEqual(4, len(steps))
-        for step, marker in zip(steps, ("actions/download-artifact@", "actions/checkout@", "actions/setup-dotnet@", "check-staged-packages.py")):
+        for step, marker in zip(steps, ("actions/checkout@", "actions/download-artifact@", "actions/setup-dotnet@", "check-staged-packages.py")):
             self.assertIn(marker, step)
 
     def test_check_downloads_the_artifact_and_checks_out_only_the_scripts_of_the_run_itself_without_credentials(self):
