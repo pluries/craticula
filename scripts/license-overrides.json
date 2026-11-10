@@ -3,10 +3,10 @@
   "overrides": [
     {
       "package": "Oracle.ManagedDataAccess.Core",
-      "version": "23.26.301",
+      "version": "23.26.400",
       "license": "Oracle Free Distribution, Hosting, and Use Terms",
       "vendor_terms": true,
-      "reason": "Declared as a LICENSE.txt file, not an SPDX id. Oracle's free-use terms: free to use, not open source. Accepted for test projects only, never under csharp/src (the checker enforces it); today Craticula.Integration.Tests.",
+      "reason": "Declared as a LICENSE.txt file, not an SPDX id. Oracle's free-use terms: free to use, not open source. Accepted for test projects only, never under csharp/src (the checker enforces it); today Craticula.Integration.Tests. Re-checked for 23.26.400 on 2026-11-10 (#3779): its LICENSE.txt is byte-identical to the one reviewed for 23.26.301.",
       "scopes": [
         "tests"
       ]
