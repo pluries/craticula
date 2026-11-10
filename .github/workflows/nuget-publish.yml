@@ -4,6 +4,9 @@
 # Three jobs: `fetch` reads the draft, `check` runs the scripts of main without any token, and `publish` holds the OIDC token and runs no repository code.
 name: NuGet publish
 
+# The run's title names the tag, so the release pipeline can find the run it started.
+run-name: NuGet publish ${{ inputs.tag }}
+
 on:
   workflow_dispatch:
     inputs:
