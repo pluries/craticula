@@ -9,12 +9,9 @@
 #   - event data comes in through `env:`, never spliced into script text.
 # scripts/test_workflows.py checks all of this: an action pinned to a SHA, read-only permissions, no secret, no checkout of the
 # pull request's head in a `pull_request_target` workflow, no event expression inside a `run:` block.
-# Exempt: the pull requests that the Release Please action (author `github-actions[bot]`) and Dependabot (`dependabot[bot]`)
-# open in THIS repository. The exemption reads the pull request author's login and the head repository, which a contributor
+# Exempt: the pull requests that Dependabot (`dependabot[bot]`) opens in THIS repository. The exemption reads the pull request author's login and the head repository, which a contributor
 # cannot choose; a commit's author e-mail is never an exemption, because anyone can write any e-mail into a commit. Merge
 # commits are exempt in the script only when they bring no content of their own.
-# A pull request opened with the default GITHUB_TOKEN (the Release Please one) starts no workflow at all: that check is then
-# satisfied by a bypass actor or a run started by hand, see the maintainers' settings notes.
 name: dco
 
 on:
@@ -62,7 +59,6 @@ jobs:
           exempt=""
           if [ -n "$PR_HEAD_REPO" ] && [ "$PR_HEAD_REPO" = "$GITHUB_REPOSITORY" ]; then
             case "$PR_AUTHOR" in
-              'github-actions[bot]') exempt="pull request opened by the Release Please action (github-actions[bot])" ;;
               'dependabot[bot]') exempt="pull request opened by Dependabot (dependabot[bot])" ;;
             esac
           fi

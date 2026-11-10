@@ -2,9 +2,9 @@ namespace Craticula.Conformance.Tests;
 
 /// <summary>
 /// Runs the offline unit tests of the public mirror (<c>scripts/test_publish_mirror.py</c>, story #1659 AC-1 and AC-4) on
-/// every <c>dotnet test</c>: the commit-subject mapping table, Release Please's release rule on the mapped merge commits,
-/// and, on scratch repositories and a scratch bare remote, the published-boundary check, the sync-back round trip that
-/// ends in a fast-forward push, and the refusal of a foreign public change. The script tests skip themselves where the
+/// every <c>dotnet test</c>: the commit-subject mapping table and,
+/// on scratch repositories and a scratch bare remote, the published-boundary check, the sync-back round trip that
+/// ends in a fast-forward push, and the refusal of an unrecorded public change. The script tests skip themselves where the
 /// private scripts, git-filter-repo or node are absent (the public mirror), the pure tests never do. The real
 /// <c>github</c> remote is never contacted. A second test runs the private-only check of the real history
 /// (<c>scripts/test_publish_mirror_real.py</c>) when that file is present, and does nothing where it is not.
