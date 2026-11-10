@@ -48,9 +48,10 @@
     <!-- #2882 (story #2880, OQ-6): Oracle joins the execution-equality tier, approved in docs/compliance/tech-stack.approved.md on
          2026-10-22 and used by Craticula.Integration.Tests only (AR-3), never by a package under csharp/src/.
          Oracle.ManagedDataAccess.Core is under Oracle's own free-use terms (not open source), so it is allowed in test code
-         only (ADR 0003). 23.26.301 is the newest release at least two weeks old on 2026-10-22 (published 2026-09-08; 23.26.400
-         is from 2026-10-20). Testcontainers.Oracle stays on the version of the other modules. -->
-    <PackageVersion Include="Oracle.ManagedDataAccess.Core" Version="23.26.301" />
+         only (ADR 0003). 23.26.301 was the newest release at least two weeks old on 2026-10-22 (published 2026-09-08; 23.26.400
+         is from 2026-10-20); on 2026-11-10 23.26.400 is 21 days old and the newest, so #3779 takes it (Dependabot pull request 8).
+         Testcontainers.Oracle stays on the version of the other modules. -->
+    <PackageVersion Include="Oracle.ManagedDataAccess.Core" Version="23.26.400" />
     <PackageVersion Include="Testcontainers.Oracle" Version="4.16.0" />
     <!-- #1660 (NuGetAudit, NU1903): a security pin, not a new library. Microsoft.Data.SqlClient 7.1.0 (and 7.1.1, the
          newest on 2026-10-15) depends on System.Security.Cryptography.Pkcs 9.0.18, which carries a high and a moderate
