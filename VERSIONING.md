@@ -10,7 +10,7 @@ Craticula uses [Semantic Versioning](https://semver.org): `MAJOR.MINOR.PATCH`.
 
 The two move separately. The compatibility table in the [README](README.md#compatibility) shows the spec version on
 `main`, which the next release implements. The notes of each release state the spec version that release was built with.
-The `Latest release:` line in the README shows the last published package version.
+The latest published package version is on nuget.org.
 
 ## What drives the package version
 
@@ -53,8 +53,8 @@ When a provider ships a new major:
 ## Tags and commits
 
 - A release is tagged `dotnet-vX.Y.Z`.
-- Commit types decide the bump: `feat` is a minor, `fix` is a patch. A `!` after the type, or a `BREAKING CHANGE:`
-  footer, is a major. Other types do not open a release.
+- The release job proposes a version from the latest public tag. The maintainer who approves the release confirms it or types another,
+  following the rule above.
 
 ## The conformance fixture suite
 
