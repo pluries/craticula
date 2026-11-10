@@ -444,7 +444,7 @@ class ScriptTests(unittest.TestCase):
         self.assertIn(release, blocked.stderr)
         self.assertIn(PROPS, blocked.stderr)
 
-    def test_a_public_merge_touching_another_path_is_refused(self):
+    def test_a_public_merge_this_publish_did_not_make_is_refused_even_when_its_commits_are_recorded(self):
         self.publish()
         work = self.public_clone()
         self.git("checkout", "-q", "-b", "side", cwd=work)
@@ -452,13 +452,16 @@ class ScriptTests(unittest.TestCase):
         side = self.commit("docs: edit", root=work)
         self.git("checkout", "-q", "main", cwd=work)
         self.write("x.txt", "x\n", root=work)
-        self.commit("docs: x", root=work)
+        main_commit = self.commit("docs: x", root=work)
         run(work, "git", "merge", "--no-ff", "-q", "-m", "Merge side", "side", env=self.env)
+        merge = self.git("rev-parse", "HEAD", cwd=work).stdout.strip()
         self.git("push", "-q", "origin", "HEAD:refs/heads/main", cwd=work)
+        for sha in (side, main_commit):                              # both ordinary commits are recorded; only the merge is not
+            run(self.priv, "git", "commit", "--allow-empty", "-q", "-m", f"TECHNICAL #9 record {sha[:7]}\n\nPublic-Sync: {sha}", env=self.env)
         blocked = self.publish(check=False)
         self.assertEqual(blocked.returncode, 1)
-        self.assertTrue("README.md" in blocked.stderr or "x.txt" in blocked.stderr)
-        self.assertTrue(side in blocked.stderr or "touches" in blocked.stderr)
+        self.assertIn(f"public commit {merge} is a merge this publish did not make", blocked.stderr)
+        self.assertEqual(self.public_tip(), merge)                   # nothing was pushed
 
 
 if __name__ == "__main__":
