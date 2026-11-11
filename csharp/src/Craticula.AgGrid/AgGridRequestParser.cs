@@ -123,7 +123,7 @@ public static class AgGridRequestParser
         // column space, so a grouped grid whose user hits "export" still sends it, and discarding the
         // group state first would leave a sort key naming no schema field at all.
         var sort = ParseSortModel(root, group, rowGroupCols);
-        var page = ParsePage(root, export);
+        var page = ParsePage(root, export, options);
 
         // EXP-1(a) is applied BEFORE the validators below, and the order is deliberate: an export's
         // group state and valueCols are discarded, so they are never held to GroupSpecValidator's or
@@ -1583,21 +1583,47 @@ public static class AgGridRequestParser
     /// <c>startRow</c> is a malformed request whether or not this particular scope would have used
     /// it — the same reason <see cref="DateResolutionContext.From"/> resolves the zone eagerly.</para>
     /// </summary>
-    private static PageSpec ParsePage(JsonElement root, ExportSpec? export)
+    private static PageSpec ParsePage(JsonElement root, ExportSpec? export, AgGridParseOptions options)
     {
         var startRow = ReadOptionalInt(root, "startRow");
         var endRow = ReadOptionalInt(root, "endRow");
+        var ignorePageLimit = ReadOptionalBool(root, "ignorePageLimit");
+
+        if (ignorePageLimit == true && !options.AllowUnboundedRows)
+        {
+            throw new AgGridRequestParseException(
+                "unbounded-not-allowed",
+                "'ignorePageLimit' asks for every row, and this host has not allowed that (AgGridParseOptions.AllowUnboundedRows).");
+        }
 
         var page = (startRow, endRow) switch
         {
             ({ } s, { } e) => (PageSpec)new RangePage { StartRow = s, EndRow = e },
-            (null, null) => new NonePage(),
+            (null, null) => ignorePageLimit == true
+                ? new NonePage()
+                : new RangePage { StartRow = 0, EndRow = options.DefaultPageSize },
             _ => throw new AgGridRequestParseException(
                 "malformed-request",
                 $"'startRow'/'endRow' must both be present or both be null (got startRow={Render(startRow)}, endRow={Render(endRow)}).")
         };
 
         return export is { Scope: ExportScope.All } ? new NonePage() : page;
+    }
+
+    private static bool? ReadOptionalBool(JsonElement root, string propertyName)
+    {
+        if (!root.TryGetProperty(propertyName, out var el) || el.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        return el.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            _ => throw new AgGridRequestParseException(
+                "malformed-request", $"'{propertyName}' must be a boolean or null, got {el.ValueKind}.")
+        };
     }
 
     private static string Render(int? value) => value?.ToString() ?? "null";

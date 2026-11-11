@@ -227,7 +227,9 @@ internal static class RequestCompiler
         var options = new AgGridParseOptions
         {
             Schema = schema,
-            Clock = pinnedNow is null ? TimeProvider.System : PinnedClock.At(pinnedNow)
+            Clock = pinnedNow is null ? TimeProvider.System : PinnedClock.At(pinnedNow),
+            DefaultPageSize = HarnessInt(root, "defaultPageSize") ?? 100,
+            AllowUnboundedRows = HarnessFlag(root, "allowUnboundedRows")
         };
 
         return new Prepared(
@@ -270,4 +272,20 @@ internal static class RequestCompiler
 
         public override DateTimeOffset GetUtcNow() => now;
     }
+
+    private static int? HarnessInt(JsonElement root, string name) =>
+        root.ValueKind == JsonValueKind.Object
+        && root.TryGetProperty("requestContext", out var context)
+        && context.ValueKind == JsonValueKind.Object
+        && context.TryGetProperty(name, out var value)
+        && value.ValueKind == JsonValueKind.Number
+            ? value.GetInt32()
+            : null;
+
+    private static bool HarnessFlag(JsonElement root, string name) =>
+        root.ValueKind == JsonValueKind.Object
+        && root.TryGetProperty("requestContext", out var context)
+        && context.ValueKind == JsonValueKind.Object
+        && context.TryGetProperty(name, out var value)
+        && value.ValueKind == JsonValueKind.True;
 }
