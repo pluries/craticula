@@ -1,0 +1,12 @@
+{
+  "rows": [
+    { "row": { "id": "s01", "region": "EU", "segment": "Enterprise", "product": "Widget", "fiscalYear": 2024, "amount": "1.00", "quantity": 1 }, "why": "prefix 'eu' matches 'EU' case-insensitively on the SQL dialects and MongoDB (GRP-6(c)); Search's include is case-sensitive" },
+    { "row": { "id": "s02", "region": "Eurasia", "segment": "SMB", "product": "Gadget", "fiscalYear": 2024, "amount": "2.00", "quantity": 2 }, "why": "matches 'eu' case-insensitively on SQL and MongoDB, not on Search" },
+    { "row": { "id": "s03", "region": "europe", "segment": "Enterprise", "product": "Widget", "fiscalYear": 2024, "amount": "3.00", "quantity": 3 }, "why": "matches 'eu' as typed on every backend" },
+    { "row": { "id": "s04", "region": "europe", "segment": "SMB", "product": "Gadget", "fiscalYear": 2023, "amount": null, "quantity": 4 }, "why": "the same spelling again: one entry in the distinct list" },
+    { "row": { "id": "s05", "region": "EMEA", "segment": "Enterprise", "product": "Widget", "fiscalYear": 2024, "amount": "5.00", "quantity": 5 }, "why": "does not start with 'eu'" },
+    { "row": { "id": "s06", "region": "Reunion", "segment": "SMB", "product": "Widget", "fiscalYear": 2024, "amount": "6.00", "quantity": 6 }, "why": "contains 'eu' but does not start with it: a prefix, not a substring" },
+    { "row": { "id": "s07", "region": "NA", "segment": "Enterprise", "product": "Gadget", "fiscalYear": 2024, "amount": "7.00", "quantity": 7 }, "why": "does not match" },
+    { "row": { "id": "s08", "region": "APAC", "segment": "SMB", "product": "Widget", "fiscalYear": 2022, "amount": "8.00", "quantity": 8 }, "why": "does not match" }
+  ]
+}

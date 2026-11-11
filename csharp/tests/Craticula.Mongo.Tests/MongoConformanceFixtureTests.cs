@@ -50,6 +50,7 @@ public class MongoConformanceFixtureTests
         ("operators", 62),
         ("date-presets", 26),
         ("community-infinite", 27),
+        ("query-time-limit", 6),
         ("dialect-parity", 19),
         ("group-aggregation", 25),
         ("filter-tree", 15),
@@ -181,14 +182,15 @@ public class MongoConformanceFixtureTests
     /// </summary>
     [Theory]
     [MemberData(nameof(InScopeFixtures))]
-    public void Uses_The_Wrapper_Object_Shape_Exactly_When_A_Query_Level_Collation_Is_Present(
+    public void Uses_The_Wrapper_Object_Shape_Exactly_When_A_Collation_Or_A_Query_Time_Limit_Is_Present(
         string category, string fixtureDir)
     {
         var actual = MongoFixtureCompiler.Compile(category, fixtureDir);
         var expected = JsonNode.Parse(Read(category, fixtureDir, "expected", "mongo.artifact.json"));
 
-        Assert.Equal(actual.Collation is not null, expected is JsonObject);
-        Assert.Equal(actual.Collation is not null, actual.ToArtifact() is JsonObject);
+        var wrapped = actual.Collation is not null || actual.MaxTimeMs is not null;
+        Assert.Equal(wrapped, expected is JsonObject);
+        Assert.Equal(wrapped, actual.ToArtifact() is JsonObject);
     }
 
     // ---- anti-rot guards -------------------------------------------------------------------------
@@ -210,7 +212,7 @@ public class MongoConformanceFixtureTests
         // arm and no excluded fixture at all. It last moved when #1650's review pass authored
         // page-export/024; before that #1650 itself released page-export (13, now 14) and
         // sort-paging/012 from exclusion and authored page-export/023.
-        Assert.Equal(211, InScopeFixtures.Count);
+        Assert.Equal(217, InScopeFixtures.Count);
         Assert.Empty(ExcludedFixtures);
     }
 
@@ -250,7 +252,7 @@ public class MongoConformanceFixtureTests
                 .EnumerateFiles(RepoPaths.Fixture(category), "mongo.artifact.json", SearchOption.AllDirectories)
                 .Count());
 
-        Assert.Equal(211, onDisk);
+        Assert.Equal(217, onDisk);
         Assert.Equal(0, excludedCategoryArtifacts);
         Assert.Equal(onDisk - excludedCategoryArtifacts - ExcludedFixtures.Count, InScopeFixtures.Count);
     }

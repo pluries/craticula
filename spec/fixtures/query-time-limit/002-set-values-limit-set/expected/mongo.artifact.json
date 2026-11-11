@@ -1,0 +1,46 @@
+{
+  "pipeline": [
+    {
+      "$match": {
+        "region": {
+          "$regex": "^eu",
+          "$options": "i"
+        }
+      }
+    },
+    {
+      "$group": {
+        "_id": "$region"
+      }
+    },
+    {
+      "$addFields": {
+        "__groupNullBucket": {
+          "$cond": [
+            {
+              "$eq": [
+                "$_id",
+                null
+              ]
+            },
+            1,
+            0
+          ]
+        }
+      }
+    },
+    {
+      "$sort": {
+        "__groupNullBucket": 1,
+        "_id": 1
+      }
+    },
+    {
+      "$unset": "__groupNullBucket"
+    },
+    {
+      "$limit": 1000
+    }
+  ],
+  "maxTimeMS": 2000
+}

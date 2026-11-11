@@ -1,0 +1,12 @@
+{
+  "rows": [
+    { "row": {"id": 1, "orderDate": "2026-01-05", "customerName": "Acme, Inc.", "totalAmount": "1234.50", "status": "shipped", "region": "EMEA", "notes": "dock 3"}, "why": "stream row: status shipped, matches the equals filter" },
+    { "row": {"id": 2, "orderDate": "2026-01-05", "customerName": "Bill \"Big\" Ross Ltd", "totalAmount": "99.00", "status": "shipped", "region": "EMEA", "notes": null}, "why": "stream row: status shipped, matches the equals filter" },
+    { "row": {"id": 3, "orderDate": "2026-02-14", "customerName": "Zenith Retail", "totalAmount": "0.00", "status": "shipped", "region": "APAC", "notes": null}, "why": "stream row: status shipped, matches the equals filter" },
+    { "row": {"id": 1004, "orderDate": "2026-01-20", "customerName": "Case Variant Co", "totalAmount": "10.00", "status": "Shipped", "region": "EMEA", "notes": null}, "why": "status \"Shipped\": status is a case-sensitive field, so eq excludes it" },
+    { "row": {"id": 1005, "orderDate": "2026-01-10", "customerName": "Pending Parts", "totalAmount": "20.00", "status": "pending", "region": "AMER", "notes": "waiting"}, "why": "status pending: excluded; earliest-looking date would sort first if the filter were missing" },
+    { "row": {"id": 1006, "orderDate": null, "customerName": "Undated Order", "totalAmount": "30.00", "status": "shipped", "region": "APAC", "notes": "no order date yet"}, "why": "status shipped with a null orderDate: included, and NULLS LAST puts it after every dated row" },
+    { "row": {"id": 1007, "orderDate": "2026-01-01", "customerName": "Null Status Ltd", "totalAmount": "40.00", "status": null, "region": "EMEA", "notes": null}, "why": "null status: eq is not null-inclusive (SEM-2), excluded" },
+    { "row": {"id": 1008, "orderDate": "2026-01-02", "customerName": "Late Freight", "totalAmount": "50.00", "status": "shipped-late", "region": "AMER", "notes": null}, "why": "status \"shipped-late\": eq, not startsWith, so excluded" }
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "pipeline": [
+    {
+      "$addFields": {
+        "__lastNameNullBucket": {
+          "$cond": [
+            {
+              "$eq": [
+                "$lastName",
+                null
+              ]
+            },
+            1,
+            0
+          ]
+        },
+        "__idNullBucket": {
+          "$cond": [
+            {
+              "$eq": [
+                "$id",
+                null
+              ]
+            },
+            1,
+            0
+          ]
+        }
+      }
+    },
+    {
+      "$sort": {
+        "__lastNameNullBucket": 1,
+        "lastName": 1,
+        "__idNullBucket": 1,
+        "id": 1
+      }
+    },
+    {
+      "$unset": [
+        "__lastNameNullBucket",
+        "__idNullBucket"
+      ]
+    },
+    {
+      "$skip": 0
+    },
+    {
+      "$limit": 100
+    }
+  ],
+  "collation": {
+    "locale": "en",
+    "strength": 2
+  },
+  "maxTimeMS": 2000
+}

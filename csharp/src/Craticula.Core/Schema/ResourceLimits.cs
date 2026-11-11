@@ -18,6 +18,7 @@ public sealed record ResourceLimits
     private readonly int _maxPageSize = 1000;
     private readonly int _maxSetValuesResults = 10000;
     private readonly int _defaultSetValuesResults = 1000;
+    private readonly int? _maxQueryTimeMs;
 
     /// <summary>Max filter tree depth, root node = depth 1 (SEC-3 default: 8).</summary>
     public int MaxDepth
@@ -78,6 +79,22 @@ public sealed record ResourceLimits
     {
         get => _defaultSetValuesResults;
         init => _defaultSetValuesResults = RequirePositive(value, nameof(DefaultSetValuesResults));
+    }
+
+    /// <summary>
+    /// TL-4 (query time limit, #3794): the maximum time, in milliseconds, a MongoDB or Search query may
+    /// run. <b>The one limit that is unset by default</b> (<see langword="null"/>), a recorded deviation
+    /// from SEC-3's "none unlimited": the six limits above bound the <em>shape</em> of a request, and the
+    /// library cannot know how slow a host's database is, so a default would be a guess. When set, the
+    /// MongoDB compiler adds <c>maxTimeMS</c> and the Search compiler <c>timeout</c> to the artifact;
+    /// without it every artifact is what it was. A set value must be a whole number from 1 to
+    /// <see cref="int.MaxValue"/> (2,147,483,647: what the engines hold); the type already excludes a
+    /// fraction and a larger number. It comes only from the host: no request member sets it.
+    /// </summary>
+    public int? MaxQueryTimeMs
+    {
+        get => _maxQueryTimeMs;
+        init => _maxQueryTimeMs = value is null ? null : RequirePositive(value.Value, nameof(MaxQueryTimeMs));
     }
 
     private static int RequirePositive(int value, string paramName) => value > 0

@@ -1,0 +1,32 @@
+{
+  "columns": ["region"],
+  "rows": [
+    ["EU"],
+    ["Eurasia"],
+    ["europe"]
+  ],
+  "allowedDivergence": [
+    {
+      "backend": "mysql",
+      "reason": "accepted divergence #4 (GRP-2, SEM-1, GRP-6(b)): MySQL spells no collation, so on the binary column GRP-2 needs for exact buckets the LIKE prefix 'eu' is case-sensitive as typed and 'EU' and 'Eurasia' are not offered",
+      "outcome": "rows",
+      "expected": {
+        "columns": ["region"],
+        "rows": [
+          ["europe"]
+        ]
+      }
+    },
+    {
+      "backend": "search",
+      "reason": "OSE-12 (AGG-5 register): the terms aggregation's include is a Lucene regex with no case-insensitivity option, so the prefix 'eu' matches case-sensitively as typed and 'EU' and 'Eurasia' are not offered",
+      "outcome": "rows",
+      "expected": {
+        "columns": ["region"],
+        "rows": [
+          ["europe"]
+        ]
+      }
+    }
+  ]
+}

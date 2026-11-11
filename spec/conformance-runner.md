@@ -103,6 +103,9 @@ implementation compiles the same thing:
   harness rule of **SEM-4**: `now` is a harness instruction that a production adapter must never read from the wire; the
   driver is the harness, so it does. When `now` is absent the driver keeps its normal clock: a fixture whose artifact
   depends on the current instant always carries `now`.
+- **Query time limit** — when `agGridRequest.requestContext.maxQueryTimeMs` is present, the driver sets the host's maximum
+  query time to that many milliseconds (TL-4). Like `now`, it is a harness instruction that a production parser never
+  reads; a top-level `maxQueryTimeMs` on the request is not the harness input and is ignored. Absent, no limit is configured.
 - **Zone** — `requestContext.zone`, when present, is read as SEM-4 prescribes for any request.
 - **Entry point** — a request with a top-level `setValuesRequest` member is a set-values request (BM-3) and goes through
   that entry point; every other request is a row request.

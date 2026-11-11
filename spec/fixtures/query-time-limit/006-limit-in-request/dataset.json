@@ -1,0 +1,74 @@
+{
+  "rows": [
+    {
+      "row": {
+        "id": 1,
+        "age": 40
+      },
+      "why": "mid value"
+    },
+    {
+      "row": {
+        "id": 2,
+        "age": 25
+      },
+      "why": "low value"
+    },
+    {
+      "row": {
+        "id": 3,
+        "age": null
+      },
+      "why": "null age"
+    },
+    {
+      "row": {
+        "id": 4,
+        "age": 40
+      },
+      "why": "ties with id 1: tiebreaker"
+    },
+    {
+      "row": {
+        "id": 5,
+        "age": 31
+      },
+      "why": "between"
+    },
+    {
+      "row": {
+        "id": 6,
+        "age": null
+      },
+      "why": "second null"
+    },
+    {
+      "row": {
+        "id": 7,
+        "age": 25
+      },
+      "why": "ties with id 2"
+    },
+    {
+      "row": {
+        "id": 8,
+        "age": 60
+      },
+      "why": "highest"
+    },
+    {
+      "row": {
+        "id": 9,
+        "age": 0
+      },
+      "why": "zero is a value, not null"
+    },
+    {
+      "row": {
+        "id": 10,
+        "age": -5
+      },
+      "why": "negative sorts below zero"
+    }
+  ]
+}

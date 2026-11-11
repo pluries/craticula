@@ -1,0 +1,25 @@
+{
+  "mode": "strict",
+  "source": "employees",
+  "stableKey": "id",
+  "fields": {
+    "id": {
+      "type": "int64",
+      "sortable": true,
+      "physical": {
+        "sql": { "column": "id" },
+        "mongo": { "path": "id" },
+        "search": { "field": "id" }
+      }
+    },
+    "lastName": {
+      "type": "string",
+      "sortable": true,
+      "physical": {
+        "sql": { "column": "last_name" },
+        "mongo": { "path": "lastName" },
+        "search": { "field": "lastName", "keywordSubField": "lastName.keyword", "normalizedSubField": "lastName.normalized" }
+      }
+    }
+  }
+}

@@ -1,0 +1,1 @@
+Proves TL-1 and TL-2 on a row request: with the harness limit `requestContext.maxQueryTimeMs` of 2000, the MongoDB artifact is the `{ pipeline, maxTimeMS }` wrapper and the Search body carries `timeout: "2000ms"`; the PostgreSQL artifact is unchanged (the SQL engines' limit is a statement setting, not compiled text). Backs FR-1, FR-2, FR-8.

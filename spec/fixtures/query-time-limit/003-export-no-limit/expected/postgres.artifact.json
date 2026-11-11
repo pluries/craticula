@@ -1,0 +1,7 @@
+{
+  "dialect": "postgres",
+  "sql": "SELECT \"id\", \"order_date\" AS \"orderDate\", \"customer_name\" AS \"customerName\", \"total_amount\" AS \"totalAmount\", \"status\", \"region\", \"notes\" FROM \"orders\" WHERE \"status\" = $1 ORDER BY \"order_date\" ASC NULLS LAST, \"id\" ASC NULLS LAST",
+  "params": [
+    "shipped"
+  ]
+}
