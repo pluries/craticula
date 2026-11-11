@@ -51,6 +51,7 @@ public class MongoConformanceFixtureTests
         ("date-presets", 26),
         ("community-infinite", 27),
         ("query-time-limit", 6),
+        ("default-page-size", 5),
         ("dialect-parity", 19),
         ("group-aggregation", 25),
         ("filter-tree", 15),
@@ -212,7 +213,7 @@ public class MongoConformanceFixtureTests
         // arm and no excluded fixture at all. It last moved when #1650's review pass authored
         // page-export/024; before that #1650 itself released page-export (13, now 14) and
         // sort-paging/012 from exclusion and authored page-export/023.
-        Assert.Equal(217, InScopeFixtures.Count);
+        Assert.Equal(222, InScopeFixtures.Count);
         Assert.Empty(ExcludedFixtures);
     }
 
@@ -252,7 +253,7 @@ public class MongoConformanceFixtureTests
                 .EnumerateFiles(RepoPaths.Fixture(category), "mongo.artifact.json", SearchOption.AllDirectories)
                 .Count());
 
-        Assert.Equal(217, onDisk);
+        Assert.Equal(222, onDisk);
         Assert.Equal(0, excludedCategoryArtifacts);
         Assert.Equal(onDisk - excludedCategoryArtifacts - ExcludedFixtures.Count, InScopeFixtures.Count);
     }

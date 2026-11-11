@@ -1,0 +1,5 @@
+{
+  "dialect": "postgres",
+  "sql": "SELECT * FROM \"employees\" ORDER BY \"age\" ASC NULLS LAST, \"id\" ASC NULLS LAST",
+  "params": []
+}

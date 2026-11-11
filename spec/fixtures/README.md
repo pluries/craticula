@@ -656,6 +656,8 @@ Top level (`IServerSideGetRowsRequest`, `packages/ag-grid-community/src/interfac
     "last 7 days" means. Absent on every fixture that does not use a preset.
   - `maxQueryTimeMs` (added by the `query-time-limit/` category) is the same kind of instruction: it sets the host's
     maximum query time for the compile (TL-4), and a production parser never reads it.
+  - `defaultPageSize` and `allowUnboundedRows` (added by the `default-page-size/` category) are the same kind of instruction: the host's
+    default page size and its switch for `ignorePageLimit` (PG-1, PG-3).
 
 ## Categories
 
@@ -672,6 +674,7 @@ Top level (`IServerSideGetRowsRequest`, `packages/ag-grid-community/src/interfac
 | `ag-grid-majors/` | AG-4: one SSRM payload per supported AG Grid major (v31-v36), plus the two rejections any major can emit (AG-5 Advanced Filter, SEM-4 native `inRange`) — **derived from each release tag's published types, not captured from a running grid** (see its README) | 8 |
 | `community-infinite/` | AG-7: flat requests in the shape AG Grid Community's Infinite Row Model sends — text, number and date filter operators, both join operators, sort and paging — compiled with the same semantics as the SSRM; every case labelled `derived` or `captured` | 27 |
 | `query-time-limit/` | TL-1..TL-5: the optional `maxTimeMS` (MongoDB) and `timeout` (Search) members, absent when no limit is set, never on an export, never set from the wire | 6 |
+| `default-page-size/` | PG-1..PG-4: a request with no window gets a default page, an allowed `ignorePageLimit` is unpaginated, the time limit follows the page | 5 |
 
 Each category directory has its own `README.md` enumerating its cases and the specific requirement
 each one backs.

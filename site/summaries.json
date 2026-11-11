@@ -83,5 +83,10 @@
     "title": "Query time limit",
     "description": "An optional time limit that the database itself enforces on a query.",
     "summary": "A host can set a maximum query time. The MongoDB and Search compilers then put it into the query they produce, so the database cuts a slow query instead of the application. Without the setting nothing changes, exports never carry it, and a request can never set it. When the database runs out of time, the adapters report one distinct time-out error."
+  },
+  "default page size": {
+    "title": "Default page size",
+    "description": "What a request gets when it sends no row window, and how to ask for every row on purpose.",
+    "summary": "A request that sends no row window now gets a default page (100 rows, a host setting) instead of the whole table. Every row is still available: an export of everything streams page by page, and a request can carry an explicit flag that the host has switched on. Without the host's switch the flag is refused, never silently capped."
   }
 }

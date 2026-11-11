@@ -145,7 +145,9 @@ internal static class SearchFixtureCompiler
         return new AgGridParseOptions
         {
             Schema = schema,
-            Clock = pinnedNow is null ? TimeProvider.System : FixedClock.At(pinnedNow)
+            Clock = pinnedNow is null ? TimeProvider.System : FixedClock.At(pinnedNow),
+            DefaultPageSize = HarnessInt(request.RootElement, "defaultPageSize") ?? 100,
+            AllowUnboundedRows = HarnessFlag(request.RootElement, "allowUnboundedRows")
         };
     }
 
@@ -187,4 +189,20 @@ internal static class SearchFixtureCompiler
     };
 
     private static readonly JsonSerializerOptions CanonicalOptions = new() { WriteIndented = false };
+
+    private static int? HarnessInt(JsonElement root, string name) =>
+        root.ValueKind == JsonValueKind.Object
+        && root.TryGetProperty("requestContext", out var context)
+        && context.ValueKind == JsonValueKind.Object
+        && context.TryGetProperty(name, out var value)
+        && value.ValueKind == JsonValueKind.Number
+            ? value.GetInt32()
+            : null;
+
+    private static bool HarnessFlag(JsonElement root, string name) =>
+        root.ValueKind == JsonValueKind.Object
+        && root.TryGetProperty("requestContext", out var context)
+        && context.ValueKind == JsonValueKind.Object
+        && context.TryGetProperty(name, out var value)
+        && value.ValueKind == JsonValueKind.True;
 }

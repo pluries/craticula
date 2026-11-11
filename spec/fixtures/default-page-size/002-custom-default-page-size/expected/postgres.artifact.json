@@ -1,0 +1,8 @@
+{
+  "dialect": "postgres",
+  "sql": "SELECT * FROM \"employees\" ORDER BY \"age\" ASC NULLS LAST, \"id\" ASC NULLS LAST LIMIT $1 OFFSET $2",
+  "params": [
+    25,
+    0
+  ]
+}
