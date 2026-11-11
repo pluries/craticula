@@ -147,7 +147,8 @@ internal static class RequestCompiler
                 ColId = values.Spec.ColId,
                 Filter = values.Filter,
                 SearchPrefix = values.Spec.SearchPrefix,
-                RowLimit = values.RowLimit
+                RowLimit = values.RowLimit,
+                MaxQueryTimeMs = request.Limits.MaxQueryTimeMs
             });
         }
 
@@ -160,7 +161,8 @@ internal static class RequestCompiler
             Sort = row.Parsed.Sort,
             Page = row.Parsed.Page,
             Group = row.Parsed.Group,
-            Aggregations = row.Parsed.Aggregations
+            Aggregations = row.Parsed.Aggregations,
+            MaxQueryTimeMs = request.Limits.MaxQueryTimeMs
         });
     }
 

@@ -53,6 +53,11 @@ public sealed record SearchQuery
     /// aggregation, with its sub-aggregations. <see langword="null"/> on a row query.</summary>
     public JsonObject? Aggs { get; init; }
 
+    /// <summary>TL-2: the host's maximum query time in milliseconds, rendered as the top-level
+    /// <c>timeout</c> member (<c>"&lt;N&gt;ms"</c>); <see langword="null"/> when none is configured, and always for an
+    /// export. A soft limit: the shards stop at their next check, not at once.</summary>
+    public int? TimeoutMs { get; init; }
+
     /// <summary>
     /// GRP-2, made observable rather than inferred from an absence — the counterpart of
     /// <c>Craticula.Mongo.MongoQuery.CollationSuppressedByBucketIdentity</c>, but <b>a constant of
@@ -113,6 +118,11 @@ public sealed record SearchQuery
         if (Aggs is not null)
         {
             artifact["aggs"] = Aggs.DeepClone();
+        }
+
+        if (TimeoutMs is { } timeoutMs)
+        {
+            artifact["timeout"] = $"{timeoutMs}ms";
         }
 
         return artifact;

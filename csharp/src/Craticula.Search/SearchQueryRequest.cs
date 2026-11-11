@@ -52,4 +52,8 @@ public sealed record SearchQueryRequest
     /// return hits rather than buckets. Subject to the same allowlist precondition as
     /// <see cref="Group"/>.</summary>
     public IReadOnlyList<Aggregation>? Aggregations { get; init; }
+
+    /// <summary>TL-2: the host's <see cref="ResourceLimits.MaxQueryTimeMs"/>, carried into the body as
+    /// <c>timeout</c>. Ignored for an unpaginated (export) page, TL-3.</summary>
+    public int? MaxQueryTimeMs { get; init; }
 }

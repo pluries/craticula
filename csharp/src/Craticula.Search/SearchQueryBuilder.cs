@@ -58,6 +58,14 @@ public static class SearchQueryBuilder
     /// (OSE-11(c)/(d)).</exception>
     public static SearchQuery Build(SearchQueryRequest request)
     {
+        var query = BuildBody(request);
+
+        // TL-3: an export (EXP-2's unpaginated page) never carries the limit.
+        return request.Page is NonePage ? query : query with { TimeoutMs = request.MaxQueryTimeMs };
+    }
+
+    private static SearchQuery BuildBody(SearchQueryRequest request)
+    {
         ArgumentNullException.ThrowIfNull(request);
 
         FilterNodeValidator.Validate(request.Filter);
@@ -134,7 +142,10 @@ public static class SearchQueryBuilder
     /// <see cref="SearchSetValuesRequest.SearchPrefix"/> whose predicate is absent from
     /// <see cref="SearchSetValuesRequest.Filter"/>, or a target column not declared
     /// <c>string</c>.</exception>
-    public static SearchQuery BuildSetValues(SearchSetValuesRequest request)
+    public static SearchQuery BuildSetValues(SearchSetValuesRequest request) =>
+        BuildSetValuesBody(request) with { TimeoutMs = request.MaxQueryTimeMs };
+
+    private static SearchQuery BuildSetValuesBody(SearchSetValuesRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
 
