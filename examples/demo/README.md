@@ -14,8 +14,8 @@ is up) ends with `all 26 scenarios are equal on all 5 providers (postgres, ef, e
 [SQLite](#sqlite-the-sqlite-provider) for the two documented differences, and [EF Core on SQLite, SQL Server and MySQL](#ef-core-on-sqlite-sql-server-and-mysql-the-ef-sqlite-ef-sqlserver-and-ef-mysql-providers) for the three extra EF routes.) SQL Server, MySQL, OpenSearch and Elasticsearch are optional providers that start only on request:
 see [SQL Server](#sql-server-the-sqlserver-provider), [MySQL](#mysql-the-mysql-provider) and [OpenSearch](#opensearch-the-opensearch-provider), [Elasticsearch](#elasticsearch-the-elasticsearch-provider), or [all eleven at once](#all-eleven-providers-at-once).
 
-This is a showcase, not a published package. It references the library by project reference (`../../csharp/src`) until
-the first release is on nuget.org. It is not part of `csharp/Craticula.sln`.
+This is a showcase, not a published package. It uses the Craticula packages from nuget.org (version 1.0.0, pinned in
+`Directory.Packages.props`), so it needs no checkout of `csharp/`. It is not part of `csharp/Craticula.sln`.
 
 ## A second page: AG Grid Community
 
