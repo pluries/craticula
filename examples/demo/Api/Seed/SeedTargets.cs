@@ -4,13 +4,19 @@ namespace Demo.Api.Seed;
 /// One database the <c>seed</c> command can fill. <see cref="SeedAsync"/> drops, creates and loads the rows and returns the
 /// stored count; <see cref="Describe"/> is the line printed for that count; <see cref="Hint"/> follows an error.
 /// <see cref="Default"/> targets are seeded when no provider is named.
+/// <see cref="ChecksumAsync"/>, when set, reads the <see cref="SeedChecksum"/> of what is stored in that database after the load
+/// (postgres and mongo set it). <see cref="SeedCommand"/> compares every such value with <c>SeedChecksum.Of(rows)</c>: all equal,
+/// it prints <c>Checksum: &lt;hex&gt;</c> (the database's value) and exits as before; any differs, it prints
+/// <c>Checksum mismatch for &lt;name&gt;: database &lt;hex&gt;, seed &lt;hex&gt;</c> to the error writer, prints no Checksum line and exits 1
+/// (exit 2 for a failed target still outranks it). With no target that sets it, the line shows <c>SeedChecksum.Of(rows)</c>, as before.
 /// </summary>
 public sealed record SeedTarget(
     string Name,
     Func<IReadOnlyList<OrderRow>, Task<long>> SeedAsync,
     Func<long, string> Describe,
     string Hint,
-    bool Default = true);
+    bool Default = true,
+    Func<Task<string>>? ChecksumAsync = null);
 
 /// <summary>The seedable providers, by the same names as the API routes.</summary>
 public static class SeedTargets
@@ -19,14 +25,34 @@ public static class SeedTargets
     [
         new SeedTarget(
             "postgres",
-            rows => PostgresSeeder.SeedAsync(DemoSettings.Postgres, rows),
+            async rows =>
+            {
+                var count = await PostgresSeeder.SeedAsync(DemoSettings.Postgres, rows);
+                if (DemoSettings.OptionalSetting(DemoSettings.ReadOnlyPasswordEnvVar) is { } password)
+                {
+                    await ReadOnlyAccount.CreatePostgresAsync(DemoSettings.Postgres, password);
+                }
+
+                return count;
+            },
             count => $"PostgreSQL: {count} rows in table orders.",
-            "Is `docker compose up -d` running? Override DEMO_PG if you changed the port."),
+            "Is `docker compose up -d` running? Override DEMO_PG if you changed the port.",
+            ChecksumAsync: () => SeedChecksum.OfPostgresAsync(DemoSettings.Postgres)),
         new SeedTarget(
             "mongo",
-            rows => MongoSeeder.SeedAsync(DemoSettings.Mongo, rows),
+            async rows =>
+            {
+                var count = await MongoSeeder.SeedAsync(DemoSettings.Mongo, rows);
+                if (DemoSettings.OptionalSetting(DemoSettings.ReadOnlyPasswordEnvVar) is { } password)
+                {
+                    await ReadOnlyAccount.CreateMongoAsync(DemoSettings.Mongo, password);
+                }
+
+                return count;
+            },
             count => $"MongoDB: {count} documents in collection orders.",
-            "Is `docker compose up -d` running? Override DEMO_MONGO if you changed the port."),
+            "Is `docker compose up -d` running? Override DEMO_MONGO if you changed the port.",
+            ChecksumAsync: () => SeedChecksum.OfMongoAsync(DemoSettings.Mongo)),
         new SeedTarget(
             "sqlite",
             rows => SqliteSeeder.SeedAsync(DemoSettings.SqlitePath, rows),

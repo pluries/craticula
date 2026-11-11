@@ -2,6 +2,7 @@ using Craticula.Core.Schema;
 using Craticula.EntityFrameworkCore;
 using Demo.Api.Errors;
 using Demo.Api.Grid;
+using Demo.Api.Public;
 using Demo.Api.Routes;
 using Demo.Api.Seed;
 using Microsoft.EntityFrameworkCore;
@@ -90,7 +91,17 @@ public static class DemoApp
         OptionalProviders.RegisterConfigured(
             builder.Services, [.. OptionalProviders.All, .. extraOptionalProviders ?? []], name => builder.Configuration[name]);
 
+        if (builder.Configuration[PublicSettings.EnabledKey] == "1")
+        {
+            PublicMode.Register(builder);
+        }
+
         var app = builder.Build();
+
+        if (app.Configuration[PublicSettings.EnabledKey] == "1")
+        {
+            PublicMode.Use(app);
+        }
 
         app.UseMiddleware<ApiErrorMiddleware>();
         app.UseCors();

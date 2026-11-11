@@ -1,0 +1,12 @@
+# Build context of deploy/demo/Dockerfile (the repository root): build output, dependencies and private material the demo
+# image never reads. Only examples/demo/{web,Api} and the files named in the Dockerfile are copied in.
+.git
+.claude
+docs
+**/bin
+**/obj
+**/node_modules
+**/dist
+examples/demo/data
+_ltp03-notes
+*.zip
