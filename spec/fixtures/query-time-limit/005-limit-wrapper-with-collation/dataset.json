@@ -1,0 +1,74 @@
+{
+  "rows": [
+    {
+      "row": {
+        "id": 1,
+        "lastName": "Smith"
+      },
+      "why": "first of a three-way case-insensitive tie"
+    },
+    {
+      "row": {
+        "id": 2,
+        "lastName": "adams"
+      },
+      "why": "lowercase; ties with id 6 under SEM-1 folding"
+    },
+    {
+      "row": {
+        "id": 3,
+        "lastName": null
+      },
+      "why": "null name"
+    },
+    {
+      "row": {
+        "id": 4,
+        "lastName": "smith"
+      },
+      "why": "ties with Smith (id 1): SEM-1 folds case, tiebreaker orders by id"
+    },
+    {
+      "row": {
+        "id": 5,
+        "lastName": "Baker"
+      },
+      "why": "ties with baker (id 9)"
+    },
+    {
+      "row": {
+        "id": 6,
+        "lastName": "Adams"
+      },
+      "why": "ties with adams (id 2)"
+    },
+    {
+      "row": {
+        "id": 7,
+        "lastName": null
+      },
+      "why": "second null: ties on null, tiebreaker orders by id"
+    },
+    {
+      "row": {
+        "id": 8,
+        "lastName": "Zhao"
+      },
+      "why": "largest name"
+    },
+    {
+      "row": {
+        "id": 9,
+        "lastName": "baker"
+      },
+      "why": "ties with Baker"
+    },
+    {
+      "row": {
+        "id": 10,
+        "lastName": "SMITH"
+      },
+      "why": "third member of the Smith tie"
+    }
+  ]
+}
