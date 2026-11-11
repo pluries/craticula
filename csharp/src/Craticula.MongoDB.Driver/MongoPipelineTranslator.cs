@@ -62,8 +62,24 @@ internal static class MongoPipelineTranslator
     /// today's <c>locale</c>/<c>strength</c> pair. Returns <see langword="null"/> options when the
     /// query carries no collation at all, which the driver treats identically to an omitted option.
     /// </summary>
-    public static AggregateOptions? Options(Craticula.Mongo.MongoQuery query) =>
-        query.Collation is null
-            ? null
-            : new AggregateOptions { Collation = Collation.FromBsonDocument(TranslateDocument(query.Collation)) };
+    public static AggregateOptions? Options(Craticula.Mongo.MongoQuery query)
+    {
+        if (query.Collation is null && query.MaxTimeMs is null)
+        {
+            return null;
+        }
+
+        var options = new AggregateOptions();
+        if (query.Collation is not null)
+        {
+            options.Collation = Collation.FromBsonDocument(TranslateDocument(query.Collation));
+        }
+
+        if (query.MaxTimeMs is { } maxTimeMs)
+        {
+            options.MaxTime = TimeSpan.FromMilliseconds(maxTimeMs);
+        }
+
+        return options;
+    }
 }

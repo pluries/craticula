@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Craticula.Core;
 using Craticula.Core.Ir;
 using Craticula.Core.Schema;
 using Craticula.Mongo;
@@ -60,9 +61,10 @@ public static class MongoGridQuery
 
         var rows = new List<IReadOnlyList<object?>>();
 
-        using (var cursor = await collection.AggregateAsync<BsonDocument>(stages, options, cancellationToken)
-                   .ConfigureAwait(false))
+        try
         {
+            using var cursor = await collection.AggregateAsync<BsonDocument>(stages, options, cancellationToken)
+                .ConfigureAwait(false);
             while (await cursor.MoveNextAsync(cancellationToken).ConfigureAwait(false))
             {
                 foreach (var document in cursor.Current)
@@ -76,6 +78,10 @@ public static class MongoGridQuery
                     rows.Add(cells);
                 }
             }
+        }
+        catch (MongoExecutionTimeoutException ex)
+        {
+            throw new QueryTimeoutException(ex);
         }
 
         var rowCount = includeRowCount
@@ -136,13 +142,18 @@ public static class MongoGridQuery
 
         BsonDocument? document = null;
 
-        using (var cursor = await collection.AggregateAsync<BsonDocument>(stages, options, cancellationToken)
-                   .ConfigureAwait(false))
+        try
         {
+            using var cursor = await collection.AggregateAsync<BsonDocument>(stages, options, cancellationToken)
+                .ConfigureAwait(false);
             if (await cursor.MoveNextAsync(cancellationToken).ConfigureAwait(false))
             {
                 document = cursor.Current.FirstOrDefault();
             }
+        }
+        catch (MongoExecutionTimeoutException ex)
+        {
+            throw new QueryTimeoutException(ex);
         }
 
         return document is null ? 0L : document["count"].ToInt64();
