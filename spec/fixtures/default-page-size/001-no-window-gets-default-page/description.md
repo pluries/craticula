@@ -1,0 +1,1 @@
+Proves PG-1: a row request with `startRow` and `endRow` both null and no export compiles to the page `[0, 100)`, the default page size: the artifacts equal those of `sort-paging/002`, whose request carries the window 0 to 100 explicitly.
