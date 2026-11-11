@@ -58,6 +58,8 @@ public static class SearchQueryBuilder
     /// (OSE-11(c)/(d)).</exception>
     public static SearchQuery Build(SearchQueryRequest request)
     {
+        ArgumentNullException.ThrowIfNull(request);
+        RequirePositiveTimeLimit(request.MaxQueryTimeMs);
         var query = BuildBody(request);
 
         // TL-3: an export (EXP-2's unpaginated page) never carries the limit.
@@ -142,8 +144,23 @@ public static class SearchQueryBuilder
     /// <see cref="SearchSetValuesRequest.SearchPrefix"/> whose predicate is absent from
     /// <see cref="SearchSetValuesRequest.Filter"/>, or a target column not declared
     /// <c>string</c>.</exception>
-    public static SearchQuery BuildSetValues(SearchSetValuesRequest request) =>
-        BuildSetValuesBody(request) with { TimeoutMs = request.MaxQueryTimeMs };
+    public static SearchQuery BuildSetValues(SearchSetValuesRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        RequirePositiveTimeLimit(request.MaxQueryTimeMs);
+        return BuildSetValuesBody(request) with { TimeoutMs = request.MaxQueryTimeMs };
+    }
+
+    /// <summary>TL-4's check, repeated for a caller that fills the request directly instead of going through
+    /// <c>ResourceLimits</c>: a zero or negative <c>timeout</c> is not a limit the engine understands.</summary>
+    private static void RequirePositiveTimeLimit(int? maxQueryTimeMs)
+    {
+        if (maxQueryTimeMs is <= 0)
+        {
+            throw new SearchCompilationException(
+                $"MaxQueryTimeMs must be positive when set, got {maxQueryTimeMs} (TL-4); leave it null for no limit.");
+        }
+    }
 
     private static SearchQuery BuildSetValuesBody(SearchSetValuesRequest request)
     {

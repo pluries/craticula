@@ -64,6 +64,8 @@ public static class MongoPipelineBuilder
     /// whose variant disagrees with that field's declared type.</exception>
     public static MongoQuery Build(MongoQueryRequest request)
     {
+        ArgumentNullException.ThrowIfNull(request);
+        RequirePositiveTimeLimit(request.MaxQueryTimeMs);
         var query = BuildPipeline(request);
 
         // TL-3: an export (EXP-2's unpaginated page) is long by design and never carries the limit.
@@ -215,8 +217,23 @@ public static class MongoPipelineBuilder
     /// </summary>
     /// <exception cref="MongoCompilationException">A field the <see cref="GridSchema"/> does not
     /// declare, or a non-positive <see cref="MongoSetValuesRequest.RowLimit"/>.</exception>
-    public static MongoQuery BuildSetValues(MongoSetValuesRequest request) =>
-        BuildSetValuesPipeline(request) with { MaxTimeMs = request.MaxQueryTimeMs };
+    public static MongoQuery BuildSetValues(MongoSetValuesRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        RequirePositiveTimeLimit(request.MaxQueryTimeMs);
+        return BuildSetValuesPipeline(request) with { MaxTimeMs = request.MaxQueryTimeMs };
+    }
+
+    /// <summary>TL-4's check, repeated for a caller that fills the request directly instead of going through
+    /// <c>ResourceLimits</c>: <c>maxTimeMS: 0</c> means "no limit" to MongoDB, so zero would switch the protection off silently.</summary>
+    private static void RequirePositiveTimeLimit(int? maxQueryTimeMs)
+    {
+        if (maxQueryTimeMs is <= 0)
+        {
+            throw new MongoCompilationException(
+                $"MaxQueryTimeMs must be positive when set, got {maxQueryTimeMs} (TL-4); leave it null for no limit.");
+        }
+    }
 
     private static MongoQuery BuildSetValuesPipeline(MongoSetValuesRequest request)
     {
