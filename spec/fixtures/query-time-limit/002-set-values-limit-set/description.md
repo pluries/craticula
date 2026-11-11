@@ -1,0 +1,1 @@
+Proves TL-1 and TL-2 on a set-values request (BM-3): the same two members appear on the distinct-values artifacts. Backs FR-1, FR-2. A row count is compiled by the execution adapters at run time, not by the harness, so it is proved in the adapter tests (FR-9), not here.

@@ -1,0 +1,8 @@
+{
+  "dialect": "postgres",
+  "sql": "SELECT DISTINCT \"region\" FROM \"sales_fact\" WHERE \"region\" ILIKE $1 || '%' ESCAPE '\\' ORDER BY \"region\" ASC NULLS LAST LIMIT $2",
+  "params": [
+    "eu",
+    1000
+  ]
+}

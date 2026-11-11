@@ -3150,3 +3150,35 @@ is **promoted to a fixture** whose `expectedRows.json` carries an `allowedDiverg
 rule alone: excluding a construct from the generator without a register row and a covering fixture is not allowed.
 A true defect the property finds is not an accepted divergence and the generator alone does not excuse it: it is tracked by a
 Bug and fixed in the compiler or the spec, and any exclusion made while it is open is removed when the Bug is fixed.
+
+## Addendum — query time limit (TL-1..TL-5; not numbered SEM-*, for the same reason as the aggregation addendum above)
+
+A host can ask the MongoDB and Search compilers to carry a server-side time limit in the artifact, so that the engine, not the
+application, cuts a query that runs too long. The setting is the host's: `ResourceLimits.MaxQueryTimeMs` in C#, a
+nullable whole number of milliseconds. It is the one SEC-3 limit that is **unset by default**: SEC-3's other limits bound the
+shape of a request, and the library cannot know how slow a host's database is, so a default would be a guess. (This is a
+recorded deviation from SEC-3's "no limit is unlimited".)
+
+**TL-1. MongoDB: the member `maxTimeMS`.** When a limit N is configured, a row or set-values artifact carries the
+top-level member `maxTimeMS` with the value N. `maxTimeMS` is an `aggregate()` command option, like `collation`, so it
+cannot be a pipeline stage: the artifact takes the `{ "pipeline": [...] }` wrapper form (`schemas/mongo-artifact.schema.json`), with the members in the order
+`pipeline`, `collation` (when present), `maxTimeMS`. Without a limit, the artifact is the bare array, or the wrapper with
+`collation` alone, exactly as before.
+
+**TL-2. Search: the member `timeout`.** When a limit N is configured, the body carries the top-level member `timeout` with the string
+`"<N>ms"`. Without a limit the member is absent.
+
+**TL-3. Absent means unchanged, and exports are excluded.** Without a configured limit every artifact is exactly what it was.
+An export artifact never carries the limit: an export is long by design and has its own cancellation hook (EXP-7). The SQL
+engines carry no limit in compiled text (their limit is a connection or statement setting).
+
+**TL-4. The value is validated when the limits are configured.** Zero, a negative number, a number that is not whole, or a value above
+2,147,483,647 is rejected before any request is compiled. The limit comes only from the host: no member of a request sets,
+raises or removes it. A `maxQueryTimeMs` on the wire is ignored, like `requestContext.now` (SEM-4). Inside a conformance fixture,
+`requestContext.maxQueryTimeMs` is an instruction **to the harness** (`conformance-runner.md` §3), never a field a production parser reads.
+The limit applies to each engine call an artifact makes (a page and its row count each get the full limit), not to a request as a whole.
+
+**TL-5. A time-out is one distinct error.** An execution adapter reports an engine time-out as `QueryTimeoutException`
+(error kind `query-timeout`), which names no query text. MongoDB: the server's "maximum time expired" error (code 50). Search: a response whose `timed_out`
+is true, which an adapter never returns as a page of partial hits. The Search `timeout` is a soft limit: the shards stop at their next
+check, not at once.

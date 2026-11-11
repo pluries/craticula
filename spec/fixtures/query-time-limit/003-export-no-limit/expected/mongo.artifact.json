@@ -1,0 +1,63 @@
+[
+  {
+    "$match": {
+      "status": {
+        "$eq": "shipped"
+      }
+    }
+  },
+  {
+    "$addFields": {
+      "__orderDateNullBucket": {
+        "$cond": [
+          {
+            "$eq": [
+              "$orderDate",
+              null
+            ]
+          },
+          1,
+          0
+        ]
+      },
+      "__idNullBucket": {
+        "$cond": [
+          {
+            "$eq": [
+              "$_id",
+              null
+            ]
+          },
+          1,
+          0
+        ]
+      }
+    }
+  },
+  {
+    "$sort": {
+      "__orderDateNullBucket": 1,
+      "orderDate": 1,
+      "__idNullBucket": 1,
+      "_id": 1
+    }
+  },
+  {
+    "$unset": [
+      "__orderDateNullBucket",
+      "__idNullBucket"
+    ]
+  },
+  {
+    "$project": {
+      "id": "$_id",
+      "orderDate": 1,
+      "customerName": "$customer.name",
+      "totalAmount": 1,
+      "status": 1,
+      "region": 1,
+      "notes": 1,
+      "_id": 0
+    }
+  }
+]

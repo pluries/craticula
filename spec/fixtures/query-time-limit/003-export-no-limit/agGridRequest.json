@@ -1,0 +1,27 @@
+{
+  "startRow": null,
+  "endRow": null,
+  "rowGroupCols": [],
+  "valueCols": [],
+  "pivotCols": [],
+  "pivotMode": false,
+  "groupKeys": [],
+  "filterModel": {
+    "status": {
+      "filterType": "text",
+      "type": "equals",
+      "filter": "shipped"
+    }
+  },
+  "sortModel": [
+    {
+      "colId": "orderDate",
+      "sort": "asc"
+    }
+  ],
+  "exportFormat": "csv",
+  "exportScope": "all",
+  "requestContext": {
+    "maxQueryTimeMs": 2000
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "query": {
+    "term": {
+      "status.keyword": {
+        "value": "shipped"
+      }
+    }
+  },
+  "sort": [
+    {
+      "orderDate": {
+        "order": "asc",
+        "missing": "_last"
+      }
+    },
+    {
+      "id": {
+        "order": "asc",
+        "missing": "_last"
+      }
+    }
+  ]
+}

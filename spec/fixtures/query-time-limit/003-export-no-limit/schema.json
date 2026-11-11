@@ -1,0 +1,146 @@
+{
+  "mode": "strict",
+  "source": "orders",
+  "stableKey": "id",
+  "fields": {
+    "id": {
+      "type": "int64",
+      "filterable": true,
+      "sortable": true,
+      "physical": {
+        "sql": {
+          "column": "id"
+        },
+        "mongo": {
+          "path": "_id"
+        },
+        "search": {
+          "field": "id"
+        }
+      }
+    },
+    "orderDate": {
+      "type": "date",
+      "filterable": true,
+      "sortable": true,
+      "physical": {
+        "sql": {
+          "column": "order_date"
+        },
+        "mongo": {
+          "path": "orderDate"
+        },
+        "search": {
+          "field": "orderDate"
+        }
+      }
+    },
+    "customerName": {
+      "type": "string",
+      "filterable": true,
+      "sortable": true,
+      "text": {
+        "caseSensitivity": "insensitive",
+        "searchMode": "substring"
+      },
+      "physical": {
+        "sql": {
+          "column": "customer_name"
+        },
+        "mongo": {
+          "path": "customer.name"
+        },
+        "search": {
+          "field": "customerName",
+          "keywordSubField": "customerName.keyword"
+        }
+      }
+    },
+    "totalAmount": {
+      "type": "decimal",
+      "filterable": true,
+      "sortable": true,
+      "aggregatable": [
+        "sum",
+        "avg",
+        "min",
+        "max"
+      ],
+      "physical": {
+        "sql": {
+          "column": "total_amount"
+        },
+        "mongo": {
+          "path": "totalAmount"
+        },
+        "search": {
+          "field": "totalAmount"
+        }
+      }
+    },
+    "status": {
+      "type": "string",
+      "filterable": true,
+      "sortable": true,
+      "text": {
+        "caseSensitivity": "sensitive",
+        "searchMode": "substring"
+      },
+      "physical": {
+        "sql": {
+          "column": "status"
+        },
+        "mongo": {
+          "path": "status"
+        },
+        "search": {
+          "field": "status",
+          "keywordSubField": "status.keyword"
+        }
+      }
+    },
+    "region": {
+      "type": "string",
+      "filterable": true,
+      "sortable": true,
+      "groupable": true,
+      "text": {
+        "caseSensitivity": "sensitive",
+        "searchMode": "substring"
+      },
+      "physical": {
+        "sql": {
+          "column": "region"
+        },
+        "mongo": {
+          "path": "region"
+        },
+        "search": {
+          "field": "region",
+          "keywordSubField": "region.keyword"
+        }
+      }
+    },
+    "notes": {
+      "type": "string",
+      "filterable": true,
+      "sortable": false,
+      "text": {
+        "caseSensitivity": "sensitive",
+        "searchMode": "substring"
+      },
+      "physical": {
+        "sql": {
+          "column": "notes"
+        },
+        "mongo": {
+          "path": "notes"
+        },
+        "search": {
+          "field": "notes",
+          "keywordSubField": "notes.keyword"
+        }
+      }
+    }
+  }
+}

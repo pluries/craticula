@@ -1,0 +1,16 @@
+{
+  "timeout": "2000ms",
+  "size": 0,
+  "aggs": {
+    "region": {
+      "terms": {
+        "field": "region.keyword",
+        "size": 1000,
+        "include": "eu.*",
+        "order": {
+          "_key": "asc"
+        }
+      }
+    }
+  }
+}
