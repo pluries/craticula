@@ -108,6 +108,19 @@ public class MongoQueryTimeLimitTests
     }
 
     [Fact]
-    public void A_Set_Values_Query_Without_A_Limit_Is_Unchanged() =>
-        Assert.Equal(Json(SetValues(null)), Json(SetValues(null)));
+    public void A_Set_Values_Query_Without_A_Limit_Has_No_MaxTimeMS_And_Is_The_Bare_Array()
+    {
+        var artifact = SetValues(null).ToArtifact();
+
+        Assert.IsType<System.Text.Json.Nodes.JsonArray>(artifact);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void A_Zero_Or_Negative_Limit_Is_Refused_By_Both_Entry_Points(int limit)
+    {
+        Assert.Throws<MongoCompilationException>(() => Rows(limit));
+        Assert.Throws<MongoCompilationException>(() => SetValues(limit));
+    }
 }

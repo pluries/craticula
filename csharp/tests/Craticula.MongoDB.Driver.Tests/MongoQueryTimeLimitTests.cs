@@ -53,9 +53,13 @@ public sealed class MongoQueryTimeLimitTests
     {
         await using var database = await MongoFixtureDatabase.CreateAsync(Fixture().Schema, LargeCollection());
 
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         var ex = await Assert.ThrowsAsync<QueryTimeoutException>(
             () => MongoGridQuery.FetchPageAsync(database.Database, ScanRequest(database.Schema, 1)));
+        clock.Stop();
 
+        // SC-1: cancelled by the server within the limit plus two seconds.
+        Assert.True(clock.Elapsed < TimeSpan.FromMilliseconds(1 + 2000), $"took {clock.Elapsed}");
         Assert.Equal("query-timeout", ex.Kind);
         Assert.DoesNotContain("never-present-needle", ex.Message);
     }

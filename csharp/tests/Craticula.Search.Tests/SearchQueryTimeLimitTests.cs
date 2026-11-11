@@ -70,4 +70,13 @@ public class SearchQueryTimeLimitTests
         Assert.Null(query.TimeoutMs);
         Assert.False(query.ToArtifact().ContainsKey("timeout"));
     }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void A_Zero_Or_Negative_Limit_Is_Refused_By_Both_Entry_Points(int limit)
+    {
+        Assert.Throws<SearchCompilationException>(() => Rows(limit));
+        Assert.Throws<SearchCompilationException>(() => SetValues(limit));
+    }
 }
