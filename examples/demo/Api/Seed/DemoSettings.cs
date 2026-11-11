@@ -14,6 +14,10 @@ public static class DemoSettings
 
     public const string MongoDatabase = "demo";
 
+    /// <summary>The environment variable holding the password of the read-only account (<see cref="ReadOnlyAccount"/>). When set, <c>seed postgres</c> and
+    /// <c>seed mongo</c> create that account after loading the rows; the API container gets the account's connection string and never the admin one.</summary>
+    public const string ReadOnlyPasswordEnvVar = "DEMO_READONLY_PASSWORD";
+
     /// <summary>The environment variable holding the SQL Server connection string; the engine is on only when it is set.
     /// There is no default in code: README.md gives the one that matches docker-compose.yml.</summary>
     public const string SqlServerEnvVar = "DEMO_SQLSERVER";

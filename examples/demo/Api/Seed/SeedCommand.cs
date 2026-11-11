@@ -55,7 +55,9 @@ public static class SeedCommand
         var rows = OrderGenerator.Generate();
         output.WriteLine($"Generated {rows.Count} orders (seed {OrderGenerator.Seed}).");
 
+        var seedChecksum = SeedChecksum.Of(rows);
         var mismatch = false;
+        var checksumMismatch = false;
         var failed = false;
         foreach (var target in plan.Targets)
         {
@@ -64,6 +66,15 @@ public static class SeedCommand
                 var count = await target.SeedAsync(rows);
                 output.WriteLine(target.Describe(count));
                 mismatch |= count != rows.Count;
+                if (target.ChecksumAsync is not null)
+                {
+                    var stored = await target.ChecksumAsync();
+                    if (stored != seedChecksum)
+                    {
+                        checksumMismatch = true;
+                        error.WriteLine($"Checksum mismatch for {target.Name}: database {stored}, seed {seedChecksum}");
+                    }
+                }
             }
             catch (Exception ex) when (IsSeedFailure(ex))
             {
@@ -73,7 +84,13 @@ public static class SeedCommand
             }
         }
 
-        return failed ? 2 : mismatch ? 1 : 0;
+        // Every value printed here already equals the seed's: a target that read another one reported a mismatch above.
+        if (!failed && !checksumMismatch)
+        {
+            output.WriteLine($"Checksum: {seedChecksum}");
+        }
+
+        return failed ? 2 : mismatch || checksumMismatch ? 1 : 0;
     }
 
     /// <summary>
