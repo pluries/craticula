@@ -64,6 +64,14 @@ public static class MongoPipelineBuilder
     /// whose variant disagrees with that field's declared type.</exception>
     public static MongoQuery Build(MongoQueryRequest request)
     {
+        var query = BuildPipeline(request);
+
+        // TL-3: an export (EXP-2's unpaginated page) is long by design and never carries the limit.
+        return request.Page is NonePage ? query : query with { MaxTimeMs = request.MaxQueryTimeMs };
+    }
+
+    private static MongoQuery BuildPipeline(MongoQueryRequest request)
+    {
         ArgumentNullException.ThrowIfNull(request);
 
         FilterNodeValidator.Validate(request.Filter);
@@ -207,7 +215,10 @@ public static class MongoPipelineBuilder
     /// </summary>
     /// <exception cref="MongoCompilationException">A field the <see cref="GridSchema"/> does not
     /// declare, or a non-positive <see cref="MongoSetValuesRequest.RowLimit"/>.</exception>
-    public static MongoQuery BuildSetValues(MongoSetValuesRequest request)
+    public static MongoQuery BuildSetValues(MongoSetValuesRequest request) =>
+        BuildSetValuesPipeline(request) with { MaxTimeMs = request.MaxQueryTimeMs };
+
+    private static MongoQuery BuildSetValuesPipeline(MongoSetValuesRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
 
