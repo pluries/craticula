@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Craticula.Core;
 using Craticula.Core.Ir;
 using Craticula.Core.Schema;
 using Craticula.Search;
@@ -697,6 +698,7 @@ public static class OpenSearchGridQuery
     {
         if (response.HttpStatusCode is >= 200 and < 300)
         {
+            ThrowIfTimedOut(response.Body);
             return;
         }
 
@@ -705,6 +707,42 @@ public static class OpenSearchGridQuery
             Truncate(response.Body ?? response.DebugInformation, 500),
             response.OriginalException ?? new InvalidOperationException("The call did not succeed."),
             response.HttpStatusCode);
+    }
+
+    /// <summary>
+    /// TL-5 / FR-7: a search that ran out of time still answers 200, with the hits it had found and
+    /// <c>"timed_out": true</c>. Returning them would show a partial page as a complete one, so the answer is
+    /// an error. Only the top-level members are read; the first of them that is <c>timed_out</c> decides.
+    /// </summary>
+    internal static void ThrowIfTimedOut(string? body)
+    {
+        if (string.IsNullOrEmpty(body))
+        {
+            return;
+        }
+
+        var reader = new Utf8JsonReader(Encoding.UTF8.GetBytes(body));
+        if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
+        {
+            return;
+        }
+
+        while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
+        {
+            var isTimedOut = reader.ValueTextEquals("timed_out");
+            reader.Read();
+            if (isTimedOut)
+            {
+                if (reader.TokenType == JsonTokenType.True)
+                {
+                    throw new QueryTimeoutException();
+                }
+
+                return;
+            }
+
+            reader.Skip();
+        }
     }
 
     /// <summary>
