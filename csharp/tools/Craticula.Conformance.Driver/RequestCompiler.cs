@@ -30,7 +30,7 @@ internal static class RequestCompiler
 
     /// <summary>Everything a request resolves to before any backend sees it: the schema and the
     /// parse options a host would build, plus which entry point the request takes.</summary>
-    private sealed record Prepared(GridSchema Schema, string RequestJson, AgGridParseOptions Options, bool IsSetValues);
+    private sealed record Prepared(GridSchema Schema, string RequestJson, AgGridParseOptions Options, bool IsSetValues, ResourceLimits Limits);
 
     /// <summary>A row-fetch request after <see cref="AgGridRequestParser.Parse"/> and
     /// <see cref="GridFilterPipeline.Process"/> — the helpers' <c>RowFetch</c>.</summary>
@@ -162,7 +162,7 @@ internal static class RequestCompiler
         });
     }
 
-    /// <summary>SEC-3's default <see cref="ResourceLimits"/>, never raised or lowered (§3).</summary>
+    /// <summary>SEC-3's default <see cref="ResourceLimits"/>, never raised or lowered, plus the harness's TL-4 query time limit when the fixture declares one (§3).</summary>
     private static RowFetch PrepareRowFetch(Prepared request)
     {
         var parsed = AgGridRequestParser.Parse(request.RequestJson, request.Options);
@@ -172,7 +172,7 @@ internal static class RequestCompiler
             parsed.CustomFilters,
             parsed.Page,
             request.Schema,
-            new ResourceLimits(),
+            request.Limits,
             parsed.Group,
             parsed.Aggregations);
 
@@ -182,7 +182,7 @@ internal static class RequestCompiler
     /// <summary>The same defaults, which also carry GRP-6(d)'s default and maximum value counts.</summary>
     private static SetValues PrepareSetValues(Prepared request)
     {
-        var limits = new ResourceLimits();
+        var limits = request.Limits;
         var parsed = AgGridRequestParser.ParseSetValues(request.RequestJson, request.Options);
 
         var filter = GridFilterPipeline.ProcessSetValues(
@@ -226,8 +226,30 @@ internal static class RequestCompiler
             Clock = pinnedNow is null ? TimeProvider.System : PinnedClock.At(pinnedNow)
         };
 
-        return new Prepared(schema, agGridRequestJson, options, isObject && root.TryGetProperty("setValuesRequest", out _));
+        return new Prepared(
+            schema,
+            agGridRequestJson,
+            options,
+            isObject && root.TryGetProperty("setValuesRequest", out _),
+            new ResourceLimits { MaxQueryTimeMs = ReadHarnessQueryTimeLimit(root) });
     }
+
+    /// <summary>
+    /// TL-4's harness instruction: <c>requestContext.maxQueryTimeMs</c>, a whole number, sets the host's
+    /// maximum query time for this compile (<c>conformance-runner.md</c> §3). Like <c>now</c>, a
+    /// production host never reads it from the wire; this driver is the harness, so it does. Only
+    /// <c>requestContext</c> counts: a top-level <c>maxQueryTimeMs</c> is just a request member the
+    /// parser ignores (fixture <c>query-time-limit/006</c>). An invalid value is refused by
+    /// <see cref="ResourceLimits"/>, as it would be for a host.
+    /// </summary>
+    private static int? ReadHarnessQueryTimeLimit(JsonElement root) =>
+        root.ValueKind == JsonValueKind.Object
+            && root.TryGetProperty("requestContext", out var context)
+            && context.ValueKind == JsonValueKind.Object
+            && context.TryGetProperty("maxQueryTimeMs", out var limit)
+            && limit.ValueKind == JsonValueKind.Number
+                ? limit.GetInt32()
+                : null;
 
     /// <summary>
     /// A <see cref="TimeProvider"/> pinned to one instant, so a request carrying
