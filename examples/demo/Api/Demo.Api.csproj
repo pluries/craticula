@@ -5,20 +5,18 @@
     <AssemblyName>Demo.Api</AssemblyName>
   </PropertyGroup>
 
-  <!-- The library is not published yet, so the demo references its projects. After the first release these ten
-       lines become PackageReference items (Craticula.Core, .AgGrid, .Sql, .Dapper, .EntityFrameworkCore, .Mongo,
-       .MongoDB.Driver, .Search, .OpenSearch.Client, .Export.Csv) and the demo no longer needs a checkout of csharp/. -->
+  <!-- The ten Craticula packages from nuget.org; the version is pinned in ../Directory.Packages.props. -->
   <ItemGroup>
-    <ProjectReference Include="../../../csharp/src/Craticula.Core/Craticula.Core.csproj" />
-    <ProjectReference Include="../../../csharp/src/Craticula.AgGrid/Craticula.AgGrid.csproj" />
-    <ProjectReference Include="../../../csharp/src/Craticula.Sql/Craticula.Sql.csproj" />
-    <ProjectReference Include="../../../csharp/src/Craticula.Dapper/Craticula.Dapper.csproj" />
-    <ProjectReference Include="../../../csharp/src/Craticula.EntityFrameworkCore/Craticula.EntityFrameworkCore.csproj" />
-    <ProjectReference Include="../../../csharp/src/Craticula.Mongo/Craticula.Mongo.csproj" />
-    <ProjectReference Include="../../../csharp/src/Craticula.MongoDB.Driver/Craticula.MongoDB.Driver.csproj" />
-    <ProjectReference Include="../../../csharp/src/Craticula.Search/Craticula.Search.csproj" />
-    <ProjectReference Include="../../../csharp/src/Craticula.OpenSearch.Client/Craticula.OpenSearch.Client.csproj" />
-    <ProjectReference Include="../../../csharp/src/Craticula.Export.Csv/Craticula.Export.Csv.csproj" />
+    <PackageReference Include="Craticula.Core" />
+    <PackageReference Include="Craticula.AgGrid" />
+    <PackageReference Include="Craticula.Sql" />
+    <PackageReference Include="Craticula.Dapper" />
+    <PackageReference Include="Craticula.EntityFrameworkCore" />
+    <PackageReference Include="Craticula.Mongo" />
+    <PackageReference Include="Craticula.MongoDB.Driver" />
+    <PackageReference Include="Craticula.Search" />
+    <PackageReference Include="Craticula.OpenSearch.Client" />
+    <PackageReference Include="Craticula.Export.Csv" />
   </ItemGroup>
 
   <ItemGroup>

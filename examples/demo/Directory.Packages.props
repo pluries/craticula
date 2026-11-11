@@ -7,6 +7,17 @@
   <!-- Versions mirror csharp/Directory.Packages.props. Dapper and MongoDB.Driver also reach the demo through the
        Craticula adapters; the demo references them directly because it owns the real connections. -->
   <ItemGroup>
+    <!-- The released Craticula packages (nuget.org); the demo shows the library as a user installs it. A bump is a deliberate change. -->
+    <PackageVersion Include="Craticula.Core" Version="1.0.0" />
+    <PackageVersion Include="Craticula.AgGrid" Version="1.0.0" />
+    <PackageVersion Include="Craticula.Sql" Version="1.0.0" />
+    <PackageVersion Include="Craticula.Dapper" Version="1.0.0" />
+    <PackageVersion Include="Craticula.EntityFrameworkCore" Version="1.0.0" />
+    <PackageVersion Include="Craticula.Mongo" Version="1.0.0" />
+    <PackageVersion Include="Craticula.MongoDB.Driver" Version="1.0.0" />
+    <PackageVersion Include="Craticula.Search" Version="1.0.0" />
+    <PackageVersion Include="Craticula.OpenSearch.Client" Version="1.0.0" />
+    <PackageVersion Include="Craticula.Export.Csv" Version="1.0.0" />
     <PackageVersion Include="Npgsql" Version="10.0.3" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <!-- The EF Core providers for the demo's two extra EF routes (#2554); the version matches the Microsoft.EntityFrameworkCore that
