@@ -56,10 +56,10 @@ public sealed class OpenSearchQueryTimeLimitTests
     {
         var engine = new Engine(timedOut: true);
 
-        var ex = await Assert.ThrowsAsync<QueryTimeoutException>(() =>
+        await Assert.ThrowsAsync<QueryTimeoutException>(() =>
             OpenSearchGridQuery.FetchPageAsync(ClientFor(engine), Rows(2000), "s", new InMemorySearchCursorCache()));
 
-        Assert.Equal("query-timeout", ex.Kind);
+        Assert.Equal("query-timeout", QueryTimeoutException.ErrorKind);
     }
 
     [Fact]

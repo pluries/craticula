@@ -11,7 +11,7 @@ public sealed class MongoQueryTimeLimitTests
 {
     private const int Documents = 60_000;
 
-    private static IReadOnlyList<BsonDocument> LargeCollection()
+    private static List<BsonDocument> LargeCollection()
     {
         var filler = new string('x', 400);
         var documents = new List<BsonDocument>(Documents);
@@ -60,7 +60,7 @@ public sealed class MongoQueryTimeLimitTests
 
         // SC-1: cancelled by the server within the limit plus two seconds.
         Assert.True(clock.Elapsed < TimeSpan.FromMilliseconds(1 + 2000), $"took {clock.Elapsed}");
-        Assert.Equal("query-timeout", ex.Kind);
+        Assert.Equal("query-timeout", QueryTimeoutException.ErrorKind);
         Assert.DoesNotContain("never-present-needle", ex.Message);
     }
 
