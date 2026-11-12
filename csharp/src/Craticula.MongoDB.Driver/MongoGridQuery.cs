@@ -48,6 +48,14 @@ public static class MongoGridQuery
         ArgumentNullException.ThrowIfNull(database);
         ArgumentNullException.ThrowIfNull(request);
 
+        // PG-5: every row is read by streaming; a paged call never loads the whole result.
+        if (request.Page is NonePage)
+        {
+            throw new MongoDriverCompilationException(
+                "FetchPageAsync returns one window of rows and refuses EXP-2's unpaginated page, which would load " +
+                "every row into memory (PG-5). Read every row with MongoExportStream.StreamAsync.");
+        }
+
         var effective = WithExplicitProjection(request);
         var query = MongoPipelineBuilder.Build(effective);
         var plan = GroupingPlan.Resolve(effective.Group, effective.Aggregations);

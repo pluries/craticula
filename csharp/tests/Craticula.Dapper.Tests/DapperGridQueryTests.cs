@@ -116,7 +116,10 @@ public class DapperGridQueryTests
         var fixture = FixtureRequest.Load("page-export", FixtureRequest.ResolveDirectory("page-export", "008"));
         using var database = SqliteFixtureDatabase.Create(fixture.Schema, Datasets.ExportableOrders());
 
-        var page = await DapperGridQuery.FetchPageAsync(database.Connection, fixture.Sql, Sqlite);
+        // This fixture is an export of everything (the unpaginated page), which the paged entry point refuses (PG-5);
+        // the subject here is cell materialization, so ask for the same rows as one window.
+        var windowed = fixture.Sql with { Page = new RangePage { StartRow = 0, EndRow = 100 } };
+        var page = await DapperGridQuery.FetchPageAsync(database.Connection, windowed, Sqlite);
 
         var totalAmountIndex = page.Columns.ToList().IndexOf("totalAmount");
         var orderDateIndex = page.Columns.ToList().IndexOf("orderDate");

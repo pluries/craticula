@@ -3212,5 +3212,11 @@ everything (PG-2) or an allowed `ignorePageLimit` (PG-3). A host that calls a co
 chosen it. TL-3's exclusion of the query time limit therefore reads: **an export or an explicit all-rows request carries no
 limit; every other row request, including one that got a default page, carries it.**
 
-**PG-5. Streaming.** A request for every row is meant for the streaming entry points of the execution adapters (EXP-3), which
-read in chunks and never hold the whole result. The paged entry points keep their behavior.
+**PG-5. Every row is read by streaming; a paged entry point refuses the unpaginated page.** An execution adapter has two kinds
+of entry point: the **paged** ones return one window of rows (and may count them), the **streaming** ones read every row in
+chunks and never hold the whole result (EXP-3). A paged entry point that receives the unpaginated page (`NonePage`) refuses it
+with an error that names the streaming entry point; it never loads every row into memory. A streaming entry point refuses a
+range page for the opposite reason (EXP-1: `exportScope: "page"` is one bounded window). Both refusals are errors of the host's
+code, not of the client's request, so they are not wire errors. The streaming entry points read the unpaginated page whether it
+came from an export of everything (PG-2) or from an allowed `ignorePageLimit` (PG-3). The compilers themselves accept every page
+spec, since the streaming entry points compile through them.
