@@ -81,7 +81,7 @@ You can raise a limit as high as you like. There is no upper bound check. Choose
 
 The limit comes from your code only. A request cannot set, raise or remove it, and a `maxQueryTimeMs` in a request is ignored. An export carries no limit, because it is long by design; stop an export with the cancellation token. The SQL engines have no compiled limit: set a statement timeout on the connection or the database account instead (the public demo does, for PostgreSQL).
 
-Leave it unset and nothing changes: the queries are exactly what they were. A zero or negative value throws when you build the `ResourceLimits`, and the compilers refuse it too if you fill a request by hand. See the rules TL-1 to TL-5 in [Query time limit](query-time-limit.html).
+Leave it unset and nothing changes: the queries are exactly what they were. A zero or negative value throws when you build the `ResourceLimits`, and the compilers refuse it too if you fill a request by hand. See the rules in [Query time limit](query-time-limit.html).
 
 ## You cannot turn a limit off
 
