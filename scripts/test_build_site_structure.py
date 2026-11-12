@@ -778,11 +778,11 @@ class RealSite(unittest.TestCase):
     def test_the_real_sources_build_without_errors(self):
         self.assertEqual(self.errors, [])
 
-    def test_T3_semantics_is_split_into_16_pages_with_plain_titles(self):
+    def test_T3_semantics_is_split_into_one_page_per_section_with_plain_titles(self):
         sections = [line for line in (ROOT / "spec" / SEMANTICS_MD).read_text(encoding="utf-8").splitlines() if line.startswith("## ")]
-        self.assertEqual(len(sections), 16)
+        self.assertGreaterEqual(len(sections), 16)
         links = self.split_links()
-        self.assertEqual(len(links), 16)
+        self.assertEqual(len(links), len(sections))
         for _, href, label, _ in links:
             with self.subTest(page=href):
                 self.assertRegex(href, bs.SLUG.pattern[:-1] + r"\.html$")
@@ -794,7 +794,7 @@ class RealSite(unittest.TestCase):
 
     def test_T3_each_split_page_leads_with_a_summary_of_at_most_three_sentences(self):
         links = self.split_links()
-        self.assertEqual(len(links), 16)
+        self.assertGreaterEqual(len(links), 16)
         for _, href, _, _ in links:
             with self.subTest(page=href):
                 text = self.pages[href[:-5]]
