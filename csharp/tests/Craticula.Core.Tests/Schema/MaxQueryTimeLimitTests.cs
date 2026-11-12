@@ -32,7 +32,7 @@ public class MaxQueryTimeLimitTests
     }
 
     [Fact]
-    public void Kind_Is_Query_Timeout() => Assert.Equal("query-timeout", new QueryTimeoutException().Kind);
+    public void Error_Kind_Is_Query_Timeout() => Assert.Equal("query-timeout", QueryTimeoutException.ErrorKind);
 
     [Fact]
     public void Message_Names_No_Query_Text()
