@@ -3,7 +3,7 @@ using Craticula.Core.Ir;
 using OpenSearch.Client;
 using OpenSearch.Net;
 
-namespace Craticula.OpenSearch.Client.Tests;
+namespace Craticula.OpenSearch.Client.Offline.Tests;
 
 /// <summary>
 /// OSE-15 / #2559: the point-in-time lifecycle of both engines. OFFLINE: a recording in-memory connection plays the

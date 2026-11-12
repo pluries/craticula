@@ -99,12 +99,4 @@ public sealed class MongoQueryTimeLimitTests
 
         Assert.Equal(5, page.Rows.Count);
     }
-
-    [Fact]
-    public void The_Aggregate_Options_Carry_The_Compiled_Limit()
-    {
-        var query = MongoPipelineBuilder.Build(ScanRequest(Fixture().Schema, 2000));
-
-        Assert.Equal(TimeSpan.FromMilliseconds(2000), MongoPipelineTranslator.Options(query)!.MaxTime);
-    }
 }

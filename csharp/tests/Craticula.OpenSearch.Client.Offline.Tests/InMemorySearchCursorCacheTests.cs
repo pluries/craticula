@@ -1,6 +1,6 @@
 using System.Text.Json.Nodes;
 
-namespace Craticula.OpenSearch.Client.Tests;
+namespace Craticula.OpenSearch.Client.Offline.Tests;
 
 /// <summary>
 /// <see cref="InMemorySearchCursorCache"/>'s own pure expiry/self-cleaning contract — no live cluster

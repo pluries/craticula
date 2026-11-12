@@ -2,7 +2,7 @@ using Craticula.Core.Ir;
 using Craticula.Mongo;
 using MongoDB.Driver;
 
-namespace Craticula.MongoDB.Driver.Tests;
+namespace Craticula.MongoDB.Driver.Offline.Tests;
 
 /// <summary>PG-5 (#3816): the paged entry point never loads every row. The refusal comes before any server
 /// call, so this needs no running MongoDB even though the project is excluded from the offline gate.</summary>

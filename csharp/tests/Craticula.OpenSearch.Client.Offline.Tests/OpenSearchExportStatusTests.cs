@@ -3,7 +3,7 @@ using Craticula.Core.Ir;
 using OpenSearch.Client;
 using OpenSearch.Net;
 
-namespace Craticula.OpenSearch.Client.Tests;
+namespace Craticula.OpenSearch.Client.Offline.Tests;
 
 /// <summary>
 /// Bug #2523: <c>OpenSearchExportStream</c> built its failure exception without the HTTP status that
