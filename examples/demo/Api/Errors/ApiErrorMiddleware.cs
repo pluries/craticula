@@ -1,4 +1,5 @@
 using Craticula.AgGrid;
+using Craticula.Core;
 using Craticula.Core.Ir;
 using Craticula.Core.Schema;
 using Craticula.Dapper;
@@ -88,9 +89,9 @@ public sealed class ApiErrorMiddleware(RequestDelegate next, ILogger<ApiErrorMid
             BadHttpRequestException { StatusCode: StatusCodes.Status413PayloadTooLarge } => (
                 StatusCodes.Status413PayloadTooLarge, "request-too-large", "The request body is larger than the 1 MiB limit."),
             BadHttpRequestException => (bad, "bad-request", "The request could not be read."),
-            // The database's own cut-off: PostgreSQL statement_timeout (public mode sets it on the read-only role), a server-side maxTimeMS.
+            // The database's own cut-off: PostgreSQL statement_timeout (public mode sets it on the read-only role), MongoDB's maxTimeMS (the library reports it as QueryTimeoutException, since 1.1.0).
             // Listed before the engine-failure test, which would read any MongoException as an unreachable server.
-            PostgresException { SqlState: "57014" } or MongoExecutionTimeoutException => (
+            PostgresException { SqlState: "57014" } or MongoExecutionTimeoutException or QueryTimeoutException => (
                 StatusCodes.Status504GatewayTimeout, "query-timeout", "The query took longer than allowed and was cancelled."),
             // Which exceptions are connection failures is declared once, in EngineFailures.
             _ when EngineFailures.IsUnavailable(exception) => (
