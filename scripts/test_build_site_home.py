@@ -241,8 +241,25 @@ class RealHome(unittest.TestCase):
         self.assertIn('"startRow"', self.hero)
         self.assertIn("SELECT", self.hero)
 
-    def test_1_the_pre_release_note_stays_short(self):
-        self.assertIn("no package published yet", squash(strip_tags(self.hero)).lower())
+    def test_1_the_install_note_says_the_packages_are_on_nuget_and_stays_short(self):
+        note = squash(strip_tags(self.hero)).lower()
+        self.assertNotIn("no package published yet", note)
+        self.assertNotIn("pre-release", note)
+        self.assertIn("nuget", note)
+        hrefs = [attrs.get("href", "") for attrs, _ in self.links_of(self.hero)]
+        self.assertIn("https://www.nuget.org/packages/Craticula.Core", hrefs)
+
+    def test_1_the_hero_links_both_live_demos(self):
+        hrefs = [attrs.get("href", "") for attrs, _ in self.links_of(self.hero)]
+        self.assertIn("https://craticula-pg.pluries.dev", hrefs)
+        self.assertIn("https://craticula-mongo.pluries.dev", hrefs)
+
+    def test_1_no_page_of_the_csharp_path_says_that_nothing_is_published(self):
+        for name in ("quickstart-csharp", "relational-adapters", "search-adapters"):
+            with self.subTest(page=name):
+                text = (ROOT / "site" / "pages" / f"{name}.md").read_text(encoding="utf-8").lower()
+                self.assertNotIn("nothing is published yet", text)
+                self.assertNotIn("no craticula package is on nuget", text)
 
     def test_1_the_refused_line_with_its_rule_code_and_the_arrow_are_gone(self):
         for leftover in ("Refused", 'class="refused', "UnknownFieldException", "allowlist check failed", 'class="arrow"'):
