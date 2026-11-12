@@ -14,7 +14,7 @@ Contract of check-demos.sh (exit 0 all checks passed, 1 at least one `FAIL <url>
   the response carries Strict-Transport-Security (a FAIL line naming "Strict-Transport-Security" otherwise; skipped for http).
 Contract of demo-watch.sh (exit 0 = no alert, 1 = alert, 2 = bad setting): STATELESS, because the Jenkins agents are one-shot
   containers and a count kept in a workspace would be lost. One run checks up to DEMO_WATCH_THRESHOLD times (default 3), waiting
-  DEMO_WATCH_INTERVAL_SECONDS (default 300) between attempts; DEMO_WATCH_CHECK is the command line (default
+  DEMO_WATCH_INTERVAL_SECONDS (default 300) between the starts of two attempts, each cut at DEMO_WATCH_ATTEMPT_SECONDS (default 120); DEMO_WATCH_CHECK is the command line (default
   `bash scripts/check-demos.sh`). The first success ends the run with exit 0; exit 1 (the alert) only when every attempt failed.
 Run: python3 scripts/test_check_demos.py
 """
@@ -244,9 +244,28 @@ class DemoWatchTests(unittest.TestCase):
         self.assertEqual(6, self.attempts())
         self.assertEqual([self.counter.name], sorted(p.name for p in self.dir.iterdir()), "no failures file, no state directory")
 
+    def test_t3_a_hanging_check_is_cut_at_the_attempt_limit_and_counts_as_a_failure(self):
+        started = time.monotonic()
+        result = self.watch("sleep 30", DEMO_WATCH_THRESHOLD="1", DEMO_WATCH_ATTEMPT_SECONDS="1")
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertLess(time.monotonic() - started, 10)
+
+    def test_t3_the_interval_is_counted_from_the_start_of_each_attempt(self):
+        started = time.monotonic()
+        self.assertEqual(1, self.watch("sleep 1; false", DEMO_WATCH_THRESHOLD="2", DEMO_WATCH_INTERVAL_SECONDS="2").returncode)
+        elapsed = time.monotonic() - started
+        self.assertGreaterEqual(elapsed, 2.9)
+        self.assertLess(elapsed, 3.8, "attempt (1 s) + wait (1 s) + attempt (1 s), not attempt + 2 s + attempt")
+
+    def test_t3_it_does_not_wait_after_the_last_attempt(self):
+        started = time.monotonic()
+        self.assertEqual(1, self.watch("false", DEMO_WATCH_THRESHOLD="1", DEMO_WATCH_INTERVAL_SECONDS="5").returncode)
+        self.assertLess(time.monotonic() - started, 3)
+
     def test_t3_a_bad_setting_is_refused_with_exit_2(self):
         self.assertEqual(2, self.watch("true", DEMO_WATCH_THRESHOLD="0").returncode)
         self.assertEqual(2, self.watch("true", DEMO_WATCH_INTERVAL_SECONDS="soon").returncode)
+        self.assertEqual(2, self.watch("true", DEMO_WATCH_ATTEMPT_SECONDS="0").returncode)
 
 
 @unittest.skipUnless(PUBLISH_SCRIPT.is_file(), "private repository only: scripts/publish-github.sh is absent (public mirror)")
