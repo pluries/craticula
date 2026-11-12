@@ -25,7 +25,7 @@ There are two ways to ask for every row, and both are deliberate:
 - **An export of everything** (`exportScope` set to `"all"`). It has no page and the adapters stream it chunk by chunk. See [CSV export](csv-export.html).
 - **The flag `ignorePageLimit: true`**, which works only when your host has switched on `AgGridParseOptions.AllowUnboundedRows` (off by default). Without that switch the request is refused with the parse error `unbounded-not-allowed`; it is never quietly capped. A request that carries a window keeps its window and the flag changes nothing.
 
-The adapters read an all-rows request by streaming. The paged `FetchPageAsync` of the MongoDB, Dapper, EF Core and OpenSearch adapters refuses the unpaginated page, so no call loads the whole result into memory. Use the export stream for those requests. The rules are PG-1 to PG-5 in [Default page size](default-page-size.html).
+The adapters read an all-rows request by streaming. The paged `FetchPageAsync` of the MongoDB, Dapper, EF Core and OpenSearch adapters refuses the unpaginated page, so no call loads the whole result into memory. Use the export stream for those requests. The rules are in [Default page size](default-page-size.html).
 
 ## What each backend does
 

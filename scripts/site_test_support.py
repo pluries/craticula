@@ -42,8 +42,14 @@ def title_of(slug: str) -> str:
 
 
 def real_slugs() -> set[str]:
+    """The slugs of the built site: the registered pages and the pages the semantics split generates (one per rule summary)."""
     config = json.loads((ROOT / "site" / "site.json").read_text(encoding="utf-8"))
-    return {entry["slug"] for entry in config["pages"]}
+    slugs = {entry["slug"] for entry in config["pages"]}
+    for entry in config["pages"]:
+        if entry.get("generator") == "semantics-split":
+            summaries = json.loads((ROOT / entry["summaries"]).read_text(encoding="utf-8"))
+            slugs |= {bs.slugify(summary["title"]) for summary in summaries.values()}
+    return slugs
 
 
 def strip_code(markup: str) -> str:
