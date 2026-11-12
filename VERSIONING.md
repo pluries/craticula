@@ -65,7 +65,7 @@ That number is a count, not a version.
 
 An exception is a release that does not follow the rule above. Each one is written down here, with the reason, and the release notes say so.
 
-- **1.1.0 (default page size).** From this release a request with no row window gets a default page of 100 rows instead of every
+- **1.2.0 (default page size).** (1.1.0 was published on 2026-11-12 from an older public commit and holds only dependency updates; this is the release that carries the feature.) From this release a request with no row window gets a default page of 100 rows instead of every
   row, and the paged entry points of the adapters refuse the unpaginated page with an error that names the streaming entry point.
   Under the rule above that is a new major version, because the compiled artifact for such a request changes. The maintainer chose a
   minor version: AG Grid's Server-Side Row Model always sends a window, an export of everything is unchanged, and only a custom client
