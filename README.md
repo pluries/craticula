@@ -3,7 +3,7 @@
 [![CI](https://github.com/pluries/craticula/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/pluries/craticula/actions/workflows/ci.yml)
 [![coverage gate](https://img.shields.io/badge/coverage%20gate-%E2%89%A590%25%20per%20assembly-brightgreen)](https://github.com/pluries/craticula/actions/workflows/ci.yml)
 [![license](https://img.shields.io/github/license/pluries/craticula)](LICENSE)
-[![spec version](https://img.shields.io/badge/spec-0.1.0-blue)](spec/VERSION)
+[![spec version](https://img.shields.io/badge/spec-0.2.0-blue)](spec/VERSION)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/pluries/craticula/badge)](https://scorecard.dev/viewer/?uri=github.com/pluries/craticula)
 
 > A compiler, not a client: translate AG Grid Server-Side Row Model requests into native,
@@ -104,7 +104,7 @@ that references the library by project reference, not a published package.
 
 | Spec version | .NET target |
 |---|---|
-| 0.1.0 | net10.0 |
+| 0.2.0 | net10.0 |
 
 The spec version is the one in [`spec/VERSION`](spec/VERSION); every package states it in its own README.
 How versions are chosen is written in [VERSIONING.md](VERSIONING.md).

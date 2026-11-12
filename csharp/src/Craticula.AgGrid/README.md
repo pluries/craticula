@@ -75,7 +75,7 @@ const datasource = {
 
 ## Compatibility
 
-Implements Craticula spec version 0.1.0 (the language-neutral semantics and conformance fixtures in the
+Implements Craticula spec version 0.2.0 (the language-neutral semantics and conformance fixtures in the
 [repository](https://github.com/pluries/craticula), `spec/`). Targets .NET 10.
 
 ## License
