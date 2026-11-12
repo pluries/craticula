@@ -29,6 +29,8 @@ What it gives you:
 - `MongoGridQuery.FetchPageAsync` returns a `MongoGridPage` with `Columns`, `Rows` and an optional `RowCount`.
 - `MongoGridQuery.CountAsync` runs only the count. The count is a separate aggregation that drops the sort and the page window, because a count needs neither.
 - `MongoExportStream.StreamAsync` streams every matching document for an export. It reads the driver's cursor batch by batch, with no offset to walk. See [CSV export](csv-export.html).
+- A time limit, if you set one. With `ResourceLimits.MaxQueryTimeMs` the compiled aggregation carries `maxTimeMS`, MongoDB cancels a query that runs longer, and the adapter throws `QueryTimeoutException`. The count gets the limit too, and an export does not. See [Limits](limits.html).
+- `FetchPageAsync` refuses the unpaginated page. A request for every row goes through `MongoExportStream`, which never holds the whole result.
 
 What it needs from you:
 
@@ -54,6 +56,7 @@ What it gives you:
 
 - `OpenSearchGridQuery.FetchPageAsync` returns an `OpenSearchGridPage` with `Columns`, `Rows`, a `RowCount` that may be null, and a `LastRow` flag.
 - `OpenSearchExportStream.StreamAsync` streams every matching hit for an export. It always writes every schema column, in the order of `schema.FieldOrder`, because the search compiler has no column projection. Pass `CsvWriter` one `ExportColumn` per field in `schema.FieldOrder`; a narrower list makes it fail on a cell-count mismatch.
+- A time limit, if you set one. With `ResourceLimits.MaxQueryTimeMs` every search body carries `timeout`. A search that runs out of time still answers with the hits it found and `timed_out: true`; the adapter turns that into a `QueryTimeoutException` and never returns the partial hits as a page, in a grid page or in an export chunk. An export's own requests carry no `timeout`. `FetchPageAsync` refuses the unpaginated page; use `OpenSearchExportStream`.
 
 What it needs from you:
 

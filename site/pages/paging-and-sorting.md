@@ -16,6 +16,17 @@ The adapter refuses a window that makes no sense:
 
 A page also has a maximum size. The default is 1000 rows. See [Limits](limits.html).
 
+## A request with no window
+
+Some requests send no `startRow` and no `endRow`: a custom client, or a request built by hand. Since version 1.2.0 such a request gets a default page of 100 rows, `[0, 100)`. The size is `AgGridParseOptions.DefaultPageSize`, and the page size limit checks it like any other window. Before 1.2.0 a request without a window meant every matching row.
+
+There are two ways to ask for every row, and both are deliberate:
+
+- **An export of everything** (`exportScope` set to `"all"`). It has no page and the adapters stream it chunk by chunk. See [CSV export](csv-export.html).
+- **The flag `ignorePageLimit: true`**, which works only when your host has switched on `AgGridParseOptions.AllowUnboundedRows` (off by default). Without that switch the request is refused with the parse error `unbounded-not-allowed`; it is never quietly capped. A request that carries a window keeps its window and the flag changes nothing.
+
+The adapters read an all-rows request by streaming. The paged `FetchPageAsync` of the MongoDB, Dapper, EF Core and OpenSearch adapters refuses the unpaginated page, so no call loads the whole result into memory. Use the export stream for those requests. The rules are PG-1 to PG-5 in [Default page size](default-page-size.html).
+
 ## What each backend does
 
 | Backend | How the page is written |
@@ -27,7 +38,7 @@ A page also has a maximum size. The default is 1000 rows. See [Limits](limits.ht
 
 For SQL, the two numbers are parameters, not part of the text. SQL Server and Oracle bind the offset before the row count. PostgreSQL, MySQL and SQLite bind the row count first. You do not have to care, because the parameter list is in the order the placeholders appear.
 
-An export has no page at all. It asks for every matching row and gets no paging clause. See [CSV export](csv-export.html).
+An export of everything has no page at all. It asks for every matching row and gets no paging clause. See [CSV export](csv-export.html).
 
 ## Sort order
 

@@ -47,15 +47,17 @@ A request cannot ask for unlimited work. These are the defaults in `ResourceLimi
 | Values in one in or not-in list | 1000 |
 | Rows in one page | 1000 |
 | Rows returned by a distinct-values request | at most 10000 |
+| Rows in a request that sends no row window | a default page of 100 (every row only by an export, or by a flag you switch on) |
+| Query time on MongoDB and Search | not set; you set it and the database enforces it |
 
-You can set each one higher or lower. You cannot turn a limit off. Zero or a negative number is refused when you set it.
+You can set each one higher or lower. You cannot turn a limit off, except that the query time limit is optional and unset until you set it. Zero or a negative number is refused when you set it. See [Limits](limits.html).
 
 The fixtures test each limit one step past the edge, and with extreme values such as a 5000-value list or a page of one million rows.
 
 ## What Craticula does not protect against
 
 - **The database account.** Craticula does not control what the account can do. Give the account that runs these queries the least rights it needs, such as read-only on the one table.
-- **Running the query.** Craticula never runs it. Connection handling, timeouts, cost limits and how you run the statement are yours.
+- **Running the query.** Craticula never runs it. Connection handling, cost limits and how you run the statement are yours. For MongoDB and Search you can have the compiled query carry a time limit (`MaxQueryTimeMs`) that the database enforces; for SQL, set a statement timeout on the connection or the account.
 - **Who may use the grid.** Authentication and per-user access are outside its scope. The schema can add a fixed filter to every query, but it is up to you to decide what that filter should be.
 - **A wrong schema.** If your schema lists a column that should stay hidden, Craticula will serve it.
 - **Slow queries.** A request inside the limits can still be slow if the column has no index. See the [index guidance](index-guidance.html).

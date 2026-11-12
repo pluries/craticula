@@ -27,6 +27,7 @@ What it gives you:
 - `DapperGridQuery.FetchPageAsync` returns one page. `DapperGridPage` has the `Columns`, the `Rows` and an optional `RowCount`.
 - `DapperGridQuery.CountAsync` runs only the count.
 - `DapperExportStream.StreamAsync` streams every matching row for an export. See [CSV export](csv-export.html).
+- `FetchPageAsync` refuses the unpaginated page (`NonePage`), so a call never loads every row into memory. A request for every row goes through `DapperExportStream`.
 
 What it needs from you:
 
@@ -52,6 +53,7 @@ What it gives you:
 - `EfCoreGridQuery.FetchPageAsync` returns one page, in an `EfCoreGridPage` shaped like Dapper's.
 - `EfCoreGridQuery.CountAsync` runs only the count.
 - `EfCoreExportStream.StreamAsync` streams rows for an export.
+- `FetchPageAsync` refuses the unpaginated page, as the Dapper adapter does. A request for every row goes through `EfCoreExportStream`.
 
 What it needs from you:
 
