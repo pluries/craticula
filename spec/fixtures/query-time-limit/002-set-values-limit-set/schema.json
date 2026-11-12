@@ -1,0 +1,155 @@
+{
+  "mode": "strict",
+  "source": "sales_fact",
+  "stableKey": "id",
+  "fields": {
+    "id": {
+      "type": "string",
+      "filterable": true,
+      "sortable": true,
+      "groupable": false,
+      "aggregatable": [
+        "count"
+      ],
+      "physical": {
+        "sql": {
+          "column": "id"
+        },
+        "mongo": {
+          "path": "id"
+        },
+        "search": {
+          "field": "id"
+        }
+      }
+    },
+    "region": {
+      "type": "string",
+      "filterable": true,
+      "sortable": true,
+      "groupable": true,
+      "physical": {
+        "sql": {
+          "column": "region"
+        },
+        "mongo": {
+          "path": "region"
+        },
+        "search": {
+          "field": "region",
+          "keywordSubField": "region.keyword"
+        }
+      },
+      "text": {
+        "caseSensitivity": "insensitive",
+        "searchMode": "substring"
+      }
+    },
+    "segment": {
+      "type": "string",
+      "filterable": true,
+      "sortable": true,
+      "groupable": true,
+      "physical": {
+        "sql": {
+          "column": "segment"
+        },
+        "mongo": {
+          "path": "segment"
+        },
+        "search": {
+          "field": "segment",
+          "keywordSubField": "segment.keyword"
+        }
+      },
+      "text": {
+        "caseSensitivity": "insensitive",
+        "searchMode": "substring"
+      }
+    },
+    "product": {
+      "type": "string",
+      "filterable": true,
+      "sortable": true,
+      "groupable": true,
+      "physical": {
+        "sql": {
+          "column": "product"
+        },
+        "mongo": {
+          "path": "product"
+        },
+        "search": {
+          "field": "product",
+          "keywordSubField": "product.keyword"
+        }
+      },
+      "text": {
+        "caseSensitivity": "insensitive",
+        "searchMode": "substring"
+      }
+    },
+    "fiscalYear": {
+      "type": "int64",
+      "filterable": true,
+      "sortable": true,
+      "groupable": true,
+      "physical": {
+        "sql": {
+          "column": "fiscal_year"
+        },
+        "mongo": {
+          "path": "fiscalYear"
+        },
+        "search": {
+          "field": "fiscalYear"
+        }
+      }
+    },
+    "amount": {
+      "type": "decimal",
+      "filterable": true,
+      "sortable": true,
+      "aggregatable": [
+        "sum",
+        "min",
+        "max",
+        "avg"
+      ],
+      "physical": {
+        "sql": {
+          "column": "amount"
+        },
+        "mongo": {
+          "path": "amount"
+        },
+        "search": {
+          "field": "amount"
+        }
+      }
+    },
+    "quantity": {
+      "type": "int64",
+      "filterable": true,
+      "sortable": true,
+      "aggregatable": [
+        "sum",
+        "min",
+        "max",
+        "avg",
+        "count"
+      ],
+      "physical": {
+        "sql": {
+          "column": "quantity"
+        },
+        "mongo": {
+          "path": "quantity"
+        },
+        "search": {
+          "field": "quantity"
+        }
+      }
+    }
+  }
+}

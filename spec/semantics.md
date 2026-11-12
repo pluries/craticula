@@ -3150,3 +3150,73 @@ is **promoted to a fixture** whose `expectedRows.json` carries an `allowedDiverg
 rule alone: excluding a construct from the generator without a register row and a covering fixture is not allowed.
 A true defect the property finds is not an accepted divergence and the generator alone does not excuse it: it is tracked by a
 Bug and fixed in the compiler or the spec, and any exclusion made while it is open is removed when the Bug is fixed.
+
+## Addendum — query time limit (TL-1..TL-5; not numbered SEM-*, for the same reason as the aggregation addendum above)
+
+A host can ask the MongoDB and Search compilers to carry a server-side time limit in the artifact, so that the engine, not the
+application, cuts a query that runs too long. The setting is the host's: `ResourceLimits.MaxQueryTimeMs` in C#, a
+nullable whole number of milliseconds. It is the one SEC-3 limit that is **unset by default**: SEC-3's other limits bound the
+shape of a request, and the library cannot know how slow a host's database is, so a default would be a guess. (This is a
+recorded deviation from SEC-3's "no limit is unlimited".)
+
+**TL-1. MongoDB: the member `maxTimeMS`.** When a limit N is configured, a row or set-values artifact carries the
+top-level member `maxTimeMS` with the value N. `maxTimeMS` is an `aggregate()` command option, like `collation`, so it
+cannot be a pipeline stage: the artifact takes the `{ "pipeline": [...] }` wrapper form (`schemas/mongo-artifact.schema.json`), with the members in the order
+`pipeline`, `collation` (when present), `maxTimeMS`. Without a limit, the artifact is the bare array, or the wrapper with
+`collation` alone, exactly as before.
+
+**TL-2. Search: the member `timeout`.** When a limit N is configured, the body carries the top-level member `timeout` with the string
+`"<N>ms"`. Without a limit the member is absent.
+
+**TL-3. Absent means unchanged, and unpaginated requests are excluded.** Without a configured limit every artifact is exactly what it was.
+An artifact for an unpaginated request, an export of everything or an explicit all-rows request (PG-4), never carries the limit: it is long by design and an export has its own cancellation hook (EXP-7). The SQL
+engines carry no limit in compiled text (their limit is a connection or statement setting).
+
+**TL-4. The value is validated when the limits are configured.** Zero, a negative number, a number that is not whole, or a value above
+2,147,483,647 is rejected before any request is compiled. The limit comes only from the host: no member of a request sets,
+raises or removes it. A `maxQueryTimeMs` on the wire is ignored, like `requestContext.now` (SEM-4). Inside a conformance fixture,
+`requestContext.maxQueryTimeMs` is an instruction **to the harness** (`conformance-runner.md` §3), never a field a production parser reads.
+The limit applies to each engine call an artifact makes (a page and its row count each get the full limit), not to a request as a whole.
+
+**TL-5. A time-out is one distinct error.** An execution adapter reports an engine time-out as `QueryTimeoutException`
+(error kind `query-timeout`), which names no query text. MongoDB: the server's "maximum time expired" error (code 50). Search: a response whose `timed_out`
+is true, which an adapter never returns as a page of partial hits. The Search `timeout` is a soft limit: the shards stop at their next
+check, not at once.
+
+## Addendum — default page size (PG-1..PG-5; not numbered SEM-*, for the same reason as the aggregation addendum above)
+
+Before this addendum a row request with neither `startRow` nor `endRow` meant "every matching row" (the unpaginated page
+of EXP-2), so a client that forgot its window asked for the whole table. That is no longer the default: getting every row
+is something the request and the host both have to ask for on purpose.
+
+**PG-1. No window, not an export: a default page.** A row request whose `startRow` and `endRow` are both absent or null, and
+that is not an export of everything, resolves to the range page `[0, DefaultPageSize)`. `DefaultPageSize` is a host setting
+(a whole number of at least 1; **default 100**, AG Grid's own block size). It is checked like any other window against SEC-3's
+maximum page size, so a default above the maximum is refused, not silently clamped. A half-supplied window (one of the two
+present) stays a malformed request.
+
+**PG-2. An export of everything stays unpaginated.** `exportScope: "all"` (EXP-1) still resolves to the unpaginated page,
+whatever `startRow` and `endRow` say (EXP-2). An export is the explicit way to ask for every row, and the execution adapters
+stream it page by page (EXP-3), so memory holds one chunk at a time.
+
+**PG-3. The explicit all-rows request: `ignorePageLimit`.** A non-export request with no window that carries the top-level
+boolean `ignorePageLimit: true` resolves to the unpaginated page, **only when the host has allowed it**
+(`AgGridParseOptions.AllowUnboundedRows`, default off). When the host has not allowed it, a request carrying
+`ignorePageLimit: true` is refused with the parse error `unbounded-not-allowed`; it is never silently capped, because the
+client asked for something else. When the request has a window, the window wins and the flag changes nothing. The member must be a
+boolean or null; anything else is a malformed request. Inside a conformance fixture, `requestContext.allowUnboundedRows` and
+`requestContext.defaultPageSize` are instructions **to the harness** (`conformance-runner.md` §3), like `now`.
+
+**PG-4. The unpaginated page is now always deliberate.** The unpaginated page (`NonePage`) comes only from an export of
+everything (PG-2) or an allowed `ignorePageLimit` (PG-3). A host that calls a compiler directly with the unpaginated page has
+chosen it. TL-3's exclusion of the query time limit therefore reads: **an export or an explicit all-rows request carries no
+limit; every other row request, including one that got a default page, carries it.**
+
+**PG-5. Every row is read by streaming; a paged entry point refuses the unpaginated page.** An execution adapter has two kinds
+of entry point: the **paged** ones return one window of rows (and may count them), the **streaming** ones read every row in
+chunks and never hold the whole result (EXP-3). A paged entry point that receives the unpaginated page (`NonePage`) refuses it
+with an error that names the streaming entry point; it never loads every row into memory. A streaming entry point refuses a
+range page for the opposite reason (EXP-1: `exportScope: "page"` is one bounded window). Both refusals are errors of the host's
+code, not of the client's request, so they are not wire errors. The streaming entry points read the unpaginated page whether it
+came from an export of everything (PG-2) or from an allowed `ignorePageLimit` (PG-3). The compilers themselves accept every page
+spec, since the streaming entry points compile through them.

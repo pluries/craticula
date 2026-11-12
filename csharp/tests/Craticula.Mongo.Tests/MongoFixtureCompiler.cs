@@ -47,7 +47,7 @@ internal static class MongoFixtureCompiler
             parsed.CustomFilters,
             parsed.Page,
             schema,
-            new ResourceLimits(),
+            LimitsFor(category, fixtureDir),
             parsed.Group,
             parsed.Aggregations);
 
@@ -56,7 +56,7 @@ internal static class MongoFixtureCompiler
 
     public static SetValues PrepareSetValues(string category, string fixtureDir)
     {
-        var limits = new ResourceLimits();
+        var limits = LimitsFor(category, fixtureDir);
         var schema = GridSchema.Parse(Read(category, fixtureDir, "schema.json"));
         var parsed = AgGridRequestParser.ParseSetValues(
             Read(category, fixtureDir, "agGridRequest.json"), OptionsFor(category, fixtureDir, schema));
@@ -87,7 +87,8 @@ internal static class MongoFixtureCompiler
                 Schema = request.Schema,
                 ColId = request.Spec.ColId,
                 Filter = request.Filter,
-                RowLimit = request.RowLimit
+                RowLimit = request.RowLimit,
+                MaxQueryTimeMs = LimitsFor(category, fixtureDir).MaxQueryTimeMs
             });
         }
 
@@ -101,7 +102,8 @@ internal static class MongoFixtureCompiler
             Page = row.Parsed.Page,
             Group = row.Parsed.Group,
             Aggregations = row.Parsed.Aggregations,
-            Projection = row.Parsed.Export?.ProjectionColumns
+            Projection = row.Parsed.Export?.ProjectionColumns,
+            MaxQueryTimeMs = LimitsFor(category, fixtureDir).MaxQueryTimeMs
         });
     }
 
@@ -111,6 +113,23 @@ internal static class MongoFixtureCompiler
     /// the cases that declare one. That <c>now</c> is an instruction to the harness, not a field the
     /// parser reads.
     /// </summary>
+    /// <summary>TL-4's harness instruction: <c>requestContext.maxQueryTimeMs</c> sets the host's maximum
+    /// query time; no parser reads it.</summary>
+    private static ResourceLimits LimitsFor(string category, string fixtureDir)
+    {
+        using var request = JsonDocument.Parse(Read(category, fixtureDir, "agGridRequest.json"));
+
+        return new ResourceLimits
+        {
+            MaxQueryTimeMs = request.RootElement.TryGetProperty("requestContext", out var context)
+                && context.ValueKind == JsonValueKind.Object
+                && context.TryGetProperty("maxQueryTimeMs", out var limit)
+                && limit.ValueKind == JsonValueKind.Number
+                    ? limit.GetInt32()
+                    : null
+        };
+    }
+
     private static AgGridParseOptions OptionsFor(string category, string fixtureDir, GridSchema schema)
     {
         using var request = JsonDocument.Parse(Read(category, fixtureDir, "agGridRequest.json"));
@@ -125,7 +144,9 @@ internal static class MongoFixtureCompiler
         return new AgGridParseOptions
         {
             Schema = schema,
-            Clock = pinnedNow is null ? TimeProvider.System : FixedClock.At(pinnedNow)
+            Clock = pinnedNow is null ? TimeProvider.System : FixedClock.At(pinnedNow),
+            DefaultPageSize = HarnessInt(request.RootElement, "defaultPageSize") ?? 100,
+            AllowUnboundedRows = HarnessFlag(request.RootElement, "allowUnboundedRows")
         };
     }
 
@@ -145,4 +166,20 @@ internal static class MongoFixtureCompiler
     public static string CanonicalJson(string json) => CanonicalJson(JsonNode.Parse(json));
 
     private static readonly JsonSerializerOptions CanonicalOptions = new() { WriteIndented = false };
+
+    private static int? HarnessInt(JsonElement root, string name) =>
+        root.ValueKind == JsonValueKind.Object
+        && root.TryGetProperty("requestContext", out var context)
+        && context.ValueKind == JsonValueKind.Object
+        && context.TryGetProperty(name, out var value)
+        && value.ValueKind == JsonValueKind.Number
+            ? value.GetInt32()
+            : null;
+
+    private static bool HarnessFlag(JsonElement root, string name) =>
+        root.ValueKind == JsonValueKind.Object
+        && root.TryGetProperty("requestContext", out var context)
+        && context.ValueKind == JsonValueKind.Object
+        && context.TryGetProperty(name, out var value)
+        && value.ValueKind == JsonValueKind.True;
 }

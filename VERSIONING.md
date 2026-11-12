@@ -10,7 +10,7 @@ Craticula uses [Semantic Versioning](https://semver.org): `MAJOR.MINOR.PATCH`.
 
 The two move separately. The compatibility table in the [README](README.md#compatibility) shows the spec version on
 `main`, which the next release implements. The notes of each release state the spec version that release was built with.
-The `Latest release:` line in the README shows the last published package version.
+The latest published package version is on nuget.org.
 
 ## What drives the package version
 
@@ -53,10 +53,21 @@ When a provider ships a new major:
 ## Tags and commits
 
 - A release is tagged `dotnet-vX.Y.Z`.
-- Commit types decide the bump: `feat` is a minor, `fix` is a patch. A `!` after the type, or a `BREAKING CHANGE:`
-  footer, is a major. Other types do not open a release.
+- The release job proposes a version from the latest public tag. The maintainer who approves the release confirms it or types another,
+  following the rule above.
 
 ## The conformance fixture suite
 
 The fixture suite is versioned by the spec version. The release notes also show how many fixtures the suite holds.
 That number is a count, not a version.
+
+## Recorded exceptions
+
+An exception is a release that does not follow the rule above. Each one is written down here, with the reason, and the release notes say so.
+
+- **1.2.0 (default page size).** (1.1.0 was published on 2026-11-12 from an older public commit and holds only dependency updates; this is the release that carries the feature.) From this release a request with no row window gets a default page of 100 rows instead of every
+  row, and the paged entry points of the adapters refuse the unpaginated page with an error that names the streaming entry point.
+  Under the rule above that is a new major version, because the compiled artifact for such a request changes. The maintainer chose a
+  minor version: AG Grid's Server-Side Row Model always sends a window, an export of everything is unchanged, and only a custom client
+  or a host that builds the request by hand could notice. A host that relied on "no window means every row" asks for it on purpose: an
+  export, or `ignorePageLimit` once the host has allowed it (`AgGridParseOptions.AllowUnboundedRows`).

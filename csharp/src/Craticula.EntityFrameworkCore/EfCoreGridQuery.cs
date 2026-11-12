@@ -60,6 +60,14 @@ public static class EfCoreGridQuery
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(semantics);
 
+        // PG-5: every row is read by streaming; a paged call never loads the whole result.
+        if (request.Page is NonePage)
+        {
+            throw new EfCoreCompilationException(
+                "FetchPageAsync returns one window of rows and refuses EXP-2's unpaginated page, which would load " +
+                "every row into memory (PG-5). Read every row with EfCoreExportStream.StreamAsync.");
+        }
+
         // Mirrors Craticula.Sql.SqlQueryBuilder.Build's identical guard: EXP-1's group-export
         // carve-out means AgGridRequestParser has already nulled the group state on any export, so
         // the two are mutually exclusive by construction — checked rather than assumed, since a

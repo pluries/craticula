@@ -77,6 +77,30 @@ public sealed record AgGridParseOptions
     /// </summary>
     public GridSchema? Schema { get; init; }
 
+    private readonly int _defaultPageSize = 100;
+
+    /// <summary>
+    /// PG-1: the page a row request gets when it sends no <c>startRow</c>/<c>endRow</c> and is not an export of
+    /// everything: the range <c>[0, DefaultPageSize)</c>. Default 100 (AG Grid's own block size). It is checked
+    /// against SEC-3's maximum page size like any window, so a value above it is refused downstream, not
+    /// clamped here. A value of 0 or less is rejected at configuration.
+    /// </summary>
+    public int DefaultPageSize
+    {
+        get => _defaultPageSize;
+        init => _defaultPageSize = value > 0
+            ? value
+            : throw new ArgumentOutOfRangeException(nameof(DefaultPageSize), value, "DefaultPageSize must be a positive integer.");
+    }
+
+    /// <summary>
+    /// PG-3: the host's switch for the wire flag <c>ignorePageLimit</c>. Off by default: a request carrying
+    /// <c>ignorePageLimit: true</c> is then refused (<c>unbounded-not-allowed</c>) rather than silently capped.
+    /// On, such a request with no window is the unpaginated page. Asking for every row is for the host to
+    /// allow, on purpose; an export of everything needs no switch (PG-2).
+    /// </summary>
+    public bool AllowUnboundedRows { get; init; }
+
     /// <summary>The defaults, reused rather than re-allocated for every preset-free request.</summary>
     internal static readonly AgGridParseOptions Default = new();
 }

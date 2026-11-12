@@ -1,13 +1,13 @@
 # ADR-0010: The packages are pushed to nuget.org from a GitHub Actions workflow with Trusted Publishing
 
-Status: Proposed   Date: 2026-11-06
+Status: Accepted   Date: 2026-11-06
 Work items: #3706   Classification: Public
 
 Amended by ADR-0012: the release pipeline starts the workflow and waits for it; the maintainer still approves the environment `nuget` on GitHub.
 
 Amended by ADR-0011: the signing step is done by a Jenkins agent on the maintainer's Windows machine instead of by hand and an upload; the staging, the workflow and the push are unchanged.
 
-Accepting this record is the maintainer's decision. It was written for readers outside the project: it names no private path or host.
+It was accepted by the maintainer on 2026-11-11. It was written for readers outside the project: it names no private path or host.
 
 ## Context
 

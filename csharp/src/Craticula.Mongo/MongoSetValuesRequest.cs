@@ -35,4 +35,7 @@ public sealed record MongoSetValuesRequest
     /// resolved</b> by <see cref="ResourceLimitsValidator.ResolveSetValuesLimit"/>. "No cap" is not
     /// one of the answers, so this is not nullable.</summary>
     public required int RowLimit { get; init; }
+
+    /// <summary>TL-1: the host's <see cref="ResourceLimits.MaxQueryTimeMs"/>, carried into the artifact as <c>maxTimeMS</c>.</summary>
+    public int? MaxQueryTimeMs { get; init; }
 }

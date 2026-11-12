@@ -27,6 +27,7 @@
             "description": "A single pipeline stage: exactly one operator key (e.g. '$match'), per the Mongo aggregation pipeline convention."
           }
         },
+        "maxTimeMS": { "type": "integer", "minimum": 1, "maximum": 2147483647, "description": "TL-1: the query time limit the host configured, as the aggregate() command option; present only when a limit is set." },
         "collation": {
           "type": "object",
           "additionalProperties": false,

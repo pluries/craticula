@@ -1,0 +1,1 @@
+Proves PG-3: with the host's switch on (`requestContext.allowUnboundedRows`), a request with no window and `ignorePageLimit: true` compiles to the unpaginated page: no `LIMIT`/`OFFSET`, no `$skip`/`$limit`, no `from`/`size`.

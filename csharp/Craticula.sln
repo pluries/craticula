@@ -59,6 +59,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "samples", "samples", "{5D20
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Craticula.Quickstart", "samples\Craticula.Quickstart\Craticula.Quickstart.csproj", "{CE56B180-DDBE-477F-B4B3-A86C993C9758}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Craticula.OpenSearch.Client.Offline.Tests", "tests\Craticula.OpenSearch.Client.Offline.Tests\Craticula.OpenSearch.Client.Offline.Tests.csproj", "{96678F0B-FE54-4DED-96E9-A57538C84A9E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Craticula.MongoDB.Driver.Offline.Tests", "tests\Craticula.MongoDB.Driver.Offline.Tests\Craticula.MongoDB.Driver.Offline.Tests.csproj", "{1186B552-8F12-458E-82BF-52F8C9ADD49C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -357,6 +361,30 @@ Global
 		{CE56B180-DDBE-477F-B4B3-A86C993C9758}.Release|x64.Build.0 = Release|Any CPU
 		{CE56B180-DDBE-477F-B4B3-A86C993C9758}.Release|x86.ActiveCfg = Release|Any CPU
 		{CE56B180-DDBE-477F-B4B3-A86C993C9758}.Release|x86.Build.0 = Release|Any CPU
+		{96678F0B-FE54-4DED-96E9-A57538C84A9E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{96678F0B-FE54-4DED-96E9-A57538C84A9E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{96678F0B-FE54-4DED-96E9-A57538C84A9E}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{96678F0B-FE54-4DED-96E9-A57538C84A9E}.Debug|x64.Build.0 = Debug|Any CPU
+		{96678F0B-FE54-4DED-96E9-A57538C84A9E}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{96678F0B-FE54-4DED-96E9-A57538C84A9E}.Debug|x86.Build.0 = Debug|Any CPU
+		{96678F0B-FE54-4DED-96E9-A57538C84A9E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{96678F0B-FE54-4DED-96E9-A57538C84A9E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{96678F0B-FE54-4DED-96E9-A57538C84A9E}.Release|x64.ActiveCfg = Release|Any CPU
+		{96678F0B-FE54-4DED-96E9-A57538C84A9E}.Release|x64.Build.0 = Release|Any CPU
+		{96678F0B-FE54-4DED-96E9-A57538C84A9E}.Release|x86.ActiveCfg = Release|Any CPU
+		{96678F0B-FE54-4DED-96E9-A57538C84A9E}.Release|x86.Build.0 = Release|Any CPU
+		{1186B552-8F12-458E-82BF-52F8C9ADD49C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1186B552-8F12-458E-82BF-52F8C9ADD49C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1186B552-8F12-458E-82BF-52F8C9ADD49C}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{1186B552-8F12-458E-82BF-52F8C9ADD49C}.Debug|x64.Build.0 = Debug|Any CPU
+		{1186B552-8F12-458E-82BF-52F8C9ADD49C}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{1186B552-8F12-458E-82BF-52F8C9ADD49C}.Debug|x86.Build.0 = Debug|Any CPU
+		{1186B552-8F12-458E-82BF-52F8C9ADD49C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1186B552-8F12-458E-82BF-52F8C9ADD49C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1186B552-8F12-458E-82BF-52F8C9ADD49C}.Release|x64.ActiveCfg = Release|Any CPU
+		{1186B552-8F12-458E-82BF-52F8C9ADD49C}.Release|x64.Build.0 = Release|Any CPU
+		{1186B552-8F12-458E-82BF-52F8C9ADD49C}.Release|x86.ActiveCfg = Release|Any CPU
+		{1186B552-8F12-458E-82BF-52F8C9ADD49C}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -386,5 +414,7 @@ Global
 		{9DC772EF-33B8-4E8C-B117-4F3BC1680D8D} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{79BE2B3B-9FDE-4FBA-9241-2E87FF031F12} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{CE56B180-DDBE-477F-B4B3-A86C993C9758} = {5D20AA90-6969-D8BD-9DCD-8634F4692FDA}
+		{96678F0B-FE54-4DED-96E9-A57538C84A9E} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{1186B552-8F12-458E-82BF-52F8C9ADD49C} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal

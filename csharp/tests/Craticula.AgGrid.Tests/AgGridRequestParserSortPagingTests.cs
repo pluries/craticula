@@ -91,11 +91,12 @@ public class AgGridRequestParserSortPagingTests
     }
 
     [Fact]
-    public void Both_StartRow_And_EndRow_Null_Produce_NonePage()
+    public void Both_StartRow_And_EndRow_Null_Produce_The_Default_Page()
     {
+        // PG-1 (#3816) replaced "no window means every row": the unpaginated page now needs an export of everything or an allowed ignorePageLimit.
         var request = string.Format(Envelope, "null", "null", "[]");
 
-        Assert.IsType<NonePage>(Parse(request).Page);
+        Assert.Equal(new RangePage { StartRow = 0, EndRow = 100 }, Parse(request).Page);
     }
 
     [Fact]

@@ -1,0 +1,44 @@
+[
+  {
+    "$addFields": {
+      "__ageNullBucket": {
+        "$cond": [
+          {
+            "$eq": [
+              "$age",
+              null
+            ]
+          },
+          1,
+          0
+        ]
+      },
+      "__idNullBucket": {
+        "$cond": [
+          {
+            "$eq": [
+              "$id",
+              null
+            ]
+          },
+          1,
+          0
+        ]
+      }
+    }
+  },
+  {
+    "$sort": {
+      "__ageNullBucket": 1,
+      "age": 1,
+      "__idNullBucket": 1,
+      "id": 1
+    }
+  },
+  {
+    "$unset": [
+      "__ageNullBucket",
+      "__idNullBucket"
+    ]
+  }
+]

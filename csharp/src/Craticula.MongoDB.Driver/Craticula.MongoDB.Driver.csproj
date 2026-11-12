@@ -6,6 +6,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Craticula.MongoDB.Driver.Tests" />
+    <InternalsVisibleTo Include="Craticula.MongoDB.Driver.Offline.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- This package's one runtime dependency. Version centrally managed in
          csharp/Directory.Packages.props — this file names the package and, via VersionOverride, the published range
          (#1658: the nuspec range; restore still resolves its lowest version, the tested one). Unlike Craticula.Dapper's

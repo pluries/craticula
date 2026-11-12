@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Craticula.Core;
 using Craticula.Core.Ir;
 using Craticula.Core.Schema;
 using Craticula.Mongo;
@@ -47,6 +48,14 @@ public static class MongoGridQuery
         ArgumentNullException.ThrowIfNull(database);
         ArgumentNullException.ThrowIfNull(request);
 
+        // PG-5: every row is read by streaming; a paged call never loads the whole result.
+        if (request.Page is NonePage)
+        {
+            throw new MongoDriverCompilationException(
+                "FetchPageAsync returns one window of rows and refuses EXP-2's unpaginated page, which would load " +
+                "every row into memory (PG-5). Read every row with MongoExportStream.StreamAsync.");
+        }
+
         var effective = WithExplicitProjection(request);
         var query = MongoPipelineBuilder.Build(effective);
         var plan = GroupingPlan.Resolve(effective.Group, effective.Aggregations);
@@ -60,9 +69,10 @@ public static class MongoGridQuery
 
         var rows = new List<IReadOnlyList<object?>>();
 
-        using (var cursor = await collection.AggregateAsync<BsonDocument>(stages, options, cancellationToken)
-                   .ConfigureAwait(false))
+        try
         {
+            using var cursor = await collection.AggregateAsync<BsonDocument>(stages, options, cancellationToken)
+                .ConfigureAwait(false);
             while (await cursor.MoveNextAsync(cancellationToken).ConfigureAwait(false))
             {
                 foreach (var document in cursor.Current)
@@ -76,6 +86,10 @@ public static class MongoGridQuery
                     rows.Add(cells);
                 }
             }
+        }
+        catch (MongoExecutionTimeoutException ex)
+        {
+            throw new QueryTimeoutException(ex);
         }
 
         var rowCount = includeRowCount
@@ -136,13 +150,18 @@ public static class MongoGridQuery
 
         BsonDocument? document = null;
 
-        using (var cursor = await collection.AggregateAsync<BsonDocument>(stages, options, cancellationToken)
-                   .ConfigureAwait(false))
+        try
         {
+            using var cursor = await collection.AggregateAsync<BsonDocument>(stages, options, cancellationToken)
+                .ConfigureAwait(false);
             if (await cursor.MoveNextAsync(cancellationToken).ConfigureAwait(false))
             {
                 document = cursor.Current.FirstOrDefault();
             }
+        }
+        catch (MongoExecutionTimeoutException ex)
+        {
+            throw new QueryTimeoutException(ex);
         }
 
         return document is null ? 0L : document["count"].ToInt64();

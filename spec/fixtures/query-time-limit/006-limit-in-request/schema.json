@@ -1,0 +1,25 @@
+{
+  "mode": "strict",
+  "source": "employees",
+  "stableKey": "id",
+  "fields": {
+    "id": {
+      "type": "int64",
+      "sortable": true,
+      "physical": {
+        "sql": { "column": "id" },
+        "mongo": { "path": "id" },
+        "search": { "field": "id" }
+      }
+    },
+    "age": {
+      "type": "int64",
+      "sortable": true,
+      "physical": {
+        "sql": { "column": "age" },
+        "mongo": { "path": "age" },
+        "search": { "field": "age" }
+      }
+    }
+  }
+}

@@ -68,4 +68,7 @@ public sealed record SearchSetValuesRequest
     /// resolved</b> by <see cref="ResourceLimitsValidator.ResolveSetValuesLimit"/>. "No cap" is not
     /// one of the answers, so this is not nullable.</summary>
     public required int RowLimit { get; init; }
+
+    /// <summary>TL-2: the host's <see cref="ResourceLimits.MaxQueryTimeMs"/>, carried into the body as <c>timeout</c>.</summary>
+    public int? MaxQueryTimeMs { get; init; }
 }

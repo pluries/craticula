@@ -14,8 +14,27 @@ is up) ends with `all 26 scenarios are equal on all 5 providers (postgres, ef, e
 [SQLite](#sqlite-the-sqlite-provider) for the two documented differences, and [EF Core on SQLite, SQL Server and MySQL](#ef-core-on-sqlite-sql-server-and-mysql-the-ef-sqlite-ef-sqlserver-and-ef-mysql-providers) for the three extra EF routes.) SQL Server, MySQL, OpenSearch and Elasticsearch are optional providers that start only on request:
 see [SQL Server](#sql-server-the-sqlserver-provider), [MySQL](#mysql-the-mysql-provider) and [OpenSearch](#opensearch-the-opensearch-provider), [Elasticsearch](#elasticsearch-the-elasticsearch-provider), or [all eleven at once](#all-eleven-providers-at-once).
 
-This is a showcase, not a published package. It references the library by project reference (`../../csharp/src`) until
-the first release is on nuget.org. It is not part of `csharp/Craticula.sln`.
+This is a showcase, not a published package. It uses the Craticula packages from nuget.org (version 1.0.0, pinned in
+`Directory.Packages.props`), so it needs no checkout of `csharp/`. It is not part of `csharp/Craticula.sln`.
+
+## Public mode
+
+Set `DEMO_PUBLIC=1` to run the API the way a public demo runs. Without it nothing below applies and the demo behaves as described elsewhere in this file.
+
+- Only the grid routes (`POST /api/{engine}/rows`, `values`, `export.csv`, `query`) and `GET` answer; every other method gets 405. No cookie is set.
+- A client address may send 60 requests a minute; the next ones get 429 with `Retry-After`. The whole process is also capped (`DEMO_GLOBAL_LIMIT`, 600 a minute by default). The client address is the `CF-Connecting-IP` header only when the connection comes from inside `DEMO_TRUSTED_PROXIES`; otherwise it is the connection address.
+- A query that runs longer than 2 seconds is cancelled and answers 504 `query-timeout` (PostgreSQL through `statement_timeout` on the read-only role, MongoDB through `timeoutMS`).
+
+| Setting | Meaning |
+|---|---|
+| `DEMO_PUBLIC` | `1` turns public mode on |
+| `DEMO_TRUSTED_PROXIES` | comma-separated CIDR ranges whose `CF-Connecting-IP` header is trusted; empty by default, so the header is ignored |
+| `DEMO_GLOBAL_LIMIT` | requests a minute for the whole process, 600 by default |
+| `DEMO_PROVIDERS` | comma-separated engines to serve (`postgres`, `mongo`, ...); empty means all that are configured |
+| `DEMO_WEB_DIR` | folder of the built page (`web/dist`) that the API serves at `/` |
+| `DEMO_READONLY_PASSWORD` | when set, `seed` also creates the read-only database account (`demo_ro`) with this password; the API then connects with that account |
+
+`seed` prints a `Checksum:` line: the same data always gives the same checksum, so a restart that reseeds can be checked.
 
 ## A second page: AG Grid Community
 

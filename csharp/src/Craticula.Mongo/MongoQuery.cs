@@ -10,7 +10,7 @@ namespace Craticula.Mongo;
 /// <c>aggregate()</c> <em>command</em> option, not a pipeline stage, so it cannot be an element of
 /// the pipeline array. <c>spec/fixtures/schemas/mongo-artifact.schema.json</c> therefore admits a
 /// bare array <em>or</em> a <c>{ pipeline, collation }</c> wrapper object, and
-/// <see cref="ToArtifact"/> emits the wrapper <b>if and only if</b> a collation is present — which
+/// <see cref="ToArtifact"/> emits the wrapper <b>if and only if</b> a collation or a query time limit (TL-1) is present — which
 /// is what <see cref="Collation"/>'s own remarks describe.</para>
 ///
 /// <para>The nodes are hand-built Extended JSON (AR-3: no driver package), so a host hands
@@ -44,6 +44,10 @@ public sealed record MongoQuery
     /// <see cref="CollationSuppressedByBucketIdentity"/> is <see langword="true"/> — see there.</para>
     /// </summary>
     public JsonObject? Collation { get; init; }
+
+    /// <summary>TL-1: the host's maximum query time in milliseconds, the <c>aggregate()</c> command option
+    /// <c>maxTimeMS</c>; <see langword="null"/> when none is configured, and always for an export.</summary>
+    public int? MaxTimeMs { get; init; }
 
     /// <summary>
     /// GRP-2's <b>accepted divergence #3</b>, made observable rather than inferred from an absence.
@@ -80,15 +84,22 @@ public sealed record MongoQuery
             pipeline.Add(stage.DeepClone());
         }
 
-        if (Collation is null)
+        if (Collation is null && MaxTimeMs is null)
         {
             return pipeline;
         }
 
-        return new JsonObject
+        var artifact = new JsonObject { ["pipeline"] = pipeline };
+        if (Collation is not null)
         {
-            ["pipeline"] = pipeline,
-            ["collation"] = Collation.DeepClone()
-        };
+            artifact["collation"] = Collation.DeepClone();
+        }
+
+        if (MaxTimeMs is { } maxTimeMs)
+        {
+            artifact["maxTimeMS"] = maxTimeMs;
+        }
+
+        return artifact;
     }
 }

@@ -3,7 +3,7 @@
 [![CI](https://github.com/pluries/craticula/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/pluries/craticula/actions/workflows/ci.yml)
 [![coverage gate](https://img.shields.io/badge/coverage%20gate-%E2%89%A590%25%20per%20assembly-brightgreen)](https://github.com/pluries/craticula/actions/workflows/ci.yml)
 [![license](https://img.shields.io/github/license/pluries/craticula)](LICENSE)
-[![spec version](https://img.shields.io/badge/spec-0.1.0-blue)](spec/VERSION)
+[![spec version](https://img.shields.io/badge/spec-0.2.0-blue)](spec/VERSION)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/pluries/craticula/badge)](https://scorecard.dev/viewer/?uri=github.com/pluries/craticula)
 
 > A compiler, not a client: translate AG Grid Server-Side Row Model requests into native,
@@ -70,8 +70,7 @@ examples/     demo app (React + AG Grid + one sample backend)
 
 The C# implementation is split into ten NuGet packages: `Craticula.Core`, `Craticula.AgGrid`, `Craticula.Sql`,
 `Craticula.Mongo`, `Craticula.Search`, `Craticula.Export.Csv`, `Craticula.EntityFrameworkCore`, `Craticula.Dapper`,
-`Craticula.MongoDB.Driver` and `Craticula.OpenSearch.Client`. Nothing is published to nuget.org until the release routine has run; the `Latest release:` line in the
-[Compatibility](#compatibility) section shows the last published version. To check that the packages build and a clean consumer compiles against them, run
+`Craticula.MongoDB.Driver` and `Craticula.OpenSearch.Client`. The packages are published on nuget.org. To check that the packages build and a clean consumer compiles against them, run
 `bash scripts/pack-smoke.sh` (Python 3.10+ and the .NET 10 SDK; about 3 minutes).
 
 ## Dependency licenses
@@ -105,13 +104,11 @@ that references the library by project reference, not a published package.
 
 | Spec version | .NET target |
 |---|---|
-| 0.1.0 | net10.0 |
+| 0.2.0 | net10.0 |
 
 The spec version is the one in [`spec/VERSION`](spec/VERSION); every package states it in its own README.
 How versions are chosen is written in [VERSIONING.md](VERSIONING.md).
 The packages declare version ranges for the libraries they wrap, never one exact version.
-
-Latest release: 1.0.0 <!-- x-release-please-version -->
 
 ## License
 

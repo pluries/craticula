@@ -478,14 +478,13 @@ class NugetPublishWorkflowTests(unittest.TestCase):
         self.assertIn("\n    steps:\n", job)
         return [chunk for chunk in self.STEP.split(job.split("\n    steps:\n", 1)[1]) if chunk.strip()]
 
-    def pinned_in_release(self) -> dict[str, str]:
-        found = {}
-        for line in (WORKFLOWS / "release.yml").read_text(encoding="utf-8").splitlines():
-            match = USES.match(line)
-            if match and "@" in match.group("ref"):
-                repo, sha = match.group("ref").split("@")
-                found[repo] = sha
-        return found
+    PINS = {
+        "actions/checkout": "3d3c42e5aac5ba805825da76410c181273ba90b1",
+        "actions/upload-artifact": "cf430e030ddbb5b0abf93d22962f4752f3646cd9",
+        "actions/download-artifact": "9000827ccba6bdab643e8b6fd33ac0654aef8333",
+        "actions/setup-dotnet": "a98b56852c35b8e3190ac28c8c2271da59106c68",
+        "NuGet/login": "8d196754b4036150537f80ac539e15c2f1028841",
+    }
 
     @staticmethod
     def is_block_header(value: str) -> bool:
@@ -733,7 +732,7 @@ class NugetPublishWorkflowTests(unittest.TestCase):
     def test_no_secret_is_referenced_anywhere(self):
         self.assertEqual([], secret_references(self.text()))
 
-    def test_every_action_is_pinned_to_the_sha_release_yml_uses_and_no_other_action_appears(self):
+    def test_every_action_is_pinned_to_the_reviewed_sha_and_no_other_action_appears(self):
         text = self.text()
         self.assertEqual([], unpinned_uses(text))
         used = {}
@@ -743,9 +742,8 @@ class NugetPublishWorkflowTests(unittest.TestCase):
                 repo, sha = match.group("ref").split("@")
                 used[repo] = sha
         self.assertEqual(set(self.ACTIONS), set(used))
-        known = self.pinned_in_release()
         for repo in self.ACTIONS:
-            self.assertEqual(known[repo], used[repo], repo)
+            self.assertEqual(self.PINS[repo], used[repo], repo)
 
     def test_no_step_hides_a_failure(self):
         text = self.text()

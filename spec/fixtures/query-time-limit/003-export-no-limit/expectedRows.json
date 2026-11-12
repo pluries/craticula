@@ -1,0 +1,9 @@
+{
+  "columns": ["id", "orderDate", "customerName", "totalAmount", "status", "region", "notes"],
+  "rows": [
+    [1, "2026-01-05", "Acme, Inc.", "1234.50", "shipped", "EMEA", "dock 3"],
+    [2, "2026-01-05", "Bill \"Big\" Ross Ltd", "99.00", "shipped", "EMEA", null],
+    [3, "2026-02-14", "Zenith Retail", "0.00", "shipped", "APAC", null],
+    [1006, null, "Undated Order", "30.00", "shipped", "APAC", "no order date yet"]
+  ]
+}

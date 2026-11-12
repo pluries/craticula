@@ -58,6 +58,8 @@ public class PostgresConformanceFixtureTests
         ("operators", 62),
         ("date-presets", 26),
         ("community-infinite", 27),
+        ("query-time-limit", 6),
+        ("default-page-size", 5),
         ("dialect-parity", 21),
         ("group-aggregation", 25),
         ("filter-tree", 15),
@@ -197,7 +199,7 @@ public class PostgresConformanceFixtureTests
         // and authored page-export/023, and #1644's review pass added group-aggregation/023 — the one
         // case carrying both a consumed groupKeys and a filterModel, which pins GRP-5's
         // drill-down-leads clause order in `params`.
-        Assert.Equal(225, InScopeFixtures.Count);
+        Assert.Equal(236, InScopeFixtures.Count);
         Assert.Empty(ExcludedFixtures);
     }
 
@@ -238,7 +240,7 @@ public class PostgresConformanceFixtureTests
                 .EnumerateFiles(RepoPaths.Fixture(category), "postgres.artifact.json", SearchOption.AllDirectories)
                 .Count());
 
-        Assert.Equal(225, onDisk);
+        Assert.Equal(236, onDisk);
         Assert.Equal(0, excludedCategoryArtifacts);
         Assert.Equal(onDisk - excludedCategoryArtifacts - ExcludedFixtures.Count, InScopeFixtures.Count);
     }

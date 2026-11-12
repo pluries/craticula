@@ -64,4 +64,8 @@ public sealed record MongoQueryRequest
     /// every field rather than projecting none.</para>
     /// </summary>
     public IReadOnlyList<string>? Projection { get; init; }
+
+    /// <summary>TL-1: the host's <see cref="ResourceLimits.MaxQueryTimeMs"/>, carried into the artifact as
+    /// <c>maxTimeMS</c>. Ignored for an unpaginated (export) page, TL-3.</summary>
+    public int? MaxQueryTimeMs { get; init; }
 }

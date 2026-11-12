@@ -195,9 +195,9 @@ class CheckDcoTests(unittest.TestCase):
 
     def test_the_exemption_comes_only_from_the_environment(self):
         self.commit("chore: release 1.2.3", BOT)
-        done = self.check(env_extra={"DCO_EXEMPT": "pull request opened by the Release Please action (github-actions[bot])"})
+        done = self.check(env_extra={"DCO_EXEMPT": "pull request opened by Dependabot (dependabot[bot])"})
         self.assertEqual(0, done.returncode)
-        self.assertIn("DCO check skipped: pull request opened by the Release Please action", done.stdout)
+        self.assertIn("DCO check skipped: pull request opened by Dependabot", done.stdout)
         self.assertEqual(1, self.check(env_extra={"DCO_EXEMPT": ""}).returncode)
 
     def test_the_report_goes_to_the_job_summary_too(self):
@@ -278,15 +278,14 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(0, done.returncode, done.stdout + done.stderr)
             return done.stdout
 
-    def test_the_release_please_and_dependabot_pull_requests_of_this_repository_are_exempt(self):
-        self.assertIn("EXEMPT=[pull request opened by the Release Please action (github-actions[bot])]", self.exempt("github-actions[bot]", self.REPO))
+    def test_the_dependabot_pull_requests_of_this_repository_are_exempt(self):
         self.assertIn("EXEMPT=[pull request opened by Dependabot (dependabot[bot])]", self.exempt("dependabot[bot]", self.REPO))
 
     def test_the_shas_reach_the_script(self):
         self.assertIn(f"ARGS=[{'a' * 40} {'b' * 40}]", self.exempt("someone", self.REPO))
 
     def test_nobody_else_is_exempt(self):
-        for author in ("someone", "github-actions[bot]x", "xgithub-actions[bot]", "github-actions", "dependabot", "Github-Actions[bot]", ""):
+        for author in ("someone", "github-actions[bot]", "github-actions[bot]x", "xgithub-actions[bot]", "github-actions", "dependabot", "Github-Actions[bot]", ""):
             with self.subTest(author=author):
                 self.assertIn("EXEMPT=[]", self.exempt(author, self.REPO))
 

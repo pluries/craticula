@@ -149,7 +149,9 @@ public static class OpenSearchExportStream
         IOpenSearchLowLevelClient client, SearchQueryRequest request, IReadOnlyList<string> sourceFields, FieldType[] types,
         string pitId, JsonNode? afterCursor, OpenSearchExportOptions chunking, CancellationToken cancellationToken)
     {
-        var compiled = SearchQueryBuilder.Build(request with { Page = new RangePage { StartRow = 0, EndRow = chunking.ChunkSize } });
+        // TL-3: an export never carries the host's query time limit, even though its chunks are range pages.
+        var compiled = SearchQueryBuilder.Build(
+            request with { Page = new RangePage { StartRow = 0, EndRow = chunking.ChunkSize }, MaxQueryTimeMs = null });
         var body = compiled.ToArtifact();
         body.Remove("from");
         body["pit"] = new JsonObject { ["id"] = pitId, ["keep_alive"] = FormatKeepAlive(chunking.PitKeepAlive) };
@@ -202,6 +204,7 @@ public static class OpenSearchExportStream
     {
         if (response.HttpStatusCode is >= 200 and < 300)
         {
+            OpenSearchGridQuery.ThrowIfTimedOut(response.Body);
             return;
         }
 
