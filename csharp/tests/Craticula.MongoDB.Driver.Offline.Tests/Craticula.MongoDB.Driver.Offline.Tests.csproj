@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+
+    <!-- Unlike Craticula.Dapper.Tests' SQLite (a provider the adapter under test deliberately does NOT
+         reference), this is the SAME package Craticula.MongoDB.Driver itself references: MongoDB has
+         exactly one .NET driver, and this test project is the HOST that owns the real connection
+         (MongoClient, seeding, dropping collections) — "connection ownership stays with the host" per
+         the adapter's own doc, and here the host is this test project. -->
+    <PackageReference Include="MongoDB.Driver" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Craticula.MongoDB.Driver/Craticula.MongoDB.Driver.csproj" />
+
+    <!-- Production dependency here, not test-only: unlike the EF adapter (AR-4's exception),
+         Craticula.MongoDB.Driver depends on Craticula.Mongo for real, and this harness compiles the
+         SAME MongoQueryRequest that ships to production. -->
+    <ProjectReference Include="../../src/Craticula.Mongo/Craticula.Mongo.csproj" />
+
+    <!-- The fixtures are AG Grid wire requests, so the harness drives the real end-to-end host path
+         (AgGridRequestParser -> GridFilterPipeline -> MongoPipelineBuilder/Craticula.MongoDB.Driver),
+         exactly as Craticula.Dapper.Tests and Craticula.EntityFrameworkCore.Tests do. -->
+    <ProjectReference Include="../../src/Craticula.AgGrid/Craticula.AgGrid.csproj" />
+
+    <ProjectReference Include="../../src/Craticula.Core/Craticula.Core.csproj" />
+  </ItemGroup>
+
+</Project>

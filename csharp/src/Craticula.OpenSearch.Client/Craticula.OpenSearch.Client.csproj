@@ -12,6 +12,7 @@
          granting the test project access to this one internal type lets the hashing LOGIC be
          unit-tested directly instead of left unverified. -->
     <InternalsVisibleTo Include="Craticula.OpenSearch.Client.Tests" />
+    <InternalsVisibleTo Include="Craticula.OpenSearch.Client.Offline.Tests" />
   </ItemGroup>
 
   <ItemGroup>

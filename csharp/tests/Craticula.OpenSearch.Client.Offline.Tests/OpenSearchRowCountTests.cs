@@ -4,7 +4,7 @@ using Craticula.Core.Ir;
 using OpenSearch.Client;
 using OpenSearch.Net;
 
-namespace Craticula.OpenSearch.Client.Tests;
+namespace Craticula.OpenSearch.Client.Offline.Tests;
 
 /// <summary>
 /// OSE-16 / #2524: the row count above <c>max_result_window</c> is unknown by default and exact when the host opts in. OFFLINE: a recording

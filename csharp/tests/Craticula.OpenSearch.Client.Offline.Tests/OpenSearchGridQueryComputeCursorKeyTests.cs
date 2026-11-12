@@ -1,7 +1,7 @@
 using System.Text.Json.Nodes;
 using Craticula.Search;
 
-namespace Craticula.OpenSearch.Client.Tests;
+namespace Craticula.OpenSearch.Client.Offline.Tests;
 
 /// <summary>
 /// <see cref="OpenSearchGridQuery.ComputeCursorKey"/>'s own determinism contract — PERF-2/the DoD's

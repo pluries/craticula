@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+
+    <!-- Unlike Craticula.Dapper.Tests' SQLite (a provider the adapter under test deliberately does NOT
+         reference), this is the SAME package Craticula.OpenSearch.Client itself references: this test
+         project is the HOST that owns the real connection (the low-level client, seeding/dropping
+         indices) — "connection ownership stays with the host" per the adapter's own doc, mirroring
+         Craticula.MongoDB.Driver.Tests' identical precedent. -->
+    <PackageReference Include="OpenSearch.Client" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Craticula.OpenSearch.Client/Craticula.OpenSearch.Client.csproj" />
+
+    <!-- Production dependency here, not test-only: Craticula.OpenSearch.Client depends on
+         Craticula.Search for real, and this harness compiles the SAME SearchQueryRequest that ships to
+         production. -->
+    <ProjectReference Include="../../src/Craticula.Search/Craticula.Search.csproj" />
+
+    <!-- The fixtures are AG Grid wire requests, so the harness drives the real end-to-end host path
+         (AgGridRequestParser -> GridFilterPipeline -> SearchQueryBuilder/Craticula.OpenSearch.Client),
+         exactly as Craticula.Dapper.Tests/Craticula.MongoDB.Driver.Tests do. -->
+    <ProjectReference Include="../../src/Craticula.AgGrid/Craticula.AgGrid.csproj" />
+
+    <ProjectReference Include="../../src/Craticula.Core/Craticula.Core.csproj" />
+  </ItemGroup>
+
+</Project>

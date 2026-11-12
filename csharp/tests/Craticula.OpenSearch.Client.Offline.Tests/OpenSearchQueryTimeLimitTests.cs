@@ -6,7 +6,7 @@ using Craticula.Search;
 using OpenSearch.Client;
 using OpenSearch.Net;
 
-namespace Craticula.OpenSearch.Client.Tests;
+namespace Craticula.OpenSearch.Client.Offline.Tests;
 
 /// <summary>
 /// FR-7 / FR-9 / TL-5 (#3794). OFFLINE: a recording in-memory connection plays the engine, so a recorded
