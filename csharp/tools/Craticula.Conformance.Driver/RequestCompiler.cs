@@ -24,6 +24,8 @@ namespace Craticula.Conformance.Driver;
 /// </summary>
 internal static class RequestCompiler
 {
+    private const string RequestContextMember = "requestContext";
+
     /// <summary>The backends this driver compiles, in the order its hello declares them (§2.1): the
     /// five SQL dialects, then MongoDB, then the one shared OpenSearch/Elasticsearch artifact.</summary>
     public static readonly string[] Backends = ["postgres", "mssql", "mysql", "oracle", "sqlite", "mongo", "search"];
@@ -217,7 +219,7 @@ internal static class RequestCompiler
         var isObject = root.ValueKind == JsonValueKind.Object;
 
         var pinnedNow = isObject
-            && root.TryGetProperty("requestContext", out var context)
+            && root.TryGetProperty(RequestContextMember, out var context)
             && context.ValueKind == JsonValueKind.Object
             && context.TryGetProperty("now", out var now)
             && now.ValueKind == JsonValueKind.String
@@ -250,7 +252,7 @@ internal static class RequestCompiler
     /// </summary>
     private static int? ReadHarnessQueryTimeLimit(JsonElement root) =>
         root.ValueKind == JsonValueKind.Object
-            && root.TryGetProperty("requestContext", out var context)
+            && root.TryGetProperty(RequestContextMember, out var context)
             && context.ValueKind == JsonValueKind.Object
             && context.TryGetProperty("maxQueryTimeMs", out var limit)
             && limit.ValueKind == JsonValueKind.Number
@@ -275,7 +277,7 @@ internal static class RequestCompiler
 
     private static int? HarnessInt(JsonElement root, string name) =>
         root.ValueKind == JsonValueKind.Object
-        && root.TryGetProperty("requestContext", out var context)
+        && root.TryGetProperty(RequestContextMember, out var context)
         && context.ValueKind == JsonValueKind.Object
         && context.TryGetProperty(name, out var value)
         && value.ValueKind == JsonValueKind.Number
@@ -284,7 +286,7 @@ internal static class RequestCompiler
 
     private static bool HarnessFlag(JsonElement root, string name) =>
         root.ValueKind == JsonValueKind.Object
-        && root.TryGetProperty("requestContext", out var context)
+        && root.TryGetProperty(RequestContextMember, out var context)
         && context.ValueKind == JsonValueKind.Object
         && context.TryGetProperty(name, out var value)
         && value.ValueKind == JsonValueKind.True;

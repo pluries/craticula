@@ -9,7 +9,7 @@ namespace Craticula.Core;
 /// </summary>
 public sealed class QueryTimeoutException : Exception
 {
-    /// <summary>The error kind a host reports to its client (the demo answers 504 with it).</summary>
+    /// <summary>The error kind a host reports to its client (the demo answers 504 with it). Static: it is the same for every instance.</summary>
     public const string ErrorKind = "query-timeout";
 
     private const string Text = "The query ran longer than the configured maximum query time and was cancelled.";
@@ -23,7 +23,4 @@ public sealed class QueryTimeoutException : Exception
         : base(Text, innerException)
     {
     }
-
-    /// <summary>Always <see cref="ErrorKind"/>.</summary>
-    public string Kind => ErrorKind;
 }
