@@ -27,7 +27,9 @@ WORKDIR /app
 COPY --from=api /out ./
 COPY --from=web /src/examples/demo/web/dist ./web
 # The init container of each pod runs this (bash /app/seed.sh); the API container never does.
-COPY --chmod=0755 deploy/demo/seed.sh ./seed.sh
+COPY deploy/demo/seed.sh ./seed.sh
+# chmod in its own step: the publish agent builds with the classic builder, which rejects COPY --chmod (BuildKit only).
+RUN chmod 0755 ./seed.sh
 # AllowedHosts=* because the demo is reached under its public host names and, for the kubelet probes, by pod address: host filtering
 # would answer 400 to both. DEMO_PUBLIC=1 turns the public-mode protections on; DEMO_PROVIDERS (the one engine) comes from the pod. HOME is /tmp so that
 # nothing the runtime writes needs a writable root.
