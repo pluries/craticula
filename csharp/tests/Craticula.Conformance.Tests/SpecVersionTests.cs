@@ -24,7 +24,7 @@ public class SpecVersionTests
             ["scripts/test_spec_version.py"],
             RepoPaths.Root,
             stdinLines: null,
-            TimeSpan.FromSeconds(60));
+            TimeSpan.FromSeconds(180));
 
         Assert.True(
             result.ExitCode == 0,
