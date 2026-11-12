@@ -379,11 +379,27 @@ public class DatePresetResolverTests
     [Fact]
     public void StartOfDayInstant_Picks_The_First_Occurrence_When_Local_Midnight_Happens_Twice()
     {
-        // America/Havana falls back at 01:00 -> 00:00 on 2026-11-01, so local 00:00 occurs twice: once
+        // A zone that falls back at 01:00 -> 00:00 on 2026-11-01, so local 00:00 occurs twice: once
         // at -04:00 (still DST) and again an hour later at -05:00. The DAY starts at the first one —
         // taking the second would silently drop that day's first hour out of every [startOfDay, ...)
         // range. TimeZoneInfo.GetUtcOffset on its own returns the standard-time (second) offset.
-        var havana = TimeZoneInfo.FindSystemTimeZoneById("America/Havana");
+        // Built here, not looked up: this is America/Havana's rule as of tzdata 2026c, but the operating
+        // system's time zone data moves (2026f dropped the November transition) and a test of the library
+        // must not depend on it.
+        var havana = TimeZoneInfo.CreateCustomTimeZone(
+            "Test/FallBackAtMidnight",
+            TimeSpan.FromHours(-5),
+            "Test zone",
+            "Standard",
+            "Daylight",
+            [
+                TimeZoneInfo.AdjustmentRule.CreateAdjustmentRule(
+                    new DateTime(2026, 1, 1),
+                    new DateTime(2026, 12, 31),
+                    TimeSpan.FromHours(1),
+                    TimeZoneInfo.TransitionTime.CreateFixedDateRule(new DateTime(1, 1, 1, 0, 0, 0), 3, 8),
+                    TimeZoneInfo.TransitionTime.CreateFixedDateRule(new DateTime(1, 1, 1, 1, 0, 0), 11, 1))
+            ]);
         var ambiguousDay = new DateOnly(2026, 11, 1);
 
         Assert.True(havana.IsAmbiguousTime(ambiguousDay.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified)));

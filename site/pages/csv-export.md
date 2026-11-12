@@ -9,14 +9,14 @@ An export takes two steps, and two pieces of Craticula do them.
 1. **Reading the rows.** An execution adapter runs the query and hands back a stream of rows. `DapperExportStream`, `EfCoreExportStream`, `MongoExportStream` and `OpenSearchExportStream` do this for their backends. See [Entity Framework Core and Dapper](relational-adapters.html) and [MongoDB and OpenSearch adapters](search-adapters.html).
 2. **Writing the file.** The package `Craticula.Export.Csv` takes that stream and writes the bytes. It knows nothing about the database. `CsvWriter` is its entry point.
 
-Because the writer reads one row at a time and writes each record as it goes, a million-row export uses about the same memory as a ten-row one. A slow download slows the read down instead of filling memory.
+Because the writer reads one row at a time and writes each record as it goes, a million-row export uses about the same memory as a ten-row one. The relational and OpenSearch adapters read the rows in chunks (5,000 by default) and the MongoDB adapter reads one cursor batch by batch, never with a growing offset, and the paged `FetchPageAsync` calls refuse an all-rows request so that only the export stream can read the whole result. A slow download slows the read down instead of filling memory.
 
 ## What the grid sends
 
 An export request is an ordinary grid request with up to three more members:
 
 - `exportFormat`, either `"csv"` or `"tsv"`. It marks the request as an export. Sending the other two members without it is refused.
-- `exportScope`, either `"all"` or `"page"`. The default is `"all"`: every row that matches the filter and sort, whatever `startRow` and `endRow` say. `"page"` keeps the row range of the request.
+- `exportScope`, either `"all"` or `"page"`. The default is `"all"`: every row that matches the filter and sort, whatever `startRow` and `endRow` say. `"page"` keeps the row range of the request. A request that sends no window and is not an export gets a default page of 100 rows instead; see [Paging and sorting](paging-and-sorting.html).
 - `exportColumns`, an optional list of `{ "colId": "...", "header": "..." }` entries.
 
 The filter and the sort are always honoured.

@@ -18,10 +18,13 @@ Craticula refuses such a request before it builds a query.
 | `MaxPageSize` | 1000 | The number of rows in one page, that is `endRow - startRow`. |
 | `MaxSetValuesResults` | 10000 | The most values one distinct-values request can return, however many the grid asks for. |
 | `DefaultSetValuesResults` | 1000 | How many values that request returns when the grid does not say. |
+| `MaxQueryTimeMs` | not set | How long a MongoDB or Search query may run, in milliseconds. The one optional limit; see [The query time limit](#the-query-time-limit). |
 
 These are properties of `ResourceLimits`.
 
-The first four are checks: a request over the limit is refused. The last two are caps. A distinct-values request for a set filter is never refused for being too large. Craticula clamps it to the cap, and uses the default when the grid sends no number.
+The first four are checks: a request over the limit is refused. The next two are caps. `MaxQueryTimeMs` is neither: it is carried into the query, and the database enforces it. A distinct-values request for a set filter is never refused for being too large. Craticula clamps it to the cap, and uses the default when the grid sends no number.
+
+A request that sends no `startRow` and no `endRow` is not unlimited either: it gets a default page of 100 rows (`AgGridParseOptions.DefaultPageSize`), and the page size limit checks that page like any other. See [Paging and sorting](paging-and-sorting.html).
 
 The page size limit does not apply to an export of the whole result (`exportScope` set to `"all"`), which has no page. A page-scoped export keeps its row range, and the page size limit applies to it. See [CSV export](csv-export.html).
 
@@ -67,9 +70,22 @@ A distinct-values request goes through `GridFilterPipeline.ProcessSetValues`, an
 
 You can raise a limit as high as you like. There is no upper bound check. Choose numbers your database can carry.
 
+## The query time limit
+
+`MaxQueryTimeMs` is for a host whose database is shared or public. The other limits bound the shape of a request; this one bounds the work the database does for it. Set it to a whole number of milliseconds, from 1 to 2,147,483,647, and the compilers put it into the query:
+
+| Engine | What the query carries | What happens when the time is up |
+|---|---|---|
+| MongoDB | `maxTimeMS` on the aggregate command | MongoDB cancels the operation, and the adapter throws `QueryTimeoutException`. |
+| OpenSearch and Elasticsearch | a `timeout` member of the search body, for example `"2000ms"` | The engine stops at its next check (a soft limit) and answers with `timed_out: true`. The adapter throws `QueryTimeoutException` and never returns the partial hits as a page. |
+
+The limit comes from your code only. A request cannot set, raise or remove it, and a `maxQueryTimeMs` in a request is ignored. An export carries no limit, because it is long by design; stop an export with the cancellation token. The SQL engines have no compiled limit: set a statement timeout on the connection or the database account instead (the public demo does, for PostgreSQL).
+
+Leave it unset and nothing changes: the queries are exactly what they were. A zero or negative value throws when you build the `ResourceLimits`, and the compilers refuse it too if you fill a request by hand. See the rules TL-1 to TL-5 in [Query time limit](query-time-limit.html).
+
 ## You cannot turn a limit off
 
-Every limit is a plain positive number. There is no "unlimited" value. Setting a limit to zero or less throws an `ArgumentOutOfRangeException` when you build the `ResourceLimits`.
+Every limit but one is a plain positive number, and there is no "unlimited" value. Setting a limit to zero or less throws an `ArgumentOutOfRangeException` when you build the `ResourceLimits`. The exception is `MaxQueryTimeMs`, which is unset by default because the library cannot know how slow your database is; setting it to a number never turns anything off.
 
 That is on purpose. A limit of zero would not mean "no limit". It would refuse every request, and a setting that was left blank by mistake could do that without anyone noticing.
 
@@ -83,6 +99,7 @@ The limits are checked by `GridFilterPipeline.Process`. The adapter that reads t
 - [csharp/src/Craticula.Core/Schema/ResourceLimitsValidator.cs](../../csharp/src/Craticula.Core/Schema/ResourceLimitsValidator.cs)
 - [csharp/src/Craticula.Core/Schema/GridFilterPipeline.cs](../../csharp/src/Craticula.Core/Schema/GridFilterPipeline.cs)
 - [csharp/src/Craticula.Core/Ir/GroupSpecValidator.cs](../../csharp/src/Craticula.Core/Ir/GroupSpecValidator.cs)
+- [spec/semantics.md](../../spec/semantics.md), the addenda on the query time limit and the default page size
 - [examples/demo/Api/Grid/DemoLimits.cs](../../examples/demo/Api/Grid/DemoLimits.cs)
 - [spec/ir.schema.json](../../spec/ir.schema.json)
 - [spec/fixtures/adversarial](../../spec/fixtures/adversarial/README.md)

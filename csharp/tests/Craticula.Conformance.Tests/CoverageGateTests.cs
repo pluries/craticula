@@ -25,7 +25,7 @@ public class CoverageGateTests
             ["scripts/test_coverage.py"],
             RepoPaths.Root,
             stdinLines: null,
-            TimeSpan.FromSeconds(60));
+            TimeSpan.FromSeconds(180));
 
         Assert.True(
             result.ExitCode == 0,

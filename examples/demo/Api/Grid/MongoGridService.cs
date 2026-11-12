@@ -1,3 +1,4 @@
+using Craticula.Core;
 using Craticula.Core.Export;
 using Craticula.Core.Grid;
 using Craticula.Mongo;
@@ -7,8 +8,9 @@ using MongoDB.Driver;
 
 namespace Demo.Api.Grid;
 
-/// <summary>MongoDB through <c>Craticula.MongoDB.Driver</c>.</summary>
-public sealed class MongoGridService(IMongoDatabase database, GridRequestPreparer preparer) : IGridService
+/// <summary>MongoDB through <c>Craticula.MongoDB.Driver</c>. <paramref name="maxQueryTimeMs"/> is the host's query time limit: the library puts
+/// it into the artifact as <c>maxTimeMS</c> and MongoDB cancels a slower query itself (null: no limit, as in the local demo).</summary>
+public sealed class MongoGridService(IMongoDatabase database, GridRequestPreparer preparer, int? maxQueryTimeMs = null) : IGridService
 {
     public string Name => "mongo";
 
@@ -32,20 +34,26 @@ public sealed class MongoGridService(IMongoDatabase database, GridRequestPrepare
                 Schema = preparer.Schema,
                 ColId = request.ColId,
                 Filter = request.Filter,
-                RowLimit = request.RowLimit
+                RowLimit = request.RowLimit,
+                MaxQueryTimeMs = maxQueryTimeMs
             });
 
         var stages = query.Pipeline.Select(stage => BsonDocument.Parse(stage.ToJsonString())).ToArray();
-        var options = query.Collation is null
-            ? null
-            : new AggregateOptions { Collation = Collation.FromBsonDocument(BsonDocument.Parse(query.Collation.ToJsonString())) };
+        var options = OptionsFor(query);
 
         var values = new List<object?>();
         var collection = database.GetCollection<BsonDocument>(query.Collection);
-        using var cursor = await collection.AggregateAsync<BsonDocument>(stages, options, cancellationToken);
-        while (await cursor.MoveNextAsync(cancellationToken))
+        try
         {
-            values.AddRange(cursor.Current.Select(document => ToClr(document["_id"])));
+            using var cursor = await collection.AggregateAsync<BsonDocument>(stages, options, cancellationToken);
+            while (await cursor.MoveNextAsync(cancellationToken))
+            {
+                values.AddRange(cursor.Current.Select(document => ToClr(document["_id"])));
+            }
+        }
+        catch (MongoExecutionTimeoutException ex)
+        {
+            throw new QueryTimeoutException(ex);
         }
 
         return values;
@@ -69,6 +77,23 @@ public sealed class MongoGridService(IMongoDatabase database, GridRequestPrepare
         return new CompiledQueryView("mongo", "mongodb", text, []);
     }
 
+    /// <summary>The command options of a compiled query: its collation and its <c>maxTimeMS</c>, translated the way the adapter does it.</summary>
+    public static AggregateOptions OptionsFor(MongoQuery query)
+    {
+        var options = new AggregateOptions();
+        if (query.Collation is not null)
+        {
+            options.Collation = Collation.FromBsonDocument(BsonDocument.Parse(query.Collation.ToJsonString()));
+        }
+
+        if (query.MaxTimeMs is { } maxTimeMs)
+        {
+            options.MaxTime = TimeSpan.FromMilliseconds(maxTimeMs);
+        }
+
+        return options;
+    }
+
     private MongoQueryRequest ToMongoRequest(PreparedRows request) => new()
     {
         Schema = preparer.Schema,
@@ -77,7 +102,8 @@ public sealed class MongoGridService(IMongoDatabase database, GridRequestPrepare
         Page = request.Parsed.Page,
         Group = request.Parsed.Group,
         Aggregations = request.Parsed.Aggregations,
-        Projection = request.Parsed.Export?.ProjectionColumns
+        Projection = request.Parsed.Export?.ProjectionColumns,
+        MaxQueryTimeMs = maxQueryTimeMs
     };
 
     private static object? ToClr(BsonValue value) => value switch
