@@ -68,9 +68,21 @@ examples/     demo app (React + AG Grid + one sample backend)
 
 ## Packaging
 
-The C# implementation is split into ten NuGet packages: `Craticula.Core`, `Craticula.AgGrid`, `Craticula.Sql`,
-`Craticula.Mongo`, `Craticula.Search`, `Craticula.Export.Csv`, `Craticula.EntityFrameworkCore`, `Craticula.Dapper`,
-`Craticula.MongoDB.Driver` and `Craticula.OpenSearch.Client`. The packages are published on nuget.org. To check that the packages build and a clean consumer compiles against them, run
+The C# implementation is split into ten NuGet packages, all published on nuget.org:
+
+[![NuGet](https://img.shields.io/nuget/v/Craticula.Core?label=nuget)](https://www.nuget.org/packages/Craticula.Core)
+
+[`Craticula.Core`](https://www.nuget.org/packages/Craticula.Core),
+[`Craticula.AgGrid`](https://www.nuget.org/packages/Craticula.AgGrid),
+[`Craticula.Sql`](https://www.nuget.org/packages/Craticula.Sql),
+[`Craticula.Mongo`](https://www.nuget.org/packages/Craticula.Mongo),
+[`Craticula.Search`](https://www.nuget.org/packages/Craticula.Search),
+[`Craticula.Export.Csv`](https://www.nuget.org/packages/Craticula.Export.Csv),
+[`Craticula.EntityFrameworkCore`](https://www.nuget.org/packages/Craticula.EntityFrameworkCore),
+[`Craticula.Dapper`](https://www.nuget.org/packages/Craticula.Dapper),
+[`Craticula.MongoDB.Driver`](https://www.nuget.org/packages/Craticula.MongoDB.Driver) and
+[`Craticula.OpenSearch.Client`](https://www.nuget.org/packages/Craticula.OpenSearch.Client).
+Install one with `dotnet add package <name>`. To check that the packages build and a clean consumer compiles against them, run
 `bash scripts/pack-smoke.sh` (Python 3.10+ and the .NET 10 SDK; about 3 minutes).
 
 ## Dependency licenses
@@ -96,9 +108,12 @@ Every NuGet package under `csharp/`, transitive ones and test projects included,
 
 ## Demo
 
-[`examples/demo`](examples/demo/README.md) is a small app: one AG Grid page that reads the same orders from PostgreSQL or
-MongoDB through a C# API built on the library. It needs Docker, the .NET 10 SDK and Node 20.19 or newer. It is a showcase
-that references the library by project reference, not a published package.
+Try it live: [PostgreSQL](https://craticula-pg.pluries.dev) and [MongoDB](https://craticula-mongo.pluries.dev). Both show the same
+synthetic orders through the same AG Grid page; they are read-only and rate-limited.
+
+[`examples/demo`](examples/demo/README.md) is the app behind them: one AG Grid page that reads the same orders from PostgreSQL or
+MongoDB through a C# API built on the library. To run it yourself it needs Docker, the .NET 10 SDK and Node 20.19 or newer. It is a
+showcase that installs the published packages from nuget.org, as a user of the library would.
 
 ## Compatibility
 

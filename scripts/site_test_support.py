@@ -24,6 +24,9 @@ FAKE_REVIEW = "2026-11-03"   # a date for the scratch builds only: the maker's r
 # "There is no live demo site" is an honest denial that the pages may keep, so the claims are the affirmative phrases.
 FORBIDDEN_CLAIMS = ("available on nuget", "install from nuget", "published on nuget", "on nuget.org", "try the demo", "online demo", "hosted demo",
                     "see it live", "cannot drift", "dotnet add package", "nuget install", "npm install", "pip install", "go get ", "try it online")
+# 1.0.0 is on nuget.org (2026-11-10): the pages that tell a reader how to install an adapter may say so. Every other claim stays forbidden.
+PACKAGE_CLAIMS = ("available on nuget", "install from nuget", "published on nuget", "on nuget.org", "dotnet add package", "nuget install")
+PUBLISHED_PAGES = ("relational-adapters", "search-adapters")
 LINK = re.compile(r"\]\(([^)\s]+)\)")
 SCHEME = re.compile(r"[a-z][a-z0-9+.-]*:")
 
@@ -119,6 +122,8 @@ class EditorialMixin:
             with self.subTest(page=slug):
                 lowered = text_of(slug).lower()
                 for claim in FORBIDDEN_CLAIMS:
+                    if slug in PUBLISHED_PAGES and claim in PACKAGE_CLAIMS:
+                        continue
                     self.assertNotIn(claim, lowered)
 
     def test_each_page_renders_with_no_unresolved_markup(self):
