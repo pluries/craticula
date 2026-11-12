@@ -60,3 +60,14 @@ When a provider ships a new major:
 
 The fixture suite is versioned by the spec version. The release notes also show how many fixtures the suite holds.
 That number is a count, not a version.
+
+## Recorded exceptions
+
+An exception is a release that does not follow the rule above. Each one is written down here, with the reason, and the release notes say so.
+
+- **1.1.0 (default page size).** From this release a request with no row window gets a default page of 100 rows instead of every
+  row, and the paged entry points of the adapters refuse the unpaginated page with an error that names the streaming entry point.
+  Under the rule above that is a new major version, because the compiled artifact for such a request changes. The maintainer chose a
+  minor version: AG Grid's Server-Side Row Model always sends a window, an export of everything is unchanged, and only a custom client
+  or a host that builds the request by hand could notice. A host that relied on "no window means every row" asks for it on purpose: an
+  export, or `ignorePageLimit` once the host has allowed it (`AgGridParseOptions.AllowUnboundedRows`).
