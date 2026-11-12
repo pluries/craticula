@@ -158,6 +158,36 @@ public sealed class PublicModeTests
     }
 
     [Fact]
+    public async Task ADatabaseSideTimeout_FromTheLibrary_Answers504QueryTimeoutAtOnce_NotAfterTheGate()
+    {
+        var fake = new FakeGrid { ThrowsQueryTimeout = true };
+        var (app, client) = await StartAsync(fake);
+        await using (app)
+        using (client)
+        {
+            var started = DateTime.UtcNow;
+
+            using var response = await PostRowsAsync(client);
+            var elapsed = DateTime.UtcNow - started;
+            var error = await ErrorAsync(response);
+
+            Assert.Equal(HttpStatusCode.GatewayTimeout, response.StatusCode);
+            Assert.Equal("query-timeout", error.GetProperty("kind").GetString());
+            Assert.True(elapsed < TimeSpan.FromSeconds(1.5), $"answered after {elapsed}");
+        }
+    }
+
+    [Theory]
+    [InlineData("/api/mongo/rows", 4)]
+    [InlineData("/api/mongo/values", 4)]
+    [InlineData("/api/mongo/query", 4)]
+    [InlineData("/api/mongo/export.csv", 2)]
+    [InlineData("/api/postgres/rows", 2)]
+    [InlineData("/api/fake/rows", 2)]
+    public void TheGateCutsAtTwoSecondsExceptWhereTheDatabaseHasItsOwnLimit_ThereItWaitsTwoSecondsMore(string path, int seconds) =>
+        Assert.Equal(TimeSpan.FromSeconds(seconds), PublicGate.GateTimeout(new Microsoft.AspNetCore.Http.PathString(path)));
+
+    [Fact]
     public async Task T5_AnOversizedPageAndATooDeepFilter_GetTheLibrariesRejection()
     {
         var (app, client) = await StartAsync(new FakeGrid());
@@ -430,11 +460,18 @@ public sealed class PublicModeTests
 
         public int RowCalls => Volatile.Read(ref rowCalls);
 
-        public string Name => "fake";
+        public string Name { get; init; } = "fake";
+
+        public bool ThrowsQueryTimeout { get; init; }
 
         public async Task<GridPageResult> FetchRowsAsync(PreparedRows request, CancellationToken cancellationToken)
         {
             Interlocked.Increment(ref rowCalls);
+            if (ThrowsQueryTimeout)
+            {
+                throw new Craticula.Core.QueryTimeoutException();
+            }
+
             if (Slow)
             {
                 await Task.Delay(Timeout.Infinite, cancellationToken);

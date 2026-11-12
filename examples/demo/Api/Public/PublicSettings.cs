@@ -24,6 +24,13 @@ public sealed record PublicSettings
     /// <summary>A grid query running longer than this is cancelled and the API answers 504 with error kind <c>query-timeout</c>.</summary>
     public static readonly TimeSpan QueryTimeout = TimeSpan.FromSeconds(2);
 
+    /// <summary>The same limit in milliseconds, for the databases that cut a query themselves (MongoDB: the library's <c>maxTimeMS</c>).</summary>
+    public static int QueryTimeoutMs => (int)QueryTimeout.TotalMilliseconds;
+
+    /// <summary>For MongoDB's grid, values and query routes the database cuts at <see cref="QueryTimeout"/>; the gate then waits this much
+    /// longer, so it is only a backstop that cannot pre-empt the database's own answer. An export has no database-side limit and keeps the gate's cut.</summary>
+    public static readonly TimeSpan DatabaseCutBackstop = TimeSpan.FromSeconds(2);
+
     public required IReadOnlyList<string> TrustedProxies { get; init; }
 
     public required int GlobalLimitPerMinute { get; init; }

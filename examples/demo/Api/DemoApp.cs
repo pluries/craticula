@@ -61,7 +61,11 @@ public static class DemoApp
             .ReplaceService<IModelCacheKeyFactory, GridSchemaModelCacheKeyFactory>());
         builder.Services.AddSingleton<IGridService, PostgresGridService>();
         builder.Services.AddSingleton<IGridService, EfGridService>();
-        builder.Services.AddSingleton<IGridService, MongoGridService>();
+        // In public mode the database cuts a slow MongoDB query itself (the library's maxTimeMS); locally there is no limit.
+        builder.Services.AddSingleton<IGridService>(services => new MongoGridService(
+            services.GetRequiredService<IMongoDatabase>(),
+            services.GetRequiredService<GridRequestPreparer>(),
+            services.GetService<PublicSettings>() is null ? null : PublicSettings.QueryTimeoutMs));
         // SQLite is a file, so it is always on. The path is read when the service is first built, after `configure` ran:
         // DEMO_SQLITE from the configuration (the environment is part of it), else data/demo.sqlite under the demo folder.
         builder.Services.AddSingleton<IGridService>(services => new SqliteGridService(
