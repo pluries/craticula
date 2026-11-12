@@ -1123,11 +1123,20 @@ class ThisRepository(unittest.TestCase):
                     self.assertIn(html.escape(body, quote=False), page, f"{name}{suffix} is not on the OData guide")
             self.assertIn(html.escape((folder / "schema.json").read_text(encoding="utf-8").rstrip("\n"), quote=False), page)
 
-    def test_no_page_claims_a_package_is_published(self):
-        """DoD of #2834: the stubs and the quickstart say nothing is published and give no install command."""
+    def test_the_csharp_quickstart_tells_how_to_install_the_published_packages(self):
+        """1.0.0 is on nuget.org (2026-11-10, task #3827): the C# quickstart gives the install lines and links the package pages."""
         with tempfile.TemporaryDirectory() as out:
             self.assertEqual(bs.build(ROOT, Path(out)), [])
-            for slug in ("quickstart-csharp", "quickstart-typescript", "quickstart-python", "quickstart-go"):
+            page = (Path(out) / "quickstart-csharp.html").read_text(encoding="utf-8")
+            self.assertIn("dotnet add package Craticula.Core", page)
+            self.assertIn("https://www.nuget.org/packages/Craticula.Core", page)
+            self.assertNotRegex(page, r"(?i)nothing is published")
+
+    def test_no_page_of_the_unpublished_ports_claims_a_package_is_published(self):
+        """DoD of #2834: the stubs of the TypeScript, Python and Go ports say nothing is published and give no install command."""
+        with tempfile.TemporaryDirectory() as out:
+            self.assertEqual(bs.build(ROOT, Path(out)), [])
+            for slug in ("quickstart-typescript", "quickstart-python", "quickstart-go"):
                 page = (Path(out) / f"{slug}.html").read_text(encoding="utf-8")
                 self.assertRegex(page, r"(?i)nothing is published|no .* implementation yet", slug)
                 for command in ("dotnet add package", "npm install", "pip install", "go get ", "nuget.org/packages"):
