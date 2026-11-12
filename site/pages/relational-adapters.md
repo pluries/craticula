@@ -8,7 +8,7 @@ The core packages only compile. They never open a connection and never run anyth
 
 Adapters are optional. The core packages never depend on them. You can skip them and run the compiled statement yourself with any library you like.
 
-Nothing is published yet. Build the packages from the repository and reference the projects. See [the C# quickstart](quickstart-csharp.html).
+Install them from NuGet: `dotnet add package Craticula.Dapper` or `dotnet add package Craticula.EntityFrameworkCore`. See [the C# quickstart](quickstart-csharp.html).
 
 ## Dapper
 

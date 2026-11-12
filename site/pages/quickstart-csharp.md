@@ -3,13 +3,22 @@
 This page takes you from an AG Grid request to the parameterized SQL that answers it, in one small program. It needs no
 database and no driver: Craticula compiles the query and never runs it.
 
-**Nothing is published yet.** No Craticula package is on NuGet, so there is no package to install. You build from the
-repository, which is also how this page was checked.
+The packages are on NuGet. This page uses three of them:
+
+```
+dotnet add package Craticula.Core
+dotnet add package Craticula.AgGrid
+dotnet add package Craticula.Sql
+```
+
+Each package has its own page on nuget.org, for example [Craticula.Core](https://www.nuget.org/packages/Craticula.Core). The program
+below also lives in the repository, where the solution builds it, so this page was checked by running it from there.
 
 ## What you need
 
 - the .NET 10 SDK;
-- the repository: clone or download <https://github.com/pluries/craticula>.
+- the repository, to run the sample as it is: clone or download <https://github.com/pluries/craticula>. To use the library in
+  your own project, install the packages above instead.
 
 ## Run it
 
@@ -46,8 +55,9 @@ schema.
 
 ## Run it on a real database
 
-Compile and run in one call with an execution adapter, which takes an open connection or a `DbContext` from you. Their READMEs show
-the install line for when packages are published; today you reference the projects from the repository instead.
+Compile and run in one call with an execution adapter, which takes an open connection or a `DbContext` from you. Install the adapter you
+need from NuGet (`Craticula.Dapper`, `Craticula.EntityFrameworkCore`, `Craticula.MongoDB.Driver` or `Craticula.OpenSearch.Client`);
+each README shows its install line.
 
 - [`Craticula.Dapper`](../../csharp/src/Craticula.Dapper/README.md): runs the statement
   on an `IDbConnection`, with paging, row counts and streamed CSV export.
@@ -57,7 +67,8 @@ the install line for when packages are published; today you reference the projec
   `Craticula.Search`, `Craticula.OpenSearch.Client`).
 
 For the whole path with a browser grid, ten providers on seven database engines and a script that compares them against each other, follow the
-[demo](../../examples/demo/README.md).
+[demo](../../examples/demo/README.md), or try it live on [PostgreSQL](https://craticula-pg.pluries.dev) and
+[MongoDB](https://craticula-mongo.pluries.dev).
 
 ## Next
 

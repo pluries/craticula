@@ -11,7 +11,7 @@ The compilers write the query and stop there.
 
 Neither compiler depends on a client library, and neither opens a connection. You can run their output yourself.
 
-The adapters run it for you. Nothing is published yet. Build the packages from the repository and reference the projects. See [the C# quickstart](quickstart-csharp.html).
+The adapters run it for you. Install them from NuGet: `dotnet add package Craticula.MongoDB.Driver` or `dotnet add package Craticula.OpenSearch.Client`. See [the C# quickstart](quickstart-csharp.html).
 
 ## MongoDB
 
