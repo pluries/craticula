@@ -589,6 +589,37 @@ def unsafe_markup(text: str) -> str | None:
     return None
 
 
+# ---------------------------------------------------------------- inline diagrams (#3830)
+
+DIAGRAM_LINE = re.compile(r"^!\[([^\]\n]*)\]\((site/diagrams/[A-Za-z0-9._-]+\.svg)\)[ \t]*$", re.M)
+SVG_EXTERNAL = (
+    (re.compile(r"<\s*(?:image|use|iframe|object|embed|style\b[^>]*\bsrc)\b", re.I), "an element that loads another file"),
+    (re.compile(r"\bhref\s*=\s*[\"'](?!#)", re.I), "a reference that leaves the file"),
+    (re.compile(r"url\(\s*[\"']?(?!#)", re.I), "a url() that leaves the file"),
+    (re.compile(r"@import", re.I), "an @import"),
+    (re.compile(r"<\s*foreignObject", re.I), "a foreign object"),
+)
+
+
+def unsafe_svg(svg: str) -> str | None:
+    """What a diagram file holds that the site never draws into a page (a script, an event handler, anything loaded from outside the file), or None."""
+    if "<svg" not in svg:
+        return "no svg element"
+    problem = unsafe_markup(svg)
+    if problem:
+        return problem
+    for pattern, what in SVG_EXTERNAL:
+        if pattern.search(svg):
+            return what
+    return None
+
+
+def diagram_figure(svg: str, alt: str) -> str:
+    """The file as an inline figure: the page's own CSS variables colour it, and the alt text names it for a screen reader."""
+    labelled = re.sub(r"<svg\b", f'<svg role="img" focusable="false" aria-label="{html.escape(alt)}"', svg.strip(), count=1)
+    return f'<figure class="diagram">{labelled}</figure>'
+
+
 # ---------------------------------------------------------------- favicon (DS-18)
 
 FAVICON_ORANGE = (255, 122, 61)
@@ -1314,13 +1345,38 @@ class SiteBuild:
                                 raw=image, label=label, context=context)
         return resolve
 
+    def draw_diagrams(self, page: Page, text: str) -> tuple[str, dict[str, str]]:
+        """A whole-line image of an SVG file under site/diagrams is drawn into the page as a figure (GitHub shows the same line as an image).
+        The text gets a placeholder paragraph per diagram, which `render` swaps for the figure once the Markdown is converted."""
+        figures: dict[str, str] = {}
+
+        def draw(match: re.Match) -> str:
+            alt, rel = match.group(1), match.group(2)
+            try:
+                svg = self.read(rel)
+            except OSError:
+                self.errors.append(f"{page.source}: the diagram {rel} does not exist")
+                return match.group(0)
+            problem = unsafe_svg(svg)
+            if problem:
+                self.errors.append(f"{rel}: the diagram holds {problem}, which the site never draws into a page")
+                return match.group(0)
+            key = f"DIAGRAMHOLD{len(figures)}X"
+            figures[key] = diagram_figure(svg, alt)
+            return key
+
+        return DIAGRAM_LINE.sub(draw, text), figures
+
     def render(self, page: Page, text: str) -> Rendered:
         """The page's HTML body: links resolved against what the site builds, an alias anchor and the heading anchors added."""
         link_errors: list[str] = []
+        text, figures = self.draw_diagrams(page, text)
         first = render_markdown(text, resolve=lambda href, image=False: href)
         # Second pass with the real resolver, now that the page's own anchors are known; the line of each link comes from the first pass.
         rendered = render_markdown(text, resolve=self.resolver_for(page, self.page_anchors(page.slug), link_errors, iter(line for line, _ in first.links)))
         self.errors.extend(link_errors)
+        for key, figure in figures.items():
+            rendered.html = rendered.html.replace(f"<p>{key}</p>", figure)
         if page.alias:
             rendered.html = f'<a id="{html.escape(page.alias)}"></a>' + rendered.html
             rendered.anchors.add(page.alias)
