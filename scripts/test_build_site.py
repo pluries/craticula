@@ -1249,8 +1249,12 @@ class ThisRepository(unittest.TestCase):
             page = (Path(out) / "overview.html").read_text(encoding="utf-8")
             self.assertIn('<figure class="diagram">', page)
             self.assertNotIn("Frontend adapter \u2500\u2500\u25b6", page)
-            for label in ("AG Grid request", "Frontend adapter", "Canonical IR", "Backend compiler", "GridSchema"):
-                self.assertIn(label, page, label)
+            figure = re.search(r'<figure class="diagram">.*?</figure>', page, re.S).group(0)
+            # Task #3842: both stages run in the server, so the drawing says what they do, not "frontend" and "backend".
+            for label in ("AG Grid request", "Request adapter", "Canonical IR", "Query compiler", "GridSchema"):
+                self.assertIn(label, figure, label)
+            for word in ("Frontend", "Backend", "frontend", "backend"):
+                self.assertNotIn(word, figure, word)
 
     def test_the_schema_pages_exist_and_link_to_each_other(self):
         with tempfile.TemporaryDirectory() as out:
