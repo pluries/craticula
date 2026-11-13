@@ -27,7 +27,7 @@ maintained open-source library covers this end to end.
 
 ## How it works
 
-![How a request becomes a query: an AG Grid request passes the frontend adapter into the canonical IR, and the backend compiler turns it into a query artifact (SQL with parameters, a MongoDB aggregation pipeline or an OpenSearch query), all checked against the GridSchema; optional execution adapters run the artifact and shape the rows back into the grid response.](site/diagrams/how-it-works.svg)
+![How a request becomes a query: an AG Grid request passes the request adapter into the canonical IR, and the query compiler turns it into a query artifact (SQL with parameters, a MongoDB aggregation pipeline or an OpenSearch query), all checked against the GridSchema; optional execution adapters run the artifact and shape the rows back into the grid response.](site/diagrams/how-it-works.svg)
 
 The core never opens a connection: compilation is a pure function from a grid request plus
 a schema configuration (the security and typing boundary) to a plain query artifact.
@@ -36,10 +36,10 @@ separate, optional per-ecosystem adapter packages.
 
 ## Scope (v1)
 
-- **Frontend adapter:** AG Grid SSRM (v31–v36). AG Grid Community's Infinite Row Model is supported for flat grids
+- **Request adapter** (the spec calls it the *frontend adapter*; it is the compiler's input side, and it runs in your server, not in the browser): AG Grid SSRM (v31–v36). AG Grid Community's Infinite Row Model is supported for flat grids
   (sort, text, number and date filters, paging; see [`spec/fixtures/community-infinite`](spec/fixtures/community-infinite/README.md)).
   Row grouping, aggregation, pivot and the set filter are Enterprise features and are not part of that promise.
-- **Backends:** PostgreSQL, SQL Server, MySQL/MariaDB, SQLite, MongoDB, OpenSearch,
+- **Query compilers** (the spec's *backend compilers*, also in your server): PostgreSQL, SQL Server, MySQL/MariaDB, SQLite, MongoDB, OpenSearch,
   Elasticsearch. Oracle is community-tested: the same SQL pipeline, with `FETCH FIRST` paging (12c and later).
 - **Reference implementation:** C#/.NET, ported to TypeScript, Python, and Go after the spec
   freezes at 1.0.
