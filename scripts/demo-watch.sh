@@ -5,7 +5,8 @@
 # answers cannot stretch the alert past its time. The first success ends the run with exit 0. It keeps no state between runs: the Jenkins
 # agents are one-shot containers, so a count kept in a workspace would be gone after every build.
 # On an alert it also sends a text message to DEMO_WATCH_NOTIFY_URL when that is set (the Jenkins controller has no mail or chat plugin): a
-# POST of the message as the body, which ntfy topics and similar services accept. The URL is a secret (an ntfy topic is only as private as
+# POST of the message as the body, which ntfy topics and similar services accept; a Discord webhook URL (a path with /api/webhooks/) gets it as
+# JSON, {"content": "..."}, which is what Discord takes. The URL is a secret (an ntfy topic is only as private as
 # its name): it comes from the environment (a Jenkins credential binding), is never printed and is never written in the repository.
 # Exit 0 = no alert, 1 = alert (also when the message could not be sent), 2 = bad setting or no `timeout` command (GNU coreutils).
 # Environment:
@@ -46,7 +47,14 @@ done
 echo "demo-watch: ALERT: the check failed $THRESHOLD times in a row, one attempt every ${INTERVAL}s"
 if [ -n "${DEMO_WATCH_NOTIFY_URL:-}" ]; then
   message="The Craticula demos look down: the live check failed $THRESHOLD times in a row, about $(( (THRESHOLD - 1) * INTERVAL / 60 )) minutes. See the Jenkins job craticula-demo-watch."
-  if curl -fsS -m 15 -o /dev/null -H "Title: Craticula demos down" -d "$message" "$DEMO_WATCH_NOTIFY_URL" >/dev/null 2>&1; then
+  if [[ "$DEMO_WATCH_NOTIFY_URL" == */api/webhooks/* ]]; then
+    # a Discord webhook takes JSON with a content member
+    escaped="$(printf '%s' "$message" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+    send=(curl -fsS -m 15 -o /dev/null -H "Content-Type: application/json" -d "{\"content\":\"$escaped\"}" "$DEMO_WATCH_NOTIFY_URL")
+  else
+    send=(curl -fsS -m 15 -o /dev/null -H "Title: Craticula demos down" -d "$message" "$DEMO_WATCH_NOTIFY_URL")
+  fi
+  if "${send[@]}" >/dev/null 2>&1; then
     echo "demo-watch: the notification was sent"
   else
     echo "demo-watch: the notification could not be sent" >&2
