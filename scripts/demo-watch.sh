@@ -14,6 +14,7 @@
 #   DEMO_WATCH_INTERVAL_SECONDS  from the start of one attempt to the start of the next (default 300; 0 for none)
 #   DEMO_WATCH_ATTEMPT_SECONDS   the longest one attempt may run (default 120)
 #   DEMO_WATCH_NOTIFY_URL        where an alert is posted (optional, secret)
+# The retries run the check with CHECK_DEMOS_FLOOD=0 (no rate-limit flood): the flood proves the limit answers, not that the demos are up.
 set -uo pipefail
 
 CHECK="${DEMO_WATCH_CHECK:-bash scripts/check-demos.sh}"
@@ -27,6 +28,9 @@ command -v timeout >/dev/null || { echo "demo-watch: the timeout command (GNU co
 
 for ((attempt = 1; attempt <= THRESHOLD; attempt++)); do
   started=$SECONDS
+  # Only the first attempt floods: a retry that ends in a flood leaves this address throttled for a minute, and the next run (it starts
+  # as soon as this one ends) would fail its first attempt on 429 again, round after round.
+  if [ "$attempt" -gt 1 ]; then export CHECK_DEMOS_FLOOD=0; fi
   if timeout --kill-after=5 "$ATTEMPT" bash -c "$CHECK"; then
     echo "demo-watch: the demos answer (attempt $attempt of $THRESHOLD)"
     exit 0
