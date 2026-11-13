@@ -589,6 +589,37 @@ def unsafe_markup(text: str) -> str | None:
     return None
 
 
+# ---------------------------------------------------------------- inline diagrams (#3830)
+
+DIAGRAM_LINE = re.compile(r"^!\[([^\]\n]*)\]\((site/diagrams/[A-Za-z0-9._-]+\.svg)\)[ \t]*$", re.M)
+SVG_EXTERNAL = (
+    (re.compile(r"<\s*(?:image|use|iframe|object|embed|style\b[^>]*\bsrc)\b", re.I), "an element that loads another file"),
+    (re.compile(r"\bhref\s*=\s*[\"'](?!#)", re.I), "a reference that leaves the file"),
+    (re.compile(r"url\(\s*[\"']?(?!#)", re.I), "a url() that leaves the file"),
+    (re.compile(r"@import", re.I), "an @import"),
+    (re.compile(r"<\s*foreignObject", re.I), "a foreign object"),
+)
+
+
+def unsafe_svg(svg: str) -> str | None:
+    """What a diagram file holds that the site never draws into a page (a script, an event handler, anything loaded from outside the file), or None."""
+    if "<svg" not in svg:
+        return "no svg element"
+    problem = unsafe_markup(svg)
+    if problem:
+        return problem
+    for pattern, what in SVG_EXTERNAL:
+        if pattern.search(svg):
+            return what
+    return None
+
+
+def diagram_figure(svg: str, alt: str) -> str:
+    """The file as an inline figure: the page's own CSS variables colour it, and the alt text names it for a screen reader."""
+    labelled = re.sub(r"<svg\b", f'<svg role="img" focusable="false" aria-label="{html.escape(alt)}"', svg.strip(), count=1)
+    return f'<figure class="diagram">{labelled}</figure>'
+
+
 # ---------------------------------------------------------------- favicon (DS-18)
 
 FAVICON_ORANGE = (255, 122, 61)
@@ -661,6 +692,10 @@ ICON_GITHUB = ('<svg viewBox="0 0 24 24" width="20" height="20" fill="currentCol
                '-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02A9.5 9.5 0 0 1 12 6.8c.85 0 1.7.11 2.5.34 1.9-1.29 2.74-1.02 2.74-1.02'
                '.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.69-4.57 4.94.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></svg>')
 ICON_SEARCH = _ICON.format('<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>')
+ICON_NUGET = ('<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M1.998.342a1.997 1.997 0 1 0 0 3.995 1.997 1.997 0 0 0 0-3.995z'
+              'm9.18 4.34a6.156 6.156 0 0 0-6.153 6.155v6.667c0 3.4 2.756 6.154 6.154 6.154h6.667c3.4 0 6.154-2.755 6.154-6.154v-6.667a6.154 6.154 0 0 0-6.154-6.155z'
+              'm-1.477 2.8a2.496 2.496 0 1 1 0 4.993 2.496 2.496 0 0 1 0-4.993zm7.968 6.16a3.996 3.996 0 1 1-.002 7.992 3.996 3.996 0 0 1 .002-7.992z"/></svg>')
+REGISTRY_ICONS = {"nuget": ICON_NUGET}  # the NuGet mark (Simple Icons, CC0); the other registries get the generic package icon
 ICON_PACKAGE = _ICON.format('<path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="m3 8 9 5 9-5M12 13v8"/>')
 ICON_MENU = _ICON.format('<path d="M4 6h16M4 12h16M4 18h16"/>')
 ICON_THEME = ('<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
@@ -679,7 +714,7 @@ def render_topbar(config: dict, pages: list["Page"]) -> str:
     docs = order[0].slug if order else "index"
     reference = next((p.slug for p in order if p.group == "Reference"), docs)
     registries = "".join(
-        f'<a class="icon-btn" href="{html.escape(url, quote=True)}" aria-label="{html.escape(REGISTRY_NAMES.get(key, key))} package">{ICON_PACKAGE}</a>'
+        f'<a class="icon-btn" href="{html.escape(url, quote=True)}" aria-label="{html.escape(REGISTRY_NAMES.get(key, key))} package">{REGISTRY_ICONS.get(key, ICON_PACKAGE)}</a>'
         for key, url in config.get("packages", {}).items())
     return (f'<header class="top"><div class="wrap-wide"><a class="brand" href="index.html">{LOGO}{html.escape(config["title"])}</a>'
             f'<nav class="top-nav" aria-label="Main"><a href="{html.escape(docs)}.html">Docs</a><a href="{html.escape(reference)}.html">Reference</a></nav>'
@@ -1314,13 +1349,38 @@ class SiteBuild:
                                 raw=image, label=label, context=context)
         return resolve
 
+    def draw_diagrams(self, page: Page, text: str) -> tuple[str, dict[str, str]]:
+        """A whole-line image of an SVG file under site/diagrams is drawn into the page as a figure (GitHub shows the same line as an image).
+        The text gets a placeholder paragraph per diagram, which `render` swaps for the figure once the Markdown is converted."""
+        figures: dict[str, str] = {}
+
+        def draw(match: re.Match) -> str:
+            alt, rel = match.group(1), match.group(2)
+            try:
+                svg = self.read(rel)
+            except OSError:
+                self.errors.append(f"{page.source}: the diagram {rel} does not exist")
+                return match.group(0)
+            problem = unsafe_svg(svg)
+            if problem:
+                self.errors.append(f"{rel}: the diagram holds {problem}, which the site never draws into a page")
+                return match.group(0)
+            key = f"DIAGRAMHOLD{len(figures)}X"
+            figures[key] = diagram_figure(svg, alt)
+            return key
+
+        return DIAGRAM_LINE.sub(draw, text), figures
+
     def render(self, page: Page, text: str) -> Rendered:
         """The page's HTML body: links resolved against what the site builds, an alias anchor and the heading anchors added."""
         link_errors: list[str] = []
+        text, figures = self.draw_diagrams(page, text)
         first = render_markdown(text, resolve=lambda href, image=False: href)
         # Second pass with the real resolver, now that the page's own anchors are known; the line of each link comes from the first pass.
         rendered = render_markdown(text, resolve=self.resolver_for(page, self.page_anchors(page.slug), link_errors, iter(line for line, _ in first.links)))
         self.errors.extend(link_errors)
+        for key, figure in figures.items():
+            rendered.html = rendered.html.replace(f"<p>{key}</p>", figure)
         if page.alias:
             rendered.html = f'<a id="{html.escape(page.alias)}"></a>' + rendered.html
             rendered.anchors.add(page.alias)

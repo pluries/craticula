@@ -208,6 +208,8 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 2em 0; }
 .accent { color: var(--accent); }
 .lead { margin: 0; max-width: 680px; font-size: 1.25rem; line-height: 1.55; color: var(--lead); }
 .cta { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+.diagram { margin: 28px 0; overflow-x: auto; }
+.diagram svg { display: block; width: 100%; min-width: 600px; height: auto; }
 .fine { font-size: 0.875rem; color: var(--muted); }
 .demo { margin-top: 34px; display: flex; flex-wrap: wrap; gap: 20px; align-items: stretch; }
 .panel { flex: 1 1 420px; min-width: 0; border: 1px solid var(--line); border-radius: 16px; background: var(--panel-bg); overflow: hidden; }
