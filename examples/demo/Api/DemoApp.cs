@@ -83,6 +83,8 @@ public static class DemoApp
             new SqliteGridService(SqlitePath(services), services.GetRequiredService<GridRequestPreparer>()).FetchSetValuesAsync,
             services.GetRequiredService<GridRequestPreparer>()));
         builder.Services.AddSingleton<ProviderRegistry>();
+        // The EF routes build their model before the first visitor (task #3843); the host is ready only after this ran.
+        builder.Services.AddHostedService<EfWarmUp>();
 
         builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
             policy.WithOrigins(AllowedOrigins).WithMethods("GET", "POST").WithHeaders("Content-Type")));
