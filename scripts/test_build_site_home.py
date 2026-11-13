@@ -249,6 +249,16 @@ class RealHome(unittest.TestCase):
         hrefs = [attrs.get("href", "") for attrs, _ in self.links_of(self.hero)]
         self.assertIn("https://www.nuget.org/packages/Craticula.Core", hrefs)
 
+    def test_1_install_and_demo_links_have_their_own_row_and_the_fine_print_holds_no_link(self):
+        self.assertIn('<ul class="get">', self.hero)
+        self.assertIn("dotnet add package Craticula.Core", strip_tags(self.hero))
+        chips = [attrs.get("href", "") for attrs, _ in self.links_of(self.hero) if "chip" in attrs.get("class", "").split()]
+        self.assertEqual(sorted(chips), ["https://craticula-mongo.pluries.dev", "https://craticula-pg.pluries.dev",
+                                         "https://www.nuget.org/packages/Craticula.Core"])
+        fine = re.search(r'<p class="fine">(.*?)</p>', self.hero, re.S)
+        self.assertIsNotNone(fine, "the licence and runtime stay as a short line of fine print")
+        self.assertNotIn("<a", fine.group(1))
+
     def test_1_the_hero_links_both_live_demos(self):
         hrefs = [attrs.get("href", "") for attrs, _ in self.links_of(self.hero)]
         self.assertIn("https://craticula-pg.pluries.dev", hrefs)
