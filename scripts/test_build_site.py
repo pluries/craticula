@@ -1106,6 +1106,47 @@ class InlineDiagrams(unittest.TestCase):
         self.assertNotIn('<figure class="diagram">', (out / "index.html").read_text(encoding="utf-8"))
 
 
+VERSIONED_TEMPLATE = ('<html><head><title>{{page_title}}</title><link rel="stylesheet" href="style.css">{{scripts}}</head>'
+                      '<body>{{nav}}{{content}}</body></html>')
+
+
+class AssetVersions(unittest.TestCase):
+    """Task #3834: the stylesheet and the scripts are linked with a hash of their content, so a visitor whose browser cached the old file
+    (the files are served for 4 hours under a name that never changes) still gets the new one when a page changes."""
+
+    def build(self, css="body{margin:0}"):
+        root = make_repo({"index.md": "# Home\n\nText.\n", "site/template.html": VERSIONED_TEMPLATE, "site/style.css": css,
+                          "site/js/theme.js": "var theme=1;", "site/js/site.js": "var site=1;"}, [INDEX])
+        out = root / "_out"
+        self.assertEqual(bs.build(root, out), [])
+        return out
+
+    @staticmethod
+    def digest(path: Path) -> str:
+        import hashlib
+        return hashlib.sha256(path.read_bytes()).hexdigest()[:10]
+
+    def test_the_stylesheet_and_both_scripts_are_linked_with_the_hash_of_their_content(self):
+        out = self.build()
+        page = (out / "index.html").read_text(encoding="utf-8")
+        for name in ("style.css", "theme.js", "site.js"):
+            with self.subTest(file=name):
+                self.assertIn(f"{name}?v={self.digest(out / name)}", page)
+        self.assertNotIn('href="style.css"', page)
+        self.assertNotIn('src="theme.js"', page)
+
+    def test_a_changed_stylesheet_changes_its_link(self):
+        first = (self.build("body{margin:0}") / "index.html").read_text(encoding="utf-8")
+        second = (self.build("body{margin:1px}") / "index.html").read_text(encoding="utf-8")
+        link = re.compile(r'style\.css\?v=[0-9a-f]{10}')
+        self.assertNotEqual(link.search(first).group(0), link.search(second).group(0))
+
+    def test_the_same_content_gives_the_same_link(self):
+        link = re.compile(r'style\.css\?v=[0-9a-f]{10}')
+        self.assertEqual(link.search((self.build() / "index.html").read_text(encoding="utf-8")).group(0),
+                         link.search((self.build() / "index.html").read_text(encoding="utf-8")).group(0))
+
+
 class ThisRepository(unittest.TestCase):
     def test_the_real_site_builds_with_every_link_resolving(self):
         with tempfile.TemporaryDirectory() as out:
@@ -1192,6 +1233,14 @@ class ThisRepository(unittest.TestCase):
                 self.assertRegex(page, r"(?i)nothing is published|no .* implementation yet", slug)
                 for command in ("dotnet add package", "npm install", "pip install", "go get ", "nuget.org/packages"):
                     self.assertNotIn(command, page, f"{slug} shows an install command: {command}")
+
+    def test_every_real_page_links_the_stylesheet_with_its_hash(self):
+        with tempfile.TemporaryDirectory() as out:
+            self.assertEqual(bs.build(ROOT, Path(out)), [])
+            digest = AssetVersions.digest(Path(out) / "style.css")
+            for page in sorted(Path(out).glob("*.html"))[:40]:
+                with self.subTest(page=page.name):
+                    self.assertIn(f"style.css?v={digest}", page.read_text(encoding="utf-8"))
 
     def test_the_overview_page_shows_a_drawn_diagram_and_no_text_arrow_block(self):
         """Task #3830: How it works is a diagram, not a line of text with arrows in a code block."""
