@@ -12,9 +12,10 @@ Contract of check-demos.sh (exit 0 all checks passed, 1 at least one `FAIL <url>
   route answer 405; a page larger than the limit (endRow 100000) is rejected with a 4xx other than 429; FLOOD quick POSTs
   include at least one 429 (the second address is NOT checked live, M2); for an https base the certificate accepts TLS 1.2+ and
   the response carries Strict-Transport-Security (a FAIL line naming "Strict-Transport-Security" otherwise; skipped for http).
-Contract of demo-watch.sh (exit 0 = no alert, 1 = alert): runs DEMO_WATCH_CHECK (a command line, default
-  `bash scripts/check-demos.sh`); the consecutive failures are kept in the file $DEMO_WATCH_STATE_DIR/failures (a whole number);
-  a failure adds one and exits 1 only when the count reaches DEMO_WATCH_THRESHOLD (default 3); a success resets the count to 0.
+Contract of demo-watch.sh (exit 0 = no alert, 1 = alert, 2 = bad setting): STATELESS, because the Jenkins agents are one-shot
+  containers and a count kept in a workspace would be lost. One run checks up to DEMO_WATCH_THRESHOLD times (default 3), waiting
+  DEMO_WATCH_INTERVAL_SECONDS (default 300) between the starts of two attempts, each cut at DEMO_WATCH_ATTEMPT_SECONDS (default 120); DEMO_WATCH_CHECK is the command line (default
+  `bash scripts/check-demos.sh`). The first success ends the run with exit 0; exit 1 (the alert) only when every attempt failed.
 Run: python3 scripts/test_check_demos.py
 """
 import json
@@ -24,6 +25,7 @@ import ssl
 import subprocess
 import tempfile
 import threading
+import time
 import unittest
 import xml.etree.ElementTree as ET
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -193,51 +195,77 @@ class CheckDemosHstsTests(unittest.TestCase):
 @NEED_TOOLS
 class DemoWatchTests(unittest.TestCase):
     def setUp(self):
-        self.state = Path(tempfile.mkdtemp())
-        self.addCleanup(shutil.rmtree, self.state, ignore_errors=True)
+        self.dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        self.counter = self.dir / "attempts"
 
     def watch(self, check, **extra):
         env = {k: v for k, v in os.environ.items() if not k.startswith("DEMO_WATCH_")}
-        env.update({"DEMO_WATCH_STATE_DIR": str(self.state), "DEMO_WATCH_CHECK": check})
+        env.update({"DEMO_WATCH_CHECK": check, "DEMO_WATCH_INTERVAL_SECONDS": "0"})
         env.update(extra)
-        result = subprocess.run(["bash", str(WATCH)], env=env, capture_output=True, text=True, timeout=60)
+        result = subprocess.run(["bash", str(WATCH)], env=env, capture_output=True, text=True, timeout=60, cwd=self.dir)
         self.assertNotIn("not implemented", result.stderr)
         return result
 
-    def count(self):
-        return int((self.state / "failures").read_text().strip())
+    def counting(self, outcome):
+        """A check command that records one line per attempt and then succeeds or fails."""
+        return f"echo x >> {self.counter}; {outcome}"
 
-    def test_t3_one_failure_does_not_alert_and_is_counted(self):
-        self.assertEqual(0, self.watch("false").returncode)
-        self.assertEqual(1, self.count())
+    def attempts(self):
+        return len(self.counter.read_text().split()) if self.counter.exists() else 0
 
-    def test_t3_two_failures_in_a_row_do_not_alert(self):
-        self.assertEqual(0, self.watch("false").returncode)
-        self.assertEqual(0, self.watch("false").returncode)
-        self.assertEqual(2, self.count())
+    def test_t3_a_success_on_the_first_attempt_ends_the_run_without_alert(self):
+        self.assertEqual(0, self.watch(self.counting("true")).returncode)
+        self.assertEqual(1, self.attempts())
 
-    def test_t3_three_failures_in_a_row_alert_with_exit_1(self):
-        self.watch("false")
-        self.watch("false")
-        third = self.watch("false")
-        self.assertEqual(1, third.returncode, third.stdout + third.stderr)
-        self.assertEqual(3, self.count())
+    def test_t3_three_failures_in_one_run_alert_with_exit_1(self):
+        result = self.watch(self.counting("false"))
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertEqual(3, self.attempts())
+        self.assertIn("ALERT", result.stdout)
 
-    def test_t3_a_success_resets_the_count(self):
-        self.watch("false")
-        self.watch("false")
-        self.assertEqual(0, self.watch("true").returncode)
-        self.assertEqual(0, self.count())
-        self.assertEqual(0, self.watch("false").returncode)
-        self.assertEqual(0, self.watch("false").returncode)
-        self.assertEqual(2, self.count())
+    def test_t3_two_failures_then_a_success_do_not_alert(self):
+        check = f"echo x >> {self.counter}; [ $(wc -l < {self.counter}) -ge 3 ]"
+        self.assertEqual(0, self.watch(check).returncode)
+        self.assertEqual(3, self.attempts())
 
-    def test_t3_the_threshold_is_a_setting(self):
-        self.assertEqual(1, self.watch("false", DEMO_WATCH_THRESHOLD="1").returncode)
+    def test_t3_the_attempt_count_is_a_setting(self):
+        self.assertEqual(1, self.watch(self.counting("false"), DEMO_WATCH_THRESHOLD="1").returncode)
+        self.assertEqual(1, self.attempts())
 
-    def test_t3_a_missing_state_file_counts_as_zero(self):
-        self.assertFalse((self.state / "failures").exists())
-        self.assertEqual(0, self.watch("true").returncode)
+    def test_t3_it_waits_the_interval_between_attempts(self):
+        started = time.monotonic()
+        self.assertEqual(1, self.watch("false", DEMO_WATCH_THRESHOLD="2", DEMO_WATCH_INTERVAL_SECONDS="1").returncode)
+        self.assertGreaterEqual(time.monotonic() - started, 1.0)
+
+    def test_t3_it_keeps_no_state_between_runs(self):
+        self.watch(self.counting("false"))
+        self.assertEqual(1, self.watch(self.counting("false")).returncode, "a second run alerts on its own three attempts")
+        self.assertEqual(6, self.attempts())
+        self.assertEqual([self.counter.name], sorted(p.name for p in self.dir.iterdir()), "no failures file, no state directory")
+
+    def test_t3_a_hanging_check_is_cut_at_the_attempt_limit_and_counts_as_a_failure(self):
+        started = time.monotonic()
+        result = self.watch("sleep 30", DEMO_WATCH_THRESHOLD="1", DEMO_WATCH_ATTEMPT_SECONDS="1")
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertLess(time.monotonic() - started, 10)
+
+    def test_t3_the_interval_is_counted_from_the_start_of_each_attempt(self):
+        started = time.monotonic()
+        self.assertEqual(1, self.watch("sleep 1; false", DEMO_WATCH_THRESHOLD="2", DEMO_WATCH_INTERVAL_SECONDS="2").returncode)
+        elapsed = time.monotonic() - started
+        self.assertGreaterEqual(elapsed, 2.9)
+        self.assertLess(elapsed, 3.8, "attempt (1 s) + wait (1 s) + attempt (1 s), not attempt + 2 s + attempt")
+
+    def test_t3_it_does_not_wait_after_the_last_attempt(self):
+        started = time.monotonic()
+        self.assertEqual(1, self.watch("false", DEMO_WATCH_THRESHOLD="1", DEMO_WATCH_INTERVAL_SECONDS="5").returncode)
+        self.assertLess(time.monotonic() - started, 3)
+
+    def test_t3_a_bad_setting_is_refused_with_exit_2(self):
+        self.assertEqual(2, self.watch("true", DEMO_WATCH_THRESHOLD="0").returncode)
+        self.assertEqual(2, self.watch("true", DEMO_WATCH_INTERVAL_SECONDS="soon").returncode)
+        self.assertEqual(2, self.watch("true", DEMO_WATCH_ATTEMPT_SECONDS="0").returncode)
 
 
 @unittest.skipUnless(PUBLISH_SCRIPT.is_file(), "private repository only: scripts/publish-github.sh is absent (public mirror)")
@@ -253,11 +281,14 @@ class DemoWatchJobTests(unittest.TestCase):
         self.assertIn(self.root.tag, ("project", "flow-definition"))
         self.assertEqual(["false"], [e.text for e in self.root.iter("disabled")])
 
-    def test_is_pinned_to_one_node_so_the_failure_count_is_not_split_across_agents(self):
-        self.assertEqual(["false"], [e.text for e in self.root.iter("canRoam")], "canRoam must be false")
-        nodes = [e.text for e in self.root.iter("assignedNode")]
-        self.assertEqual(1, len(nodes), "one assignedNode (a node label the maker fills in)")
-        self.assertTrue(nodes[0] and nodes[0].strip())
+    def test_runs_on_the_one_shot_go_agents_never_on_the_dotnet_agent_and_never_in_parallel(self):
+        self.assertEqual(["false"], [e.text for e in self.root.iter("canRoam")], "canRoam must be false: the label below is explicit")
+        self.assertEqual(["go"], [e.text for e in self.root.iter("assignedNode")], "the go agent (cap 2); the dotnet agent (cap 1) builds main")
+        self.assertEqual(["false"], [e.text for e in self.root.iter("concurrentBuild")])
+
+    def test_keeps_no_state_in_the_workspace(self):
+        self.assertNotIn("DEMO_WATCH_STATE_DIR", self.text)
+        self.assertNotIn("demo-watch-node", self.text)
 
     def test_names_no_mail_address(self):
         self.assertNotRegex(self.text, r"(?<![\w.+-])(?!git@)[\w.+-]+@[\w-]+\.[\w.-]+")

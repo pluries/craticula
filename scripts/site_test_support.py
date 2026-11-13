@@ -24,6 +24,9 @@ FAKE_REVIEW = "2026-11-03"   # a date for the scratch builds only: the maker's r
 # "There is no live demo site" is an honest denial that the pages may keep, so the claims are the affirmative phrases.
 FORBIDDEN_CLAIMS = ("available on nuget", "install from nuget", "published on nuget", "on nuget.org", "try the demo", "online demo", "hosted demo",
                     "see it live", "cannot drift", "dotnet add package", "nuget install", "npm install", "pip install", "go get ", "try it online")
+# 1.0.0 is on nuget.org (2026-11-10): the pages that tell a reader how to install an adapter may say so. Every other claim stays forbidden.
+PACKAGE_CLAIMS = ("available on nuget", "install from nuget", "published on nuget", "on nuget.org", "dotnet add package", "nuget install")
+PUBLISHED_PAGES = ("relational-adapters", "search-adapters")
 LINK = re.compile(r"\]\(([^)\s]+)\)")
 SCHEME = re.compile(r"[a-z][a-z0-9+.-]*:")
 
@@ -39,8 +42,14 @@ def title_of(slug: str) -> str:
 
 
 def real_slugs() -> set[str]:
+    """The slugs of the built site: the registered pages and the pages the semantics split generates (one per rule summary)."""
     config = json.loads((ROOT / "site" / "site.json").read_text(encoding="utf-8"))
-    return {entry["slug"] for entry in config["pages"]}
+    slugs = {entry["slug"] for entry in config["pages"]}
+    for entry in config["pages"]:
+        if entry.get("generator") == "semantics-split":
+            summaries = json.loads((ROOT / entry["summaries"]).read_text(encoding="utf-8"))
+            slugs |= {bs.slugify(summary["title"]) for summary in summaries.values()}
+    return slugs
 
 
 def strip_code(markup: str) -> str:
@@ -119,6 +128,8 @@ class EditorialMixin:
             with self.subTest(page=slug):
                 lowered = text_of(slug).lower()
                 for claim in FORBIDDEN_CLAIMS:
+                    if slug in PUBLISHED_PAGES and claim in PACKAGE_CLAIMS:
+                        continue
                     self.assertNotIn(claim, lowered)
 
     def test_each_page_renders_with_no_unresolved_markup(self):
