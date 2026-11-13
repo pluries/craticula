@@ -27,12 +27,7 @@ maintained open-source library covers this end to end.
 
 ## How it works
 
-```
-AG Grid SSRM request ──▶ Frontend adapter ──▶ Canonical IR ──▶ Backend compiler ──▶ Query artifact
-                                                                                    ├─ { sql, params[] }
-                                                                                    ├─ Mongo aggregation pipeline
-                                                                                    └─ OpenSearch/ES query DSL
-```
+![How a request becomes a query: an AG Grid request passes the frontend adapter into the canonical IR, and the backend compiler turns it into a query artifact (SQL with parameters, a MongoDB aggregation pipeline or an OpenSearch query), all checked against the GridSchema; optional execution adapters run the artifact and shape the rows back into the grid response.](site/diagrams/how-it-works.svg)
 
 The core never opens a connection: compilation is a pure function from a grid request plus
 a schema configuration (the security and typing boundary) to a plain query artifact.
