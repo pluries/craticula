@@ -140,6 +140,13 @@ class CheckDemosTests(unittest.TestCase):
         self.assert_exit(result, 1)
         self.assertRegex(result.stdout, r"FAIL .*429")
 
+    def test_t2_a_flood_of_zero_skips_the_rate_limit_check_and_sends_no_flood(self):
+        """The retries of the watch run without the flood (task #3788): the flood would empty the budget the next run needs."""
+        base = self.start(limit=None)
+        result = self.run_script(base, CHECK_DEMOS_FLOOD="0")
+        self.assert_exit(result, 0)
+        self.assertLess(self.server.counts["/api/postgres/rows"], 10)
+
     def test_an_unreachable_demo_exits_1_not_0(self):
         result = self.run_script("http://127.0.0.1:9")
         self.assert_exit(result, 1)
@@ -320,6 +327,17 @@ class DemoWatchTests(unittest.TestCase):
         result = self.watch("false", DEMO_WATCH_THRESHOLD="1")
         self.assertEqual(1, result.returncode)
         self.assertNotIn("notification", result.stdout + result.stderr)
+
+    def test_t3_only_the_first_attempt_floods_the_retries_run_with_a_flood_of_zero(self):
+        """A retry that ends in a flood leaves the address throttled for the next run, whose first attempt then fails again."""
+        check = f'echo "${{CHECK_DEMOS_FLOOD-unset}}" >> {self.counter}; false'
+        self.assertEqual(1, self.watch(check).returncode)
+        self.assertEqual(["unset", "0", "0"], self.counter.read_text().split())
+
+    def test_t3_a_flood_setting_the_maker_made_still_applies_to_the_first_attempt(self):
+        check = f'echo "${{CHECK_DEMOS_FLOOD-unset}}" >> {self.counter}; false'
+        self.assertEqual(1, self.watch(check, CHECK_DEMOS_FLOOD="30").returncode)
+        self.assertEqual(["30", "0", "0"], self.counter.read_text().split())
 
     def test_t3_a_bad_setting_is_refused_with_exit_2(self):
         self.assertEqual(2, self.watch("true", DEMO_WATCH_THRESHOLD="0").returncode)
