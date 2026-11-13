@@ -1102,7 +1102,7 @@ class InlineDiagrams(unittest.TestCase):
                 self.assertTrue(any("site/diagrams/flow.svg" in e for e in errors), errors)
 
     def test_an_image_that_is_not_a_whole_line_or_not_under_site_diagrams_is_left_to_the_normal_rules(self):
-        errors, out = self.build(text="# Home\n\nText ![x](site/diagrams/flow.svg) inline.\n")
+        _, out = self.build(text="# Home\n\nText ![x](site/diagrams/flow.svg) inline.\n")
         self.assertNotIn('<figure class="diagram">', (out / "index.html").read_text(encoding="utf-8"))
 
 
