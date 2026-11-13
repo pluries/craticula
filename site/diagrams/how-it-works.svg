@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 704" width="700" height="704">
+<defs>
+<marker id="cr-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+<path d="M0,0 L10,5 L0,10 z" class="cr-head"/>
+</marker>
+<style>
+.cr-bg{fill:var(--bg,#141210);stroke:var(--line,#2E2923);stroke-width:1.5}
+.cr-box{fill:var(--surface,#1C1916);stroke:var(--line-strong,#3A342D);stroke-width:1.5}
+.cr-schema{fill:var(--surface,#1C1916);stroke:var(--accent,#FF7A3D);stroke-width:1.5}
+.cr-optional{fill:none;stroke:var(--line-strong,#3A342D);stroke-width:1.5;stroke-dasharray:7 6}
+.cr-pill{fill:var(--code,#1F1B17);stroke:var(--line-strong,#3A342D);stroke-width:1.2}
+.cr-flow{fill:none;stroke:var(--accent,#FF7A3D);stroke-width:2;marker-end:url(#cr-arrow)}
+.cr-tree{fill:none;stroke:var(--line-strong,#3A342D);stroke-width:2}
+.cr-head{fill:var(--accent,#FF7A3D)}
+.cr-title{font:600 17px 'Instrument Sans',system-ui,sans-serif;fill:var(--text,#F2EDE6)}
+.cr-sub{font:12px 'JetBrains Mono',ui-monospace,monospace;fill:var(--faint,#8A8176)}
+.cr-note{font:14px 'Instrument Sans',system-ui,sans-serif;fill:var(--muted,#A89F94)}
+.cr-small{font:12px 'Instrument Sans',system-ui,sans-serif;fill:var(--muted,#A89F94)}
+.cr-code{font:12px 'JetBrains Mono',ui-monospace,monospace;fill:var(--code-ink,#F2C9A5)}
+</style>
+</defs>
+<rect class="cr-bg" x="1" y="1" width="698" height="702" rx="18"/>
+
+<rect class="cr-box" x="44" y="24" width="360" height="56" rx="12"/>
+<text class="cr-title" x="64" y="48">AG Grid request</text>
+<text class="cr-sub" x="64" y="67">SSRM JSON from the grid</text>
+<path class="cr-flow" d="M224 82 V108"/>
+
+<rect class="cr-box" x="44" y="114" width="360" height="56" rx="12"/>
+<text class="cr-title" x="64" y="138">Frontend adapter</text>
+<text class="cr-sub" x="64" y="157">Craticula.AgGrid</text>
+<path class="cr-flow" d="M224 172 V198"/>
+
+<rect class="cr-box" x="44" y="204" width="360" height="56" rx="12"/>
+<text class="cr-title" x="64" y="228">Canonical IR</text>
+<text class="cr-sub" x="64" y="247">Craticula.Core</text>
+<path class="cr-flow" d="M224 262 V288"/>
+
+<rect class="cr-box" x="44" y="294" width="360" height="56" rx="12"/>
+<text class="cr-title" x="64" y="318">Backend compiler</text>
+<text class="cr-sub" x="64" y="337">Craticula.Sql / .Mongo / .Search</text>
+<path class="cr-flow" d="M224 352 V378"/>
+
+<rect class="cr-box" x="44" y="384" width="360" height="56" rx="12"/>
+<text class="cr-title" x="64" y="408">Query artifact</text>
+<text class="cr-sub" x="64" y="427">plain data; the core never runs it</text>
+
+<rect class="cr-schema" x="444" y="114" width="232" height="236" rx="14"/>
+<text class="cr-title" x="464" y="142">GridSchema</text>
+<text class="cr-note" x="464" y="170">The security and typing</text>
+<text class="cr-note" x="464" y="190">boundary of the core.</text>
+<text class="cr-note" x="464" y="222">It lists the fields a grid</text>
+<text class="cr-note" x="464" y="242">may touch, and their types.</text>
+<text class="cr-note" x="464" y="274">Anything else is refused.</text>
+<path class="cr-flow" d="M440 142 H410"/>
+<path class="cr-flow" d="M440 232 H410"/>
+<path class="cr-flow" d="M440 322 H410"/>
+
+<path class="cr-tree" d="M404 412 H424"/>
+<path class="cr-tree" d="M424 389 V473"/>
+<path class="cr-tree" d="M424 389 H444"/>
+<path class="cr-tree" d="M424 431 H444"/>
+<path class="cr-tree" d="M424 473 H444"/>
+<rect class="cr-pill" x="444" y="372" width="232" height="34" rx="9"/>
+<text class="cr-code" x="458" y="394">{ sql, params[] }</text>
+<rect class="cr-pill" x="444" y="414" width="232" height="34" rx="9"/>
+<text class="cr-code" x="458" y="436">Mongo aggregation pipeline</text>
+<rect class="cr-pill" x="444" y="456" width="232" height="34" rx="9"/>
+<text class="cr-code" x="458" y="478">OpenSearch / ES query DSL</text>
+
+<path class="cr-flow" d="M560 492 V524"/>
+<text class="cr-small" x="574" y="512">run it</text>
+
+<rect class="cr-optional" x="44" y="530" width="632" height="122" rx="14"/>
+<text class="cr-title" x="64" y="558">Execution adapters (optional, separate packages)</text>
+<text class="cr-note" x="64" y="580">Run the artifact on your own connection, and shape the rows</text>
+<text class="cr-note" x="64" y="598">back into the grid response.</text>
+<rect class="cr-pill" x="64" y="612" width="76" height="28" rx="8"/>
+<text class="cr-code" x="76" y="631">Dapper</text>
+<rect class="cr-pill" x="152" y="612" width="86" height="28" rx="8"/>
+<text class="cr-code" x="164" y="631">EF Core</text>
+<rect class="cr-pill" x="250" y="612" width="140" height="28" rx="8"/>
+<text class="cr-code" x="262" y="631">MongoDB.Driver</text>
+<rect class="cr-pill" x="402" y="612" width="160" height="28" rx="8"/>
+<text class="cr-code" x="414" y="631">OpenSearch.Client</text>
+
+<path class="cr-flow" d="M44 590 H22 V52 H40"/>
+<text class="cr-small" transform="rotate(-90 12 330)" x="12" y="330" text-anchor="middle">grid response</text>
+
+<text class="cr-note" x="350" y="684" text-anchor="middle">Compile-only core: a pure function from a request and a schema to a query artifact.</text>
+</svg>

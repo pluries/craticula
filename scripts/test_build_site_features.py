@@ -365,6 +365,14 @@ class ScratchTopBar(unittest.TestCase):
                 self.assertTrue(found[0]["svg"])
 
 
+    def test_4_the_nuget_registry_is_drawn_with_the_nuget_mark_and_the_others_with_the_package_icon(self):
+        nuget_mark = "M1.998.342"
+        pages = built(fsite(FEATURE_PAGES, packages={"nuget": "https://www.nuget.org/packages/Craticula.Core", "npm": "https://www.npmjs.com/package/craticula"}))
+        for slug, text in pages.items():
+            with self.subTest(page=slug):
+                self.assertEqual(text.count(nuget_mark), 1)
+
+
 class ScratchMenu(unittest.TestCase):
     """Contract 6, markup side."""
 
@@ -506,12 +514,17 @@ class RealSite(unittest.TestCase):
                     self.assertIn(word, Controls.name(found[0]).lower())
                     self.assertTrue(found[0]["svg"])
 
-    def test_4_no_registry_icon_is_shown_while_no_package_is_published(self):
-        self.assertNotIn("packages", self.config)
+    def test_4_only_the_published_nuget_package_is_listed_and_every_page_links_it(self):
+        """1.0.0 is on nuget.org (task #3831): the bar links the Core package page; npm, PyPI and Go stay out while those ports are unpublished."""
+        url = "https://www.nuget.org/packages/Craticula.Core"
+        self.assertEqual(self.config.get("packages"), {"nuget": url})
         for slug, text in self.pages.items():
             with self.subTest(page=slug):
+                links = [i for i in topbar(text).items if i["tag"] == "a" and i["attrs"].get("href") == url]
+                self.assertEqual(len(links), 1)
+                self.assertIn("NuGet", Controls.name(links[0]))
                 hrefs = [i["attrs"].get("href", "") for i in topbar(text).items if i["tag"] == "a"]
-                self.assertEqual([h for h in hrefs if any(host in h for host in REGISTRY_HOSTS)], [])
+                self.assertEqual([h for h in hrefs if any(host in h for host in REGISTRY_HOSTS) and h != url], [])
 
     def test_6_docs_pages_have_the_menu_button_and_the_sidebar_id_and_the_home_page_neither(self):
         for slug, text in self.pages.items():

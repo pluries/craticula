@@ -1056,6 +1056,56 @@ class Cli(unittest.TestCase):
         self.assertIn("include 'index'", err)
 
 
+GOOD_DIAGRAM = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 40"><rect width="100" height="40" style="fill:var(--surface,#1C1916)"/><text x="8" y="24">A to B</text></svg>'
+DIAGRAM_PAGE = "# Home\n\nBefore.\n\n![A to B in two boxes](site/diagrams/flow.svg)\n\nAfter.\n"
+
+
+class InlineDiagrams(unittest.TestCase):
+    """Task #3830: a whole-line image of an SVG under site/diagrams is drawn into the page (it follows the site's theme), not linked."""
+
+    def build(self, svg: str | None = GOOD_DIAGRAM, text: str = DIAGRAM_PAGE):
+        files = {"index.md": text}
+        if svg is not None:
+            files["site/diagrams/flow.svg"] = svg
+        root = make_repo(files, [INDEX])
+        out = root / "_out"
+        return bs.build(root, out), out
+
+    def test_the_svg_is_inlined_as_a_figure_with_its_alt_text_and_no_img_element(self):
+        errors, out = self.build()
+        self.assertEqual(errors, [])
+        page = (out / "index.html").read_text(encoding="utf-8")
+        self.assertIn('<figure class="diagram">', page)
+        self.assertIn('role="img"', page)
+        self.assertIn('aria-label="A to B in two boxes"', page)
+        self.assertIn("var(--surface,#1C1916)", page)
+        self.assertNotIn("<img", page)
+        self.assertNotIn("site/diagrams", page)
+        self.assertLess(page.index("Before."), page.index("<figure"))
+        self.assertLess(page.index("<figure"), page.index("After."))
+
+    def test_a_missing_diagram_file_fails_the_build_and_names_it(self):
+        errors, _ = self.build(svg=None)
+        self.assertTrue(any("site/diagrams/flow.svg" in e and "does not exist" in e for e in errors), errors)
+
+    def test_an_svg_with_a_script_an_event_handler_or_an_external_reference_fails_the_build(self):
+        bad = {
+            "a script": '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>',
+            "an event handler": '<svg xmlns="http://www.w3.org/2000/svg"><rect onclick="x()"/></svg>',
+            "a foreign object": '<svg xmlns="http://www.w3.org/2000/svg"><foreignObject/></svg>',
+            "an external reference": '<svg xmlns="http://www.w3.org/2000/svg"><image href="https://example.test/x.png"/></svg>',
+            "a remote url()": '<svg xmlns="http://www.w3.org/2000/svg"><rect style="fill:url(https://example.test/f)"/></svg>',
+        }
+        for name, svg in bad.items():
+            with self.subTest(case=name):
+                errors, _ = self.build(svg=svg)
+                self.assertTrue(any("site/diagrams/flow.svg" in e for e in errors), errors)
+
+    def test_an_image_that_is_not_a_whole_line_or_not_under_site_diagrams_is_left_to_the_normal_rules(self):
+        _, out = self.build(text="# Home\n\nText ![x](site/diagrams/flow.svg) inline.\n")
+        self.assertNotIn('<figure class="diagram">', (out / "index.html").read_text(encoding="utf-8"))
+
+
 class ThisRepository(unittest.TestCase):
     def test_the_real_site_builds_with_every_link_resolving(self):
         with tempfile.TemporaryDirectory() as out:
@@ -1138,9 +1188,20 @@ class ThisRepository(unittest.TestCase):
             self.assertEqual(bs.build(ROOT, Path(out)), [])
             for slug in ("quickstart-typescript", "quickstart-python", "quickstart-go"):
                 page = (Path(out) / f"{slug}.html").read_text(encoding="utf-8")
+                page = re.sub(r'<header class="top">.*?</header>', "", page, flags=re.S)  # the top bar links the published NuGet package on every page (task #3831)
                 self.assertRegex(page, r"(?i)nothing is published|no .* implementation yet", slug)
                 for command in ("dotnet add package", "npm install", "pip install", "go get ", "nuget.org/packages"):
                     self.assertNotIn(command, page, f"{slug} shows an install command: {command}")
+
+    def test_the_overview_page_shows_a_drawn_diagram_and_no_text_arrow_block(self):
+        """Task #3830: How it works is a diagram, not a line of text with arrows in a code block."""
+        with tempfile.TemporaryDirectory() as out:
+            self.assertEqual(bs.build(ROOT, Path(out)), [])
+            page = (Path(out) / "overview.html").read_text(encoding="utf-8")
+            self.assertIn('<figure class="diagram">', page)
+            self.assertNotIn("Frontend adapter \u2500\u2500\u25b6", page)
+            for label in ("AG Grid request", "Frontend adapter", "Canonical IR", "Backend compiler", "GridSchema"):
+                self.assertIn(label, page, label)
 
     def test_the_schema_pages_exist_and_link_to_each_other(self):
         with tempfile.TemporaryDirectory() as out:
