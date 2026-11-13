@@ -269,13 +269,15 @@ class DemoWatchTests(unittest.TestCase):
         self.assertEqual(1, self.watch("false", DEMO_WATCH_THRESHOLD="1", DEMO_WATCH_INTERVAL_SECONDS="5").returncode)
         self.assertLess(time.monotonic() - started, 3)
 
-    def notify_server(self):
-        """A local server that records the POST bodies it receives; returns (url, bodies, stop)."""
+    def notify_server(self, path="/secret-topic"):
+        """A local server that records the POST bodies it receives (and their content types in self.notify_types); returns (url, bodies)."""
         bodies = []
+        self.notify_types = types = []
 
         class Handler(BaseHTTPRequestHandler):
             def do_POST(handler):  # noqa: N805 - the handler is the instance
                 length = int(handler.headers.get("Content-Length", "0"))
+                types.append(handler.headers.get("Content-Type", ""))
                 bodies.append(handler.rfile.read(length).decode("utf-8"))
                 handler.send_response(200)
                 handler.end_headers()
@@ -292,7 +294,7 @@ class DemoWatchTests(unittest.TestCase):
             server.server_close()
 
         self.addCleanup(stop)
-        return f"http://127.0.0.1:{server.server_address[1]}/secret-topic", bodies
+        return f"http://127.0.0.1:{server.server_address[1]}{path}", bodies
 
     def test_t3_an_alert_posts_a_message_to_the_notify_url_and_still_exits_1(self):
         url, bodies = self.notify_server()
@@ -301,6 +303,24 @@ class DemoWatchTests(unittest.TestCase):
         self.assertEqual(1, len(bodies))
         self.assertIn("craticula", bodies[0].lower())
         self.assertIn("down", bodies[0].lower())
+
+    def test_t3_a_discord_webhook_url_gets_the_message_as_json_with_a_content_member(self):
+        url, bodies = self.notify_server(path="/api/webhooks/1234567890/discord-secret-token")
+        result = self.watch("false", DEMO_WATCH_THRESHOLD="1", DEMO_WATCH_NOTIFY_URL=url)
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertEqual(1, len(bodies))
+        self.assertIn("application/json", self.notify_types[0])
+        content = json.loads(bodies[0])["content"]
+        self.assertIn("craticula", content.lower())
+        self.assertIn("down", content.lower())
+        self.assertNotIn("discord-secret-token", result.stdout + result.stderr)
+
+    def test_t3_any_other_url_still_gets_the_message_as_plain_text(self):
+        url, bodies = self.notify_server()
+        self.watch("false", DEMO_WATCH_THRESHOLD="1", DEMO_WATCH_NOTIFY_URL=url)
+        self.assertNotIn("application/json", self.notify_types[0])
+        with self.assertRaises(ValueError):
+            json.loads(bodies[0])
 
     def test_t3_no_message_is_sent_while_the_demos_answer(self):
         url, bodies = self.notify_server()
