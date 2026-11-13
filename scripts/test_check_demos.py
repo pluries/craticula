@@ -14,7 +14,7 @@ Contract of check-demos.sh (exit 0 all checks passed, 1 at least one `FAIL <url>
   the response carries Strict-Transport-Security (a FAIL line naming "Strict-Transport-Security" otherwise; skipped for http).
 Contract of demo-watch.sh (exit 0 = no alert, 1 = alert, 2 = bad setting): STATELESS, because the Jenkins agents are one-shot
   containers and a count kept in a workspace would be lost. One run checks up to DEMO_WATCH_THRESHOLD times (default 3), waiting
-  DEMO_WATCH_INTERVAL_SECONDS (default 300) between the starts of two attempts, each cut at DEMO_WATCH_ATTEMPT_SECONDS (default 120); DEMO_WATCH_CHECK is the command line (default
+  DEMO_WATCH_INTERVAL_SECONDS (default 300) between the starts of two attempts, each cut at DEMO_WATCH_ATTEMPT_SECONDS (default 120); on an alert it POSTs a text message to DEMO_WATCH_NOTIFY_URL when that is set (a secret, never printed); DEMO_WATCH_CHECK is the command line (default
   `bash scripts/check-demos.sh`). The first success ends the run with exit 0; exit 1 (the alert) only when every attempt failed.
 Run: python3 scripts/test_check_demos.py
 """
@@ -140,6 +140,13 @@ class CheckDemosTests(unittest.TestCase):
         self.assert_exit(result, 1)
         self.assertRegex(result.stdout, r"FAIL .*429")
 
+    def test_t2_a_flood_of_zero_skips_the_rate_limit_check_and_sends_no_flood(self):
+        """The retries of the watch run without the flood (task #3788): the flood would empty the budget the next run needs."""
+        base = self.start(limit=None)
+        result = self.run_script(base, CHECK_DEMOS_FLOOD="0")
+        self.assert_exit(result, 0)
+        self.assertLess(self.server.counts["/api/postgres/rows"], 10)
+
     def test_an_unreachable_demo_exits_1_not_0(self):
         result = self.run_script("http://127.0.0.1:9")
         self.assert_exit(result, 1)
@@ -261,6 +268,96 @@ class DemoWatchTests(unittest.TestCase):
         started = time.monotonic()
         self.assertEqual(1, self.watch("false", DEMO_WATCH_THRESHOLD="1", DEMO_WATCH_INTERVAL_SECONDS="5").returncode)
         self.assertLess(time.monotonic() - started, 3)
+
+    def notify_server(self, path="/secret-topic"):
+        """A local server that records the POST bodies it receives (and their content types in self.notify_types); returns (url, bodies)."""
+        bodies = []
+        self.notify_types = types = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(handler):  # noqa: N805 - the handler is the instance
+                length = int(handler.headers.get("Content-Length", "0"))
+                types.append(handler.headers.get("Content-Type", ""))
+                bodies.append(handler.rfile.read(length).decode("utf-8"))
+                handler.send_response(200)
+                handler.end_headers()
+
+            def log_message(handler, *args):  # noqa: N805
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+
+        def stop():
+            server.shutdown()
+            server.server_close()
+
+        self.addCleanup(stop)
+        return f"http://127.0.0.1:{server.server_address[1]}{path}", bodies
+
+    def test_t3_an_alert_posts_a_message_to_the_notify_url_and_still_exits_1(self):
+        url, bodies = self.notify_server()
+        result = self.watch("false", DEMO_WATCH_THRESHOLD="1", DEMO_WATCH_NOTIFY_URL=url)
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertEqual(1, len(bodies))
+        self.assertIn("craticula", bodies[0].lower())
+        self.assertIn("down", bodies[0].lower())
+
+    def test_t3_a_discord_webhook_url_gets_the_message_as_json_with_a_content_member(self):
+        url, bodies = self.notify_server(path="/api/webhooks/1234567890/discord-secret-token")
+        result = self.watch("false", DEMO_WATCH_THRESHOLD="1", DEMO_WATCH_NOTIFY_URL=url)
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertEqual(1, len(bodies))
+        self.assertIn("application/json", self.notify_types[0])
+        content = json.loads(bodies[0])["content"]
+        self.assertIn("craticula", content.lower())
+        self.assertIn("down", content.lower())
+        self.assertNotIn("discord-secret-token", result.stdout + result.stderr)
+
+    def test_t3_any_other_url_still_gets_the_message_as_plain_text(self):
+        url, bodies = self.notify_server()
+        self.watch("false", DEMO_WATCH_THRESHOLD="1", DEMO_WATCH_NOTIFY_URL=url)
+        self.assertNotIn("application/json", self.notify_types[0])
+        with self.assertRaises(ValueError):
+            json.loads(bodies[0])
+
+    def test_t3_no_message_is_sent_while_the_demos_answer(self):
+        url, bodies = self.notify_server()
+        self.assertEqual(0, self.watch("true", DEMO_WATCH_NOTIFY_URL=url).returncode)
+        self.assertEqual([], bodies)
+
+    def test_t3_a_failed_attempt_that_is_followed_by_a_success_sends_nothing(self):
+        url, bodies = self.notify_server()
+        check = f"echo x >> {self.counter}; [ $(wc -l < {self.counter}) -ge 2 ]"
+        self.assertEqual(0, self.watch(check, DEMO_WATCH_NOTIFY_URL=url).returncode)
+        self.assertEqual([], bodies)
+
+    def test_t3_an_unreachable_notify_url_does_not_change_the_exit_code_and_is_reported(self):
+        result = self.watch("false", DEMO_WATCH_THRESHOLD="1", DEMO_WATCH_NOTIFY_URL="http://127.0.0.1:9/secret-topic")
+        self.assertEqual(1, result.returncode)
+        self.assertIn("notification", result.stdout + result.stderr)
+
+    def test_t3_the_notify_url_is_a_secret_and_never_appears_in_the_output(self):
+        url, _ = self.notify_server()
+        result = self.watch("false", DEMO_WATCH_THRESHOLD="1", DEMO_WATCH_NOTIFY_URL=url)
+        self.assertNotIn("secret-topic", result.stdout + result.stderr)
+
+    def test_t3_without_a_notify_url_an_alert_only_exits_1(self):
+        result = self.watch("false", DEMO_WATCH_THRESHOLD="1")
+        self.assertEqual(1, result.returncode)
+        self.assertNotIn("notification", result.stdout + result.stderr)
+
+    def test_t3_only_the_first_attempt_floods_the_retries_run_with_a_flood_of_zero(self):
+        """A retry that ends in a flood leaves the address throttled for the next run, whose first attempt then fails again."""
+        check = f'echo "${{CHECK_DEMOS_FLOOD-unset}}" >> {self.counter}; false'
+        self.assertEqual(1, self.watch(check).returncode)
+        self.assertEqual(["unset", "0", "0"], self.counter.read_text().split())
+
+    def test_t3_a_flood_setting_the_maker_made_still_applies_to_the_first_attempt(self):
+        check = f'echo "${{CHECK_DEMOS_FLOOD-unset}}" >> {self.counter}; false'
+        self.assertEqual(1, self.watch(check, CHECK_DEMOS_FLOOD="30").returncode)
+        self.assertEqual(["30", "0", "0"], self.counter.read_text().split())
 
     def test_t3_a_bad_setting_is_refused_with_exit_2(self):
         self.assertEqual(2, self.watch("true", DEMO_WATCH_THRESHOLD="0").returncode)

@@ -1,6 +1,7 @@
 # Craticula.AgGrid
 
-The AG Grid frontend adapter of Craticula. It parses a Server-Side Row Model request (the `getRows` JSON, AG Grid
+The AG Grid request adapter of Craticula (the spec calls it the frontend adapter: the compiler's input side). It runs in your server, next to
+the compilers, and nothing of Craticula goes in the browser. It parses a Server-Side Row Model request (the `getRows` JSON, AG Grid
 v31 to v36) into the canonical IR that the Craticula compilers consume, and maps a page of results back to the
 shape the grid expects. It does not talk to any database.
 

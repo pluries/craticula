@@ -13,7 +13,7 @@
 # Environment:
 #   CHECK_DEMOS_TARGETS    space separated <provider>=<base url> (default postgres=https://craticula-pg.pluries.dev
 #                          mongo=https://craticula-mongo.pluries.dev)
-#   CHECK_DEMOS_FLOOD      number of quick requests of check 4 (default 70, above the 60 a minute of the limit)
+#   CHECK_DEMOS_FLOOD      number of quick requests of check 4 (default 70, above the 60 a minute of the limit; 0 skips check 4)
 #   CHECK_DEMOS_CURL_OPTS  extra curl options, space separated
 set -euo pipefail
 
@@ -75,6 +75,7 @@ check_target() {
   if [[ "$STATUS" =~ ^4[0-9][0-9]$ && "$STATUS" != "429" ]]; then ok
   else fail "$url: an oversized page (endRow 100000) was not rejected: got $STATUS (expected a 4xx other than 429)"; fi
 
+  if [ "$FLOOD" -eq 0 ]; then return; fi  # the watch's retries: no flood, so the next run still has its budget
   local urls=() i
   for ((i = 0; i < FLOOD; i++)); do urls+=(-o /dev/null "$url"); done
   local codes
