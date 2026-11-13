@@ -1188,6 +1188,7 @@ class ThisRepository(unittest.TestCase):
             self.assertEqual(bs.build(ROOT, Path(out)), [])
             for slug in ("quickstart-typescript", "quickstart-python", "quickstart-go"):
                 page = (Path(out) / f"{slug}.html").read_text(encoding="utf-8")
+                page = re.sub(r'<header class="top">.*?</header>', "", page, flags=re.S)  # the top bar links the published NuGet package on every page (task #3831)
                 self.assertRegex(page, r"(?i)nothing is published|no .* implementation yet", slug)
                 for command in ("dotnet add package", "npm install", "pip install", "go get ", "nuget.org/packages"):
                     self.assertNotIn(command, page, f"{slug} shows an install command: {command}")

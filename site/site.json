@@ -3,6 +3,7 @@
   "repo": "https://github.com/pluries/craticula",
   "branch": "main",
   "baseUrl": "https://craticula.pluries.dev",
+  "packages": { "nuget": "https://www.nuget.org/packages/Craticula.Core" },
   "groups": {
     "Concepts": "What Craticula is, how a request becomes a query, Strict and Lenient, and the safety model.",
     "Guides": "Quickstarts, index guidance and moving from OData.",
