@@ -27,8 +27,8 @@
 <path class="cr-flow" d="M224 82 V108"/>
 
 <rect class="cr-box" x="44" y="114" width="360" height="56" rx="12"/>
-<text class="cr-title" x="64" y="138">Frontend adapter</text>
-<text class="cr-sub" x="64" y="157">Craticula.AgGrid</text>
+<text class="cr-title" x="64" y="138">Request adapter</text>
+<text class="cr-sub" x="64" y="157">Craticula.AgGrid, on your server</text>
 <path class="cr-flow" d="M224 172 V198"/>
 
 <rect class="cr-box" x="44" y="204" width="360" height="56" rx="12"/>
@@ -37,7 +37,7 @@
 <path class="cr-flow" d="M224 262 V288"/>
 
 <rect class="cr-box" x="44" y="294" width="360" height="56" rx="12"/>
-<text class="cr-title" x="64" y="318">Backend compiler</text>
+<text class="cr-title" x="64" y="318">Query compiler</text>
 <text class="cr-sub" x="64" y="337">Craticula.Sql / .Mongo / .Search</text>
 <path class="cr-flow" d="M224 352 V378"/>
 
