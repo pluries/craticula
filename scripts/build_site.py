@@ -54,6 +54,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import functools
+import hashlib
 import html
 import json
 import os
@@ -618,6 +619,25 @@ def diagram_figure(svg: str, alt: str) -> str:
     """The file as an inline figure: the page's own CSS variables colour it, and the alt text names it for a screen reader."""
     labelled = re.sub(r"<svg\b", f'<svg role="img" focusable="false" aria-label="{html.escape(alt)}"', svg.strip(), count=1)
     return f'<figure class="diagram">{labelled}</figure>'
+
+
+# ---------------------------------------------------------------- asset versions (#3841)
+
+VERSIONED_ASSET = re.compile(r'\b(href|src)="(style\.css|theme\.js|site\.js)"')
+
+
+def asset_versions(out_dir: Path) -> dict[str, str]:
+    """A short hash of each shared asset's content: the stylesheet and the scripts are served for hours under names that never change, so the
+    pages link them with this hash and a changed file gets a new address."""
+    return {name: hashlib.sha256((out_dir / name).read_bytes()).hexdigest()[:10]
+            for name in ("style.css", *SCRIPTS) if (out_dir / name).is_file()}
+
+
+def version_assets(page_html: str, versions: dict[str, str]) -> str:
+    def swap(match: re.Match) -> str:
+        version = versions.get(match.group(2))
+        return f'{match.group(1)}="{match.group(2)}?v={version}"' if version else match.group(0)
+    return VERSIONED_ASSET.sub(swap, page_html)
 
 
 # ---------------------------------------------------------------- favicon (DS-18)
@@ -1403,6 +1423,7 @@ class SiteBuild:
         except (OSError, UnicodeDecodeError):
             spec_version = ""
         scripts_ready = self.write_assets(out_dir)
+        versions = asset_versions(out_dir)
         shared = {
             "site_title": html.escape(self.config["title"]),
             "head_links": HEAD_LINKS,
@@ -1428,7 +1449,7 @@ class SiteBuild:
             rendered.html = add_anchors(rendered.html)
             self.check_headings(page, rendered)
             values = {**shared, **self.page_values(page, rendered)}
-            (out_dir / f"{page.slug}.html").write_text(fill_template(templates[page.template or "site/template.html"], values), encoding="utf-8")
+            (out_dir / f"{page.slug}.html").write_text(version_assets(fill_template(templates[page.template or "site/template.html"], values), versions), encoding="utf-8")
             (out_dir / f"{page.slug}.md").write_text(text, encoding="utf-8")
             page_texts[page.slug] = text
         self.write_listings(out_dir, page_texts, index_entries)

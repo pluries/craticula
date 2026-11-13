@@ -118,7 +118,9 @@ def scripts_in_head(page_html: str) -> list[dict]:
     head = page_html[:page_html.find("</head>")]
     parser = Tags()
     parser.feed(head)
-    return [{"src": attrs.get("src"), "defer": "defer" in attrs, "async": "async" in attrs} for tag, attrs in parser.tags if tag == "script"]
+    # the link carries a hash of the file after the name (task #3841): the name is what these contracts pin
+    return [{"src": (attrs.get("src") or "").split("?v=")[0] or None, "defer": "defer" in attrs, "async": "async" in attrs}
+            for tag, attrs in parser.tags if tag == "script"]
 
 
 def headings_of(page_html: str, levels: str = "234") -> list[tuple[str, str, str]]:
