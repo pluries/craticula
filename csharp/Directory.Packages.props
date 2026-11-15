@@ -5,6 +5,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- #3846: the compile benchmark (csharp/tools/Craticula.Benchmarks); MIT. Recorded in tech-stack.approved.md by #3845 (the maker). -->
+    <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
     <!-- #3263: the EF Core family moved together to 10.0.13 (published 2026-10-13, 14 days old on 2026-10-28; #3031 had kept 10.0.12 because it was 11 days old). -->
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.13" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.13" />

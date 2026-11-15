@@ -17,4 +17,9 @@
     <ProjectReference Include="../../src/Craticula.Search/Craticula.Search.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The compile benchmark (story #3324) times RequestCompiler.Compile itself: one copy of the pipeline, not a fifth. -->
+    <InternalsVisibleTo Include="Craticula.Benchmarks" />
+  </ItemGroup>
+
 </Project>
