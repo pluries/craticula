@@ -58,6 +58,13 @@ def write_results(root, compile_mean=12345.6, slow=False):
     return results
 
 
+def is_measurement(cell):
+    """A table cell that shows a measured number with its unit, as a link ([12.3 µs](path)) or as plain text."""
+    text = cell[1:cell.index("]")] if cell.startswith("[") and "]" in cell else cell
+    parts = text.split(" ")
+    return len(parts) == 2 and parts[1] in ("µs", "ms", "KiB", "B", "/s") and parts[0].replace(".", "", 1).isdigit()
+
+
 def table_rows(page):
     return [line for line in page.splitlines() if line.startswith("|") and not re.match(r"^\|[\s:|-]+\|$", line)]
 
@@ -69,7 +76,7 @@ class RenderTests(unittest.TestCase):
             root = Path(tmp)
             results = write_results(root, **kwargs)
             page_path = root / "site" / "pages" / "performance.md"
-            page = module.render(results, page_path.parent, root)
+            page = module.render(results, page_path.parent)
             return page, root, page_path.parent
 
     def test_every_number_in_a_table_is_a_link_to_a_raw_file_that_exists(self):  # T1
@@ -79,12 +86,11 @@ class RenderTests(unittest.TestCase):
             results = write_results(root)
             page_dir = root / "site" / "pages"
             page_dir.mkdir(parents=True)
-            page = module.render(results, page_dir, root)
-            measurement = re.compile(r"\d+(\.\d+)? (µs|ms|KiB|B|/s)")
+            page = module.render(results, page_dir)
             checked = 0
             for row in table_rows(page):
                 for cell in [c.strip() for c in row.strip("|").split("|")]:
-                    if not measurement.search(cell):
+                    if not is_measurement(cell):
                         continue
                     match = re.fullmatch(r"\[([^\]]+)\]\(([^)]+)\)", cell)
                     self.assertIsNotNone(match, f"a number without a link: {cell!r} in {row!r}")
@@ -225,7 +231,7 @@ class CliTests(unittest.TestCase):
         if not site_json.exists():
             site_json.write_text(json.dumps({"pages": [{"slug": "index"}]}), encoding="utf-8")
         args = [sys.executable, "-I", str(PAGE_SCRIPT), str(results), "--page", str(page), "--site-json", str(site_json),
-                "--repo-root", str(root), *extra]
+                *extra]
         return subprocess.run(args, capture_output=True, text=True, timeout=60), page, site_json
 
     def test_it_writes_the_page_and_registers_it_once(self):  # T4
