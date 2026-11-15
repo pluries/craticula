@@ -10,7 +10,7 @@ if (args is ["list"])
 {
     foreach (var shape in Shapes.All)
     {
-        Console.WriteLine($"{shape.Name}  (spec/fixtures/{shape.Fixture})");
+        await Console.Out.WriteLineAsync($"{shape.Name}  (spec/fixtures/{shape.Fixture})");
     }
 
     return 0;
@@ -18,9 +18,9 @@ if (args is ["list"])
 
 if (args is ["report", var path])
 {
-    foreach (var line in Perf1Report.Lines(File.ReadAllText(path)))
+    foreach (var line in Perf1Report.Lines(await File.ReadAllTextAsync(path)))
     {
-        Console.WriteLine(line);
+        await Console.Out.WriteLineAsync(line);
     }
 
     return 0;
@@ -31,14 +31,14 @@ if (args is ["run", "--out", var output])
     var config = DefaultConfig.Instance.WithArtifactsPath(output).AddExporter(JsonExporter.Full);
     BenchmarkRunner.Run<CompileBenchmarks>(config);
     var json = Directory.GetFiles(Path.Combine(output, "results"), "*-report-full.json").Single();
-    Console.WriteLine();
-    foreach (var line in Perf1Report.Lines(File.ReadAllText(json)))
+    await Console.Out.WriteLineAsync();
+    foreach (var line in Perf1Report.Lines(await File.ReadAllTextAsync(json)))
     {
-        Console.WriteLine(line);
+        await Console.Out.WriteLineAsync(line);
     }
 
     return 0;
 }
 
-Console.Error.WriteLine("usage: Craticula.Benchmarks list | run --out <dir> | report <report-full.json>");
+await Console.Error.WriteLineAsync("usage: Craticula.Benchmarks list | run --out <dir> | report <report-full.json>");
 return 2;

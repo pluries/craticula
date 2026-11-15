@@ -25,10 +25,7 @@ def main(argv=None):
     parser.add_argument("--commit")
     parser.add_argument("--dotnet-version")
     parser.add_argument("--benchmark-version", default="BenchmarkDotNet")
-    try:
-        args = parser.parse_args(argv)
-    except SystemExit as exit_:
-        return 2 if exit_.code else 0
+    args = parser.parse_args(argv)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     manifest = {

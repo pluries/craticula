@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generates the performance page of the docs site from the raw results of a run (story #3324, task #3849, spec FR-20).
 
-Usage: python3 scripts/perf_page.py <results dir> [--page site/pages/performance.md] [--site-json site/site.json] [--repo-root <dir>]
+Usage: python3 scripts/perf_page.py <results dir> [--page site/pages/performance.md] [--site-json site/site.json]
 Reads <results dir>/compile/results/*-report-full.json (the BenchmarkDotNet output), compile/manifest-compile.json and every
 manifest-<engine>-<dataset>.json; writes the page, then registers it once in the site config. Every number in a table is a link to the
 raw file it came from, so none is typed by hand. Exit 0 = written, 2 = no results or an unreadable result file (nothing is written).
@@ -47,7 +47,7 @@ def kib(value):
 def compile_rows(report, report_path, page_dir):
     rows = []
     for benchmark in report["Benchmarks"]:
-        params = dict(pair.split("=", 1) for pair in benchmark["Parameters"].split("&"))
+        params = {key: value for key, value in (pair.split("=", 1) for pair in benchmark["Parameters"].split("&"))}
         mean = benchmark["Statistics"]["Mean"]
         allocated = benchmark["Memory"]["BytesAllocatedPerOperation"]
         rows.append((params["Backend"], params["Shape"], mean, allocated))
@@ -64,7 +64,7 @@ def compile_rows(report, report_path, page_dir):
     return lines, summary
 
 
-def render(results, page_dir, repo_root):
+def render(results, page_dir):
     results, page_dir = Path(results), Path(page_dir)
     report_files = sorted((results / "compile" / "results").glob("*-report-full.json"))
     manifest_files = sorted(results.glob("manifest-*.json"))
@@ -147,14 +147,10 @@ def main(argv=None):
     parser.add_argument("results")
     parser.add_argument("--page", default=str(ROOT / "site" / "pages" / "performance.md"))
     parser.add_argument("--site-json", default=str(ROOT / "site" / "site.json"))
-    parser.add_argument("--repo-root", default=str(ROOT))
-    try:
-        args = parser.parse_args(argv)
-    except SystemExit as exit_:
-        return 2 if exit_.code else 0
+    args = parser.parse_args(argv)
     page = Path(args.page)
     try:
-        text = render(Path(args.results), page.parent, Path(args.repo_root))
+        text = render(Path(args.results), page.parent)
     except (ResultsError, KeyError, TypeError) as error:
         print(f"perf_page.py: {error}", file=sys.stderr)
         return 2
