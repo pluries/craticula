@@ -40,7 +40,10 @@ def metrics(results):
     for path in manifests:
         manifest = read_json(path)
         for key, label in (("p50_ms", "p50"), ("p95_ms", "p95"), ("p99_ms", "p99"), ("requests_per_second", "requests per second")):
-            found[f"load {manifest['engine']} {manifest['dataset']} {label}"] = manifest["summary"][key]
+            value = manifest["summary"][key]
+            if value is None:
+                raise RunError(f"{path}: {label} is missing (did every request fail?)")
+            found[f"load {manifest['engine']} {manifest['dataset']} {label}"] = value
     return found
 
 

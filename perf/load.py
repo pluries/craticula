@@ -113,6 +113,7 @@ def parse(argv):
     parser.add_argument("--out", required=True)
     parser.add_argument("--shapes", default=",".join(DEFAULT_SHAPES))
     parser.add_argument("--commit")
+    parser.add_argument("--repeat-command")
     return parser.parse_args(argv)
 
 
@@ -165,7 +166,7 @@ def main(argv=None):
         "shapes": [name for name, _ in shapes],
         "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         "commit": args.commit or current_commit(),
-        "command": command,
+        "command": args.repeat_command or command,
         "summary": summary,
         "oversized": oversized,
     }

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The whole measurement of story #3324 (task #3848, NFR-08): the compile benchmark and the load test of both engines at both sizes,
-# run twice on this machine, then the two runs compared. Run it on vm1 with no Jenkins build, SonarQube scan or other load running.
-# Usage: PERF_MACHINE=vm1 bash scripts/perf-run.sh [date]        default date: today (UTC)
+# run twice on this machine, then the two runs compared. Run it on the measurement machine with nothing else running on it.
+# Usage: PERF_MACHINE=<label> bash scripts/perf-run.sh [date]        default date: today (UTC)
 # Output: perf/results/<date>/ (the run to publish) and perf/results/<date>-repeat/ (the repeat). It ends with
 # `python3 perf/compare.py` (exit 1 when the repeat is more than 10% apart: say so on the page, do not hide it); when it is within the limit,
 # `python3 scripts/perf_page.py perf/results/<date>` writes the site page. Takes about an hour.
@@ -10,7 +10,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
-[ -n "${PERF_MACHINE:-}" ] || { echo "perf-run: set PERF_MACHINE to the machine's label (for example vm1)" >&2; exit 2; }
+[ -n "${PERF_MACHINE:-}" ] || { echo "perf-run: set PERF_MACHINE to the machine's label (it is published in the results)" >&2; exit 2; }
 DATE="${1:-$(date -u +%F)}"
 
 for run in "$DATE" "$DATE-repeat"; do
