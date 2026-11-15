@@ -2,7 +2,7 @@
 """Load test of a Craticula demo API (story #3324, task #3847, spec FR-18 and FR-19).
 
 Posts request bodies from examples/demo/smoke to <base-url>/api/<engine>/rows from several threads, prints p50, p95, p99 and
-requests per second, writes the raw timings and a manifest. Run it against a local stack without DEMO_PUBLIC: the public
+requests per second, writes the raw timings and a manifest, one pair of files per engine and dataset. Run it against a local stack without DEMO_PUBLIC: the public
 demos refuse more than 60 requests a minute per address. Exit 0 = finished and the oversized request was refused as
 resource-limit-exceeded, 1 = finished but it was not, 2 = bad arguments. Tests: scripts/test_perf_load.py.
 """
@@ -169,7 +169,7 @@ def main(argv=None):
         "summary": summary,
         "oversized": oversized,
     }
-    (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    (out / f"manifest-{args.engine}-{args.dataset}.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
     print(f"{args.engine} {args.dataset}: {summary['count']} requests, {summary['errors']} errors, "
           f"p50 {summary['p50_ms']} ms, p95 {summary['p95_ms']} ms, p99 {summary['p99_ms']} ms, {summary['requests_per_second']} requests/s")
