@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Pins perf/load.py (task #3847, spec FR-18, FR-19, AC 2 and 3 of story #3324): the load test of a demo API.
+"""Pins perf/load.py (task #3847, spec FR-18, FR-19, acceptance criteria AC-2 and AC-3 of story #3324): the load test of a demo API.
 
 Offline: a fake demo on 127.0.0.1 (plain http, a thread) answers the rows route; nothing leaves the machine.
 Contract of perf/load.py (exit 0 = the run finished and the oversized request was refused the way the demo refuses it,
 1 = it finished but the oversized request was not handled, 2 = bad arguments):
   --engine <postgres|mongo>   --base-url <url>   --concurrency <n>   --duration <seconds>   --dataset <label, e.g. 10k>
-  --machine <label>   --engine-version <text>   --out <dir>   [--shapes a.json,b.json]   [--commit <sha>]
+  --machine <label>   --engine-version <text>   --out <dir>   [--shapes a.json,b.json]   [--commit <sha>]   [--repeat-command <text>]
   Posts the request bodies of examples/demo/smoke to <base-url>/api/<engine>/rows from <concurrency> threads for <duration>
   seconds; prints p50, p95, p99 (milliseconds) and requests per second; writes load-<engine>-<dataset>.jsonl (one line per request)
   and manifest-<engine>-<dataset>.json (machine, dataset, engine version, load, date, commit, the command that repeats the run) into <out>: one
@@ -145,6 +145,46 @@ class RunTests(unittest.TestCase):
     def test_an_oversized_request_refused_with_another_kind_is_a_failure(self):  # T3
         with Demo(oversized_kind="invalid-page") as url, tempfile.TemporaryDirectory() as out:
             self.assertEqual(1, run_load(url, out).returncode)
+
+
+class RepeatCommandTests(unittest.TestCase):
+    """FR-19: a reviewer repeats a run from the page alone, so the manifest records the command that does everything."""
+
+    def test_the_given_repeat_command_is_what_the_manifest_records(self):
+        with Demo() as url, tempfile.TemporaryDirectory() as out:
+            run_load(url, out, extra=("--repeat-command", "PERF_MACHINE=vm bash scripts/perf-load.sh postgres 10k"))
+            manifest = json.loads(Path(out, "manifest-postgres-10k.json").read_text(encoding="utf-8"))
+            self.assertEqual("PERF_MACHINE=vm bash scripts/perf-load.sh postgres 10k", manifest["command"])
+
+
+class ScriptGuardTests(unittest.TestCase):
+    """The scripts refuse, before any docker or dotnet call, what would publish a private detail: a missing machine label (the
+    host name would be written into public files) and an absolute output path (it carries a home directory)."""
+
+    def run_script(self, script, args, env_extra):
+        env = {"PATH": "/usr/bin:/bin"}
+        env.update(env_extra)
+        return subprocess.run(["bash", str(ROOT / "scripts" / script), *args], capture_output=True, text=True, timeout=30, env=env)
+
+    def test_perf_load_requires_the_machine_label(self):
+        result = self.run_script("perf-load.sh", ["postgres", "10k"], {})
+        self.assertEqual(2, result.returncode)
+        self.assertIn("PERF_MACHINE", result.stderr)
+
+    def test_perf_load_refuses_an_absolute_output_path(self):
+        result = self.run_script("perf-load.sh", ["postgres", "10k"], {"PERF_MACHINE": "box", "PERF_OUT": "/tmp/somewhere"})
+        self.assertEqual(2, result.returncode)
+        self.assertIn("relative", result.stderr)
+
+    def test_perf_compile_requires_the_machine_label(self):
+        result = self.run_script("perf-compile.sh", [], {})
+        self.assertEqual(2, result.returncode)
+        self.assertIn("PERF_MACHINE", result.stderr)
+
+    def test_perf_compile_refuses_an_absolute_output_path(self):
+        result = self.run_script("perf-compile.sh", ["/tmp/somewhere"], {"PERF_MACHINE": "box"})
+        self.assertEqual(2, result.returncode)
+        self.assertIn("relative", result.stderr)
 
 
 class ArgumentTests(unittest.TestCase):

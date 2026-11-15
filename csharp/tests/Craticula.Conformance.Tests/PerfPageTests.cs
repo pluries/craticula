@@ -3,6 +3,7 @@ namespace Craticula.Conformance.Tests;
 /// <summary>
 /// Runs <c>scripts/test_perf_page.py</c> (story #3324, task #3849) on every <c>dotnet test</c>: the generator of the performance page and the compile manifest writer, on fake result files in a temporary folder. Standard-library Python, no network.
 /// </summary>
+// Traceability: FR-19, FR-20, NFR-08, AC-3, AC-4, AC-5, AC-6
 public class PerfPageTests
 {
     private const string PythonRequirement =

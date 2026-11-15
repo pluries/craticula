@@ -1,5 +1,6 @@
 namespace Craticula.Benchmarks.Tests;
 
+// Traceability: FR-17, AC-1, AC-6, PERF-1
 public class Perf1ReportTests
 {
     [Fact]

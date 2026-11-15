@@ -3,6 +3,7 @@ namespace Craticula.Conformance.Tests;
 /// <summary>
 /// Runs <c>scripts/test_perf_load.py</c> (story #3324, task #3847) on every <c>dotnet test</c>: the load test of a demo API against a fake demo on 127.0.0.1. Standard-library Python, no network beyond 127.0.0.1.
 /// </summary>
+// Traceability: FR-18, FR-19, AC-2, AC-3
 public class PerfLoadTests
 {
     private const string PythonRequirement =

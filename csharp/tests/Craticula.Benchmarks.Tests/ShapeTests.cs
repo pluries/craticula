@@ -1,5 +1,6 @@
 namespace Craticula.Benchmarks.Tests;
 
+// Traceability: FR-17, AC-1
 public class ShapeTests
 {
     public static TheoryData<string, string> EveryShapeOnEveryBackend()

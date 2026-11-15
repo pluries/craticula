@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Pins scripts/perf_page.py (task #3849, spec FR-20, AC 5 and 6 of story #3324): the performance page of the docs site.
+"""Pins scripts/perf_page.py, perf/compare.py and perf/compile_manifest.py (tasks #3849, #3848, spec FR-17, FR-19, FR-20, NFR-08,
+acceptance criteria AC-4, AC-5 and AC-6 of story #3324): the performance page of the docs site and the comparison of two runs.
 
 The page is generated from the raw results of a run (perf/results/<date>/): the compile benchmark's BenchmarkDotNet JSON and the
 manifest-<engine>-<dataset>.json of each load run. So no number is typed by hand, and every number in a table is a link to the raw
@@ -41,11 +42,11 @@ def write_results(root, compile_mean=12345.6, slow=False):
     ]
     (results / COMPILE_JSON).write_text(json.dumps({"Benchmarks": benchmarks}), encoding="utf-8")
     (results / "compile" / "manifest-compile.json").write_text(json.dumps({
-        "machine": "vm1", "date": "2026-11-20", "commit": "abc1234", "dotnet": "10.0.100", "benchmark": "BenchmarkDotNet 0.15.8",
+        "machine": "test-box", "date": "2026-11-20", "commit": "abc1234", "dotnet": "10.0.100", "benchmark": "BenchmarkDotNet 0.15.8",
         "command": "bash scripts/perf-compile.sh perf/results/2026-11-20/compile"}), encoding="utf-8")
     for engine, version in (("postgres", "PostgreSQL 16.4"), ("mongo", "MongoDB 7.0.14")):
         manifest = {
-            "machine": "vm1", "platform": "Linux 6.8, 4 logical CPUs, Python 3.12", "dataset": "10k", "engine": engine,
+            "machine": "test-box", "platform": "Linux 6.8, 4 logical CPUs, Python 3.12", "dataset": "10k", "engine": engine,
             "engine_version": version, "load": {"concurrency": 8, "duration_seconds": 60}, "shapes": ["number-gt.json"],
             "date": "2026-11-20", "commit": "abc1234",
             "command": f"python3 perf/load.py --engine {engine} --dataset 10k --out perf/results/2026-11-20",
@@ -107,7 +108,7 @@ class RenderTests(unittest.TestCase):
 
     def test_each_run_states_machine_dataset_versions_load_date_commit_and_the_repeat_command(self):  # T3
         page, _, _ = self.render()
-        for expected in ("vm1", "10k", "PostgreSQL 16.4", "MongoDB 7.0.14", "8 threads", "60 seconds", "2026-11-20", "abc1234",
+        for expected in ("test-box", "10k", "PostgreSQL 16.4", "MongoDB 7.0.14", "8 threads", "60 seconds", "2026-11-20", "abc1234",
                          "python3 perf/load.py --engine postgres --dataset 10k"):
             self.assertIn(expected, page)
 
@@ -178,6 +179,17 @@ class CompareTests(unittest.TestCase):
             self.scale(b, 1.25)
             self.assertEqual(0, self.run_compare(a, b, "--limit", "30").returncode)
 
+    def test_a_run_whose_requests_all_failed_is_exit_2_not_exit_1(self):
+        with tempfile.TemporaryDirectory() as one, tempfile.TemporaryDirectory() as two:
+            a, b = write_results(Path(one)), write_results(Path(two))
+            path = b / "manifest-postgres-10k.json"
+            manifest = json.loads(path.read_text(encoding="utf-8"))
+            manifest["summary"]["p50_ms"] = None
+            path.write_text(json.dumps(manifest), encoding="utf-8")
+            result = self.run_compare(a, b)
+            self.assertEqual(2, result.returncode, result.stdout + result.stderr)
+            self.assertIn("p50", result.stderr)
+
     def test_a_run_with_a_missing_folder_is_exit_2(self):
         with tempfile.TemporaryDirectory() as one:
             a = write_results(Path(one))
@@ -189,7 +201,7 @@ class CompileManifestTests(unittest.TestCase):
 
     def test_it_writes_machine_date_commit_versions_and_the_repeat_command(self):  # T5
         with tempfile.TemporaryDirectory() as tmp:
-            result = subprocess.run([sys.executable, "-I", str(self.SCRIPT), "--out", tmp, "--machine", "vm1", "--commit", "abc1234",
+            result = subprocess.run([sys.executable, "-I", str(self.SCRIPT), "--out", tmp, "--machine", "test-box", "--commit", "abc1234",
                                      "--dotnet-version", "10.0.100", "--benchmark-version", "BenchmarkDotNet 0.15.8"],
                                     capture_output=True, text=True, timeout=30)
             self.assertEqual(0, result.returncode, result.stderr)
