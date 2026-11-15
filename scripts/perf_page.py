@@ -47,7 +47,10 @@ def kib(value):
 def compile_rows(report, report_path, page_dir):
     rows = []
     for benchmark in report["Benchmarks"]:
-        params = {key: value for key, value in (pair.split("=", 1) for pair in benchmark["Parameters"].split("&"))}
+        params = {}
+        for pair in benchmark["Parameters"].split("&"):
+            key, _, value = pair.partition("=")
+            params[key] = value
         mean = benchmark["Statistics"]["Mean"]
         allocated = benchmark["Memory"]["BytesAllocatedPerOperation"]
         rows.append((params["Backend"], params["Shape"], mean, allocated))
