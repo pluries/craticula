@@ -127,6 +127,63 @@ class RenderTests(unittest.TestCase):
         self.assertLess(max(len(line) for line in page.splitlines() if line.startswith("## ")), 60)
 
 
+class CompareTests(unittest.TestCase):
+    """T6: perf/compare.py <first run> <second run> [--limit 10]: exit 0 = every metric of the second run is within the limit
+    (percent, default 10, NFR-08) of the first, 1 = at least one is not (each is listed), 2 = a run is missing or unreadable."""
+    SCRIPT = ROOT / "perf" / "compare.py"
+
+    def run_compare(self, first, second, *extra):
+        return subprocess.run([sys.executable, "-I", str(self.SCRIPT), str(first), str(second), *extra], capture_output=True, text=True, timeout=30)
+
+    def scale(self, results, factor):
+        """Multiplies the p50 and the compile means of a fake run by `factor`."""
+        for path in results.glob("manifest-*-*.json"):
+            if path.name == "manifest-compile.json":
+                continue
+            manifest = json.loads(path.read_text(encoding="utf-8"))
+            manifest["summary"]["p50_ms"] *= factor
+            path.write_text(json.dumps(manifest), encoding="utf-8")
+        report = results / COMPILE_JSON
+        data = json.loads(report.read_text(encoding="utf-8"))
+        for benchmark in data["Benchmarks"]:
+            benchmark["Statistics"]["Mean"] *= factor
+        report.write_text(json.dumps(data), encoding="utf-8")
+
+    def test_two_identical_runs_are_within_the_limit(self):
+        with tempfile.TemporaryDirectory() as one, tempfile.TemporaryDirectory() as two:
+            a, b = write_results(Path(one)), write_results(Path(two))
+            result = self.run_compare(a, b)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertIn("within 10%", result.stdout)
+
+    def test_a_change_below_the_limit_passes(self):
+        with tempfile.TemporaryDirectory() as one, tempfile.TemporaryDirectory() as two:
+            a, b = write_results(Path(one)), write_results(Path(two))
+            self.scale(b, 1.09)
+            self.assertEqual(0, self.run_compare(a, b).returncode)
+
+    def test_a_change_above_the_limit_fails_and_names_the_metric(self):
+        with tempfile.TemporaryDirectory() as one, tempfile.TemporaryDirectory() as two:
+            a, b = write_results(Path(one)), write_results(Path(two))
+            self.scale(b, 1.25)
+            result = self.run_compare(a, b)
+            self.assertEqual(1, result.returncode)
+            self.assertIn("p50", result.stdout)
+            self.assertIn("compile", result.stdout)
+            self.assertIn("25.0%", result.stdout)
+
+    def test_the_limit_can_be_changed(self):
+        with tempfile.TemporaryDirectory() as one, tempfile.TemporaryDirectory() as two:
+            a, b = write_results(Path(one)), write_results(Path(two))
+            self.scale(b, 1.25)
+            self.assertEqual(0, self.run_compare(a, b, "--limit", "30").returncode)
+
+    def test_a_run_with_a_missing_folder_is_exit_2(self):
+        with tempfile.TemporaryDirectory() as one:
+            a = write_results(Path(one))
+            self.assertEqual(2, self.run_compare(a, Path(one) / "nowhere").returncode)
+
+
 class CompileManifestTests(unittest.TestCase):
     SCRIPT = ROOT / "perf" / "compile_manifest.py"
 
