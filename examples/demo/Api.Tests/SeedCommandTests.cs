@@ -50,6 +50,57 @@ public sealed class SeedCommandTests
     }
 
     [Fact]
+    public void SplitRows_WithoutTheOption_KeepsTheNamesAndTheDefaultCount()
+    {
+        var split = SeedCommand.SplitRows(["mongo", "postgres"]);
+
+        Assert.Null(split.Error);
+        Assert.Equal(OrderGenerator.DefaultCount, split.Rows);
+        Assert.Equal(["mongo", "postgres"], split.Names);
+    }
+
+    [Theory]
+    [InlineData("--rows", "1000000", "postgres")]
+    [InlineData("postgres", "--rows", "1000000")]
+    public void SplitRows_TakesTheCountFromAnyPosition_AndLeavesTheNames(params string[] args)
+    {
+        var split = SeedCommand.SplitRows(args);
+
+        Assert.Null(split.Error);
+        Assert.Equal(1_000_000, split.Rows);
+        Assert.Equal(["postgres"], split.Names);
+    }
+
+    [Theory]
+    [InlineData("--rows")]
+    [InlineData("--rows", "ten")]
+    [InlineData("--rows", "0")]
+    [InlineData("--rows", "-5")]
+    [InlineData("--rows", "1", "--rows", "2")]
+    public void SplitRows_RefusesAMissingZeroNegativeNonNumericOrRepeatedCount(params string[] args)
+    {
+        var split = SeedCommand.SplitRows(args);
+
+        Assert.NotNull(split.Error);
+        Assert.Contains("--rows", split.Error);
+    }
+
+    [Fact]
+    public async Task Run_WithACount_GeneratesThatManyRows()
+    {
+        long seen = 0;
+        var targets = new[] { Target("postgres", rows => { seen = rows.Count; return Task.FromResult((long)rows.Count); }) };
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exit = await SeedCommand.RunAsync([], targets, output, error, rowCount: 1234);
+
+        Assert.Equal(0, exit);
+        Assert.Equal(1234, seen);
+        Assert.Contains("Generated 1234 orders", output.ToString());
+    }
+
+    [Fact]
     public void Parse_WithNoArgument_GivesTheDefaultTargetsOnly()
     {
         var plan = SeedCommand.Parse([], [Ok("postgres"), Ok("mongo"), Ok("later", isDefault: false)]);
