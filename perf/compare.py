@@ -32,7 +32,10 @@ def metrics(results):
     if len(reports) != 1:
         raise RunError(f"{results}: expected one compile report")
     for benchmark in read_json(reports[0])["Benchmarks"]:
-        params = {key: value for key, value in (pair.split("=", 1) for pair in benchmark["Parameters"].split("&"))}
+        params = {}
+        for pair in benchmark["Parameters"].split("&"):
+            key, _, value = pair.partition("=")
+            params[key] = value
         found[f"compile {params['Backend']}/{params['Shape']} mean"] = benchmark["Statistics"]["Mean"]
     manifests = sorted(results.glob("manifest-*.json"))
     if not manifests:
