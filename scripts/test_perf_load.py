@@ -8,7 +8,8 @@ Contract of perf/load.py (exit 0 = the run finished and the oversized request wa
   --machine <label>   --engine-version <text>   --out <dir>   [--shapes a.json,b.json]   [--commit <sha>]
   Posts the request bodies of examples/demo/smoke to <base-url>/api/<engine>/rows from <concurrency> threads for <duration>
   seconds; prints p50, p95, p99 (milliseconds) and requests per second; writes load-<engine>-<dataset>.jsonl (one line per request)
-  and manifest.json (machine, dataset, engine version, load, date, commit, the command that repeats the run) into <out>.
+  and manifest-<engine>-<dataset>.json (machine, dataset, engine version, load, date, commit, the command that repeats the run) into <out>: one
+  pair of files per run, so the runs of both engines and both sizes can share one folder.
   The oversized case posts bad-oversized-page.json once and expects 400 with error.kind "resource-limit-exceeded".
 Run: python3 scripts/test_perf_load.py
 """
@@ -107,7 +108,7 @@ class RunTests(unittest.TestCase):
             self.assertGreater(len(raw), 0)
             first = json.loads(raw[0])
             self.assertEqual({"shape", "status", "ms"}, set(first))
-            manifest = json.loads(Path(out, "manifest.json").read_text(encoding="utf-8"))
+            manifest = json.loads(Path(out, "manifest-postgres-10k.json").read_text(encoding="utf-8"))
             for key in ("machine", "dataset", "engine", "engine_version", "load", "date", "commit", "command", "summary", "oversized"):
                 self.assertIn(key, manifest)
             self.assertEqual("abc1234", manifest["commit"])
@@ -119,17 +120,24 @@ class RunTests(unittest.TestCase):
                 self.assertIn(key, manifest["summary"])
             self.assertIn("p99", result.stdout)
 
+    def test_two_runs_in_one_folder_keep_their_own_manifests(self):  # T2
+        with Demo() as url, tempfile.TemporaryDirectory() as out:
+            self.assertEqual(0, run_load(url, out, engine="postgres").returncode)
+            self.assertEqual(0, run_load(url, out, engine="mongo").returncode)
+            names = sorted(p.name for p in Path(out).iterdir())
+            self.assertEqual(["load-mongo-10k.jsonl", "load-postgres-10k.jsonl", "manifest-mongo-10k.json", "manifest-postgres-10k.json"], names)
+
     def test_the_oversized_request_refused_with_the_expected_kind_is_handled(self):  # T3
         with Demo() as url, tempfile.TemporaryDirectory() as out:
             result = run_load(url, out)
-            manifest = json.loads(Path(out, "manifest.json").read_text(encoding="utf-8"))
+            manifest = json.loads(Path(out, "manifest-postgres-10k.json").read_text(encoding="utf-8"))
             self.assertEqual({"handled": True, "status": 400, "kind": "resource-limit-exceeded"}, manifest["oversized"])
             self.assertEqual(0, result.returncode)
 
     def test_an_oversized_request_that_is_answered_200_is_a_failure(self):  # T3
         with Demo(oversized_status=200) as url, tempfile.TemporaryDirectory() as out:
             result = run_load(url, out)
-            manifest = json.loads(Path(out, "manifest.json").read_text(encoding="utf-8"))
+            manifest = json.loads(Path(out, "manifest-postgres-10k.json").read_text(encoding="utf-8"))
             self.assertFalse(manifest["oversized"]["handled"])
             self.assertEqual(1, result.returncode)
             self.assertIn("oversized", result.stdout.lower())
