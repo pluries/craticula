@@ -26,6 +26,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 LOAD = ROOT / "perf" / "load.py"
+ABSOLUTE_PATH = "/an/absolute/path/the/scripts/must/refuse"
 
 
 def load_module():
@@ -172,7 +173,7 @@ class ScriptGuardTests(unittest.TestCase):
         self.assertIn("PERF_MACHINE", result.stderr)
 
     def test_perf_load_refuses_an_absolute_output_path(self):
-        result = self.run_script("perf-load.sh", ["postgres", "10k"], {"PERF_MACHINE": "box", "PERF_OUT": "/tmp/somewhere"})
+        result = self.run_script("perf-load.sh", ["postgres", "10k"], {"PERF_MACHINE": "box", "PERF_OUT": ABSOLUTE_PATH})
         self.assertEqual(2, result.returncode)
         self.assertIn("relative", result.stderr)
 
@@ -182,7 +183,7 @@ class ScriptGuardTests(unittest.TestCase):
         self.assertIn("PERF_MACHINE", result.stderr)
 
     def test_perf_compile_refuses_an_absolute_output_path(self):
-        result = self.run_script("perf-compile.sh", ["/tmp/somewhere"], {"PERF_MACHINE": "box"})
+        result = self.run_script("perf-compile.sh", [ABSOLUTE_PATH], {"PERF_MACHINE": "box"})
         self.assertEqual(2, result.returncode)
         self.assertIn("relative", result.stderr)
 

@@ -124,10 +124,7 @@ def refuse(message):
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
-    try:
-        args = parse(argv)
-    except SystemExit as exit_:
-        return 2 if exit_.code else 0
+    args = parse(argv)
     if args.engine not in ENGINES:
         return refuse(f"engine must be one of {', '.join(ENGINES)}")
     if args.concurrency < 1:
