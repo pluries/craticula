@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Craticula.Benchmarks</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- AR-3: the benchmark measures the compile step only. It reaches the conformance driver's compile entry point
+         (internal, shared through InternalsVisibleTo) instead of a fifth copy of the pipeline, and never references an execution
+         adapter or a database driver. -->
+    <ProjectReference Include="../Craticula.Conformance.Driver/Craticula.Conformance.Driver.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Craticula.Benchmarks.Tests" />
+  </ItemGroup>
+
+</Project>

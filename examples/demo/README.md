@@ -34,6 +34,8 @@ Set `DEMO_PUBLIC=1` to run the API the way a public demo runs. Without it nothin
 | `DEMO_WEB_DIR` | folder of the built page (`web/dist`) that the API serves at `/` |
 | `DEMO_READONLY_PASSWORD` | when set, `seed` also creates the read-only database account (`demo_ro`) with this password; the API then connects with that account |
 
+`seed` takes `--rows <n>` for another row count (default 20,000; `perf/load.py` uses 10,000 and 1,000,000, see `scripts/perf-load.sh`).
+
 `seed` prints a `Checksum:` line: the same data always gives the same checksum, so a restart that reseeds can be checked.
 
 ## A second page: AG Grid Community

@@ -39,11 +39,46 @@ public static class SeedCommand
         return new SeedPlan(targets, unknown);
     }
 
-    public static Task<int> RunAsync(IReadOnlyList<string> names) =>
-        RunAsync(names, SeedTargets.All, Console.Out, Console.Error);
+    /// <summary>Pure: takes <c>--rows &lt;n&gt;</c> out of the arguments (any position); the rest are provider names. The default is <see cref="OrderGenerator.DefaultCount"/>.</summary>
+    public static (int Rows, IReadOnlyList<string> Names, string? Error) SplitRows(IReadOnlyList<string> args)
+    {
+        var rows = OrderGenerator.DefaultCount;
+        var names = new List<string>();
+        var seen = false;
+        for (var index = 0; index < args.Count; index++)
+        {
+            if (args[index] != "--rows")
+            {
+                names.Add(args[index]);
+                continue;
+            }
+
+            if (seen || index + 1 >= args.Count || !int.TryParse(args[index + 1], out rows) || rows < 1)
+            {
+                return (OrderGenerator.DefaultCount, names, "--rows takes one whole number above 0, once.");
+            }
+
+            seen = true;
+            index++;
+        }
+
+        return (rows, names, null);
+    }
+
+    public static async Task<int> RunAsync(IReadOnlyList<string> args)
+    {
+        var split = SplitRows(args);
+        if (split.Error is not null)
+        {
+            Console.Error.WriteLine(split.Error);
+            return 2;
+        }
+
+        return await RunAsync(split.Names, SeedTargets.All, Console.Out, Console.Error, split.Rows);
+    }
 
     public static async Task<int> RunAsync(
-        IReadOnlyList<string> names, IReadOnlyList<SeedTarget> known, TextWriter output, TextWriter error)
+        IReadOnlyList<string> names, IReadOnlyList<SeedTarget> known, TextWriter output, TextWriter error, int rowCount = OrderGenerator.DefaultCount)
     {
         var plan = Parse(names, known);
         if (plan.Unknown.Count > 0)
@@ -52,7 +87,7 @@ public static class SeedCommand
             return 2;
         }
 
-        var rows = OrderGenerator.Generate();
+        var rows = OrderGenerator.Generate(rowCount);
         output.WriteLine($"Generated {rows.Count} orders (seed {OrderGenerator.Seed}).");
 
         var seedChecksum = SeedChecksum.Of(rows);
