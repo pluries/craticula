@@ -80,7 +80,8 @@ public class PostgresConformanceFixtureTests
         ["schemas"] = "Not a fixture category at all — the suite's own meta-schemas " +
                       "(sql-artifact.schema.json and friends), validated by ajv-cli, not by this project.",
         ["adversarial"] = "Rejection-only fixtures: they carry expected/rejection.json, not a compiled artifact, " +
-                          "and are already exercised by Craticula.Core.Tests' allowlist/limits/coercion suites."
+                          "and are already exercised by Craticula.Core.Tests' allowlist/limits/coercion suites.",
+        ["count-mode"] = "Count statements, not pages (CNT-1..CNT-8): compiled through BuildCount by SqlCountTests."
     };
 
     /// <summary>
@@ -240,8 +241,8 @@ public class PostgresConformanceFixtureTests
                 .EnumerateFiles(RepoPaths.Fixture(category), "postgres.artifact.json", SearchOption.AllDirectories)
                 .Count());
 
-        Assert.Equal(236, onDisk);
-        Assert.Equal(0, excludedCategoryArtifacts);
+        Assert.Equal(244, onDisk);
+        Assert.Equal(8, excludedCategoryArtifacts);
         Assert.Equal(onDisk - excludedCategoryArtifacts - ExcludedFixtures.Count, InScopeFixtures.Count);
     }
 

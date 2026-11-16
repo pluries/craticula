@@ -49,6 +49,14 @@ namespace Craticula.Sql;
 public static class SqlQueryBuilder
 {
     /// <summary>
+    /// Count mode (CNT-1..CNT-5): compiles the statement that counts the rows (or, for a grouped
+    /// level, the groups) <see cref="Build"/> would page over. Ignores <c>Page</c>, <c>Sort</c> and
+    /// <c>Projection</c>.
+    /// </summary>
+    public static SqlQuery BuildCount(SqlQueryRequest request, ISqlDialect dialect) =>
+        throw new NotImplementedException();
+
+    /// <summary>
     /// Compiles <paramref name="request"/> into <paramref name="dialect"/>'s SQL text plus its
     /// ordered parameters. Re-runs the IR's own structural validators first — the same
     /// defense-in-depth every other public entry point in this codebase performs
