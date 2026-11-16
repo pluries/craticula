@@ -1,0 +1,10 @@
+{
+  "dialect": "mysql",
+  "sql": "SELECT COUNT(*) FROM (SELECT `product` FROM `sales_fact` WHERE ((`region` = ? AND `segment` = ?) AND (`fiscal_year` >= ? AND `quantity` < ?)) GROUP BY `product`) craticula_count",
+  "params": [
+    "EMEA",
+    "Enterprise",
+    2023,
+    500
+  ]
+}

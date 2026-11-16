@@ -1,7 +1,0 @@
-{
-  "dialect": "postgres",
-  "sql": "SELECT COUNT(*) FROM (SELECT \"region\" FROM \"sales_fact\" WHERE \"amount\" > $1::numeric GROUP BY \"region\") craticula_count",
-  "params": [
-    "1000"
-  ]
-}

@@ -676,7 +676,7 @@ Top level (`IServerSideGetRowsRequest`, `packages/ag-grid-community/src/interfac
 | `community-infinite/` | AG-7: flat requests in the shape AG Grid Community's Infinite Row Model sends — text, number and date filter operators, both join operators, sort and paging — compiled with the same semantics as the SSRM; every case labelled `derived` or `captured` | 27 |
 | `query-time-limit/` | TL-1..TL-5: the optional `maxTimeMS` (MongoDB) and `timeout` (Search) members, absent when no limit is set, never on an export, never set from the wire | 6 |
 | `default-page-size/` | PG-1..PG-4: a request with no window gets a default page, an allowed `ignorePageLimit` is unpaginated, the time limit follows the page | 5 |
-| `count-mode/` | CNT-1..CNT-8: the count artifact for the five SQL dialects (flat, grouped level, drill-down leaf, a window above the page limit, a rejection); MongoDB and Search expected files follow | 9 |
+| `count-mode/` | CNT-1..CNT-8: the count artifact on all seven backends (flat, grouped level, drill-down leaf, a window above the page limit, a rejection) | 9 |
 
 Each category directory has its own `README.md` enumerating its cases and the specific requirement
 each one backs.

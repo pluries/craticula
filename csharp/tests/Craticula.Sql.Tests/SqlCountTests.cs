@@ -30,7 +30,7 @@ public class SqlCountTests
         "004-flat-text-filter",
         "005-window-above-page-limit-ignored",
         "006-grouped-level",
-        "007-grouped-level-filter-aggregate-sort",
+        "007-grouped-level-drill-down-and-filters",
         "008-drill-down-leaf"
     ];
 

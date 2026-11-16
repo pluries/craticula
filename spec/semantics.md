@@ -3257,10 +3257,14 @@ with a NULL key is one group, as in the page query. Aggregations, `HAVING`-style
 removing them never removes a stage the count needs. A grouped level therefore counts its groups. Wrapper members of the
 artifact (`collation`, `maxTimeMS`, TL-1) are kept.
 
-**CNT-7. Search.** The artifact is the page body with `size` 0 and without `sort`, `from`, `search_after` and `pit`. A grouped
-level adds a `cardinality` aggregation named `bucket_count` on the group field, so its count is approximate above the engine's
-precision threshold, as OSE-16 already states. `track_total_hits` is not part of the artifact: whether the host asks for the
-exact total or a capped one is its policy (OSE-16, `ExactRowCount`). The `timeout` member (TL-2) is kept.
+**CNT-7. Search.** The artifact is the page body with `size` 0 and without `sort`, `from`, `search_after` and `pit`; a flat or
+drill-down request keeps its `query` and nothing else. A grouped level also replaces `aggs` with two sibling aggregations on the
+group field's target (the keyword sub-field for a string, as the page's composite source uses): `bucket_count`, a `cardinality`,
+and `missing_group_values`, a `missing`. The count of groups is `bucket_count.value` plus 1 when `missing_group_values.doc_count`
+is above 0, because `cardinality` ignores documents without the field while CNT-5 (and the page's `missing_bucket`) make them one
+group. It is approximate above the engine's precision threshold, as OSE-16 already states. `track_total_hits` is not part of the
+artifact: whether the host asks for the exact total or a capped one is its policy (OSE-16, `ExactRowCount`). The `timeout` member
+(TL-2) is kept.
 
 **CNT-8. A separate entry point; nothing else moves.** Count mode is entered through its own call
 (`BuildCount`), selected in the conformance fixtures by the harness member `requestContext.compileMode` set to `"count"`

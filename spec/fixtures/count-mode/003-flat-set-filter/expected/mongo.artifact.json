@@ -1,0 +1,21 @@
+{
+  "pipeline": [
+    {
+      "$match": {
+        "lastName": {
+          "$in": [
+            "smith",
+            "jones"
+          ]
+        }
+      }
+    },
+    {
+      "$count": "count"
+    }
+  ],
+  "collation": {
+    "locale": "en",
+    "strength": 2
+  }
+}
