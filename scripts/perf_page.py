@@ -113,6 +113,20 @@ def repeatability(results, repeat, page_dir, limit=10.0):
     return lines + [""]
 
 
+def machine_state(manifest):
+    """One line about what the machine itself was doing during the run, when the manifest recorded it."""
+    environment = manifest.get("environment")
+    if not environment:
+        return []
+    parts = []
+    if environment.get("cpu_steal_percent") is not None:
+        parts.append(f"CPU steal {environment['cpu_steal_percent']:g}%")
+    if environment.get("load_average_1m") is not None:
+        parts.append(f"load average {environment['load_average_1m']:g}")
+    parts += [f"{kind} {degrees:g} °C" for kind, degrees in sorted((environment.get("thermal_c") or {}).items())]
+    return [f"- Machine during the run: {', '.join(parts)}"] if parts else []
+
+
 def load_rows(manifests, page_dir):
     rows = []
     for path, manifest in sorted(manifests, key=lambda item: (item[1]["dataset"], item[1]["engine"])):
@@ -203,6 +217,7 @@ def render(results, page_dir, repeat=None, single=None):
                 f"- Load: {load['concurrency']} threads for {load['duration_seconds']:g} seconds"
                 + (f", after {load['warmup_seconds']:g} seconds of warm-up that were not measured" if load.get("warmup_seconds") else ""),
                 f"- Date: {manifest['date']}, commit {manifest['commit']}",
+                *machine_state(manifest),
                 f"- Oversized request: answered {oversized['status']} with {oversized['kind']}"
                 f"{'' if oversized['handled'] else ' (not the expected refusal)'}",
                 f"- Raw results: {link('manifest', path, page_dir)}, {link('every request', raw, page_dir)}",
