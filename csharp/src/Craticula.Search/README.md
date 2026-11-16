@@ -30,9 +30,13 @@ public static class Example
 }
 ```
 
+## Counting rows
+
+`SearchQueryBuilder.BuildCount` returns the page body with `size` 0 and without the sort and the row offset. Whether the total is exact or capped (`track_total_hits`) is your choice; the body never sets it. A grouped level carries two aggregations, `bucket_count` and `missing_group_values`: the number of groups is `bucket_count` plus 1 when `missing_group_values.doc_count` is above 0. Pass `GridFilterPipeline.Process` a `NonePage` for a count.
+
 ## Compatibility
 
-Implements Craticula spec version 0.2.0 (the language-neutral semantics and conformance fixtures in the
+Implements Craticula spec version 0.3.0 (the language-neutral semantics and conformance fixtures in the
 [repository](https://github.com/pluries/craticula), `spec/`). Targets .NET 10.
 
 ## License

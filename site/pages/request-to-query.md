@@ -78,6 +78,8 @@ In the quickstart, the code does four things in this order:
 
 MongoDB and OpenSearch have their own builders, `MongoPipelineBuilder` and `SearchQueryBuilder`.
 
+To show the total number of rows next to a page, every compiler also has `BuildCount`. It uses the same filter but no sort and no row window, because a count does not need them. Give `GridFilterPipeline.Process` a `NonePage` for a count, so a large page size cannot make it fail.
+
 ## Where this comes from
 
 - [site/pages/quickstart-csharp.md](quickstart-csharp.md)

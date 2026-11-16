@@ -30,9 +30,13 @@ public static class Example
 }
 ```
 
+## Counting rows
+
+`MongoPipelineBuilder.BuildCount` returns the page pipeline without its sort, row window and projection stages, ending in a `$count` stage. MongoDB sends no document when nothing matches, so read a missing result as 0. A grouped level counts its groups. Pass `GridFilterPipeline.Process` a `NonePage` for a count.
+
 ## Compatibility
 
-Implements Craticula spec version 0.2.0 (the language-neutral semantics and conformance fixtures in the
+Implements Craticula spec version 0.3.0 (the language-neutral semantics and conformance fixtures in the
 [repository](https://github.com/pluries/craticula), `spec/`). Targets .NET 10.
 
 ## License
