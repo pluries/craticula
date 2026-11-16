@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The whole measurement of story #3324 (task #3848, NFR-08): the compile benchmark and the load test of both engines at both sizes,
+# The whole measurement of story #3324 (task #3848, NFR-08): the compile benchmark and the load test of all three engines at both sizes,
 # run twice on this machine, then the two runs compared. Run it on the measurement machine with nothing else running on it.
 # Usage: PERF_MACHINE=<label> bash scripts/perf-run.sh [date]        default date: today (UTC)
 # Output: perf/results/<date>/ (the run to publish) and perf/results/<date>-repeat/ (the repeat). It ends with
@@ -17,7 +17,7 @@ for run in "$DATE" "$DATE-repeat"; do
   OUT="perf/results/$run"
   echo "=== run $run ==="
   bash scripts/perf-compile.sh "$OUT/compile"
-  for engine in postgres mongo; do
+  for engine in postgres ef mongo; do
     for size in 10k 1m; do
       PERF_OUT="$OUT" bash scripts/perf-load.sh "$engine" "$size"
     done

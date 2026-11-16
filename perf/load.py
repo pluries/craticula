@@ -23,7 +23,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SMOKE = ROOT / "examples" / "demo" / "smoke"
-ENGINES = ("postgres", "mongo")
+ENGINES = ("postgres", "ef", "mongo")
 DEFAULT_SHAPES = ("number-gt.json", "text-contains-sort.json", "group-by-country.json", "set-filter-status.json")
 OVERSIZED_SHAPE = "bad-oversized-page.json"
 OVERSIZED_KIND = "resource-limit-exceeded"
