@@ -165,7 +165,8 @@ def render(results, page_dir, repeat=None):
         out += [f"### {engine}, {manifest['dataset']} rows", "",
                 f"- Machine: {manifest['machine']} ({manifest.get('platform', 'platform not recorded')})",
                 f"- Engine: {manifest['engine_version']}",
-                f"- Load: {load['concurrency']} threads for {load['duration_seconds']:g} seconds",
+                f"- Load: {load['concurrency']} threads for {load['duration_seconds']:g} seconds"
+                + (f", after {load['warmup_seconds']:g} seconds of warm-up that were not measured" if load.get("warmup_seconds") else ""),
                 f"- Date: {manifest['date']}, commit {manifest['commit']}",
                 f"- Oversized request: answered {oversized['status']} with {oversized['kind']}"
                 f"{'' if oversized['handled'] else ' (not the expected refusal)'}",

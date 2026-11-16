@@ -5,7 +5,7 @@
 # Starts the database in its own compose project (craticula-perf, its own ports and volumes: your dev demo data is untouched),
 # seeds it with that many rows, starts the API WITHOUT public mode (the public demos refuse more than 60 requests a minute per
 # address), runs perf/load.py, then stops everything and removes the throwaway volumes.
-# Environment: PERF_MACHINE (required: the label written into the published results, never the host name), PERF_CONCURRENCY (default 8), PERF_DURATION seconds (default 60),
+# Environment: PERF_MACHINE (required: the label written into the published results, never the host name), PERF_CONCURRENCY (default 8), PERF_DURATION seconds (default 60), PERF_WARMUP seconds sent and not measured first (default 5),
 # PERF_OUT (default perf/results/<date>, relative to the repository: the manifest repeats it as given), PERF_API_PORT (default 5081). Needs docker compose, the .NET SDK and Python 3.10+.
 set -euo pipefail
 
@@ -27,7 +27,7 @@ OUT="${PERF_OUT:-perf/results/$(date -u +%F)}"
 MACHINE="${PERF_MACHINE:-}"
 [ -n "$MACHINE" ] || { echo "perf-load: set PERF_MACHINE to the machine's label (it is published in the results)" >&2; exit 2; }
 case "$OUT" in /*) echo "perf-load: PERF_OUT must be a path relative to the repository (an absolute one would publish a home directory)" >&2; exit 2 ;; esac
-REPEAT="PERF_MACHINE=$MACHINE PERF_CONCURRENCY=${PERF_CONCURRENCY:-8} PERF_DURATION=${PERF_DURATION:-60} PERF_OUT=$OUT bash scripts/perf-load.sh $ENGINE $SIZE"
+REPEAT="PERF_MACHINE=$MACHINE PERF_CONCURRENCY=${PERF_CONCURRENCY:-8} PERF_DURATION=${PERF_DURATION:-60} PERF_WARMUP=${PERF_WARMUP:-5} PERF_OUT=$OUT bash scripts/perf-load.sh $ENGINE $SIZE"
 export DEMO_PG="Host=127.0.0.1;Port=$DEMO_PG_PORT;Username=demo;Password=demo;Database=demo"
 export DEMO_MONGO="mongodb://127.0.0.1:$DEMO_MONGO_PORT"
 compose() { docker compose -p "$PROJECT" -f "$DEMO/docker-compose.yml" "$@"; }
@@ -62,5 +62,5 @@ done
 curl -fsS "http://127.0.0.1:$API_PORT/api/health" >/dev/null || { echo "perf-load: the API did not answer /api/health" >&2; exit 1; }
 
 python3 "$ROOT/perf/load.py" --engine "$ENGINE" --base-url "http://127.0.0.1:$API_PORT" --dataset "$SIZE" \
-  --concurrency "${PERF_CONCURRENCY:-8}" --duration "${PERF_DURATION:-60}" --machine "$MACHINE" --engine-version "$VERSION" \
+  --concurrency "${PERF_CONCURRENCY:-8}" --duration "${PERF_DURATION:-60}" --warmup "${PERF_WARMUP:-5}" --machine "$MACHINE" --engine-version "$VERSION" \
   --out "$OUT" --repeat-command "$REPEAT" "$@"

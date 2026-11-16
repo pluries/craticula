@@ -62,28 +62,30 @@ def check_oversized(url):
     return {"handled": status == 400 and kind == OVERSIZED_KIND, "status": status, "kind": kind}
 
 
-def worker(url, shapes, deadline, results, lock):
+def worker(url, shapes, measure_start, deadline, results, lock):
     index = 0
     local = []
     while time.perf_counter() < deadline:
         name, body = shapes[index % len(shapes)]
         index += 1
+        sent_at = time.perf_counter()
         status, _, elapsed = post(url, body)
-        local.append({"shape": name, "status": status, "ms": round(elapsed, 3)})
+        if sent_at >= measure_start:
+            local.append({"shape": name, "status": status, "ms": round(elapsed, 3)})
     with lock:
         results.extend(local)
 
 
-def run_load(url, shapes, concurrency, duration):
+def run_load(url, shapes, concurrency, duration, warmup=0.0):
     results, lock = [], threading.Lock()
-    started = time.perf_counter()
-    deadline = started + duration
-    threads = [threading.Thread(target=worker, args=(url, shapes, deadline, results, lock)) for _ in range(concurrency)]
+    measure_start = time.perf_counter() + warmup
+    deadline = measure_start + duration
+    threads = [threading.Thread(target=worker, args=(url, shapes, measure_start, deadline, results, lock)) for _ in range(concurrency)]
     for thread in threads:
         thread.start()
     for thread in threads:
         thread.join()
-    return results, time.perf_counter() - started
+    return results, time.perf_counter() - measure_start
 
 
 def summarize(results, elapsed):
@@ -107,6 +109,7 @@ def parse(argv):
     parser.add_argument("--base-url", required=True)
     parser.add_argument("--concurrency", type=int, required=True)
     parser.add_argument("--duration", type=float, required=True)
+    parser.add_argument("--warmup", type=float, default=5.0)
     parser.add_argument("--dataset", required=True)
     parser.add_argument("--machine", required=True)
     parser.add_argument("--engine-version", required=True)
@@ -131,6 +134,8 @@ def main(argv=None):
         return refuse("concurrency must be at least 1")
     if args.duration <= 0:
         return refuse("duration must be above 0 seconds")
+    if args.warmup < 0:
+        return refuse("warmup must be 0 or more seconds")
     shapes = []
     for name in (n.strip() for n in args.shapes.split(",") if n.strip()):
         path = SMOKE / name
@@ -142,7 +147,7 @@ def main(argv=None):
 
     url = f"{args.base_url.rstrip('/')}/api/{args.engine}/rows"
     oversized = check_oversized(url)
-    results, elapsed = run_load(url, shapes, args.concurrency, args.duration)
+    results, elapsed = run_load(url, shapes, args.concurrency, args.duration, args.warmup)
     summary = summarize(results, elapsed)
 
     out = Path(args.out)
@@ -150,7 +155,7 @@ def main(argv=None):
     raw = out / f"load-{args.engine}-{args.dataset}.jsonl"
     raw.write_text("".join(json.dumps(r) + "\n" for r in results), encoding="utf-8")
     command = shlex.join(["python3", "perf/load.py", "--engine", args.engine, "--base-url", args.base_url,
-                          "--concurrency", str(args.concurrency), "--duration", f"{args.duration:g}", "--dataset", args.dataset,
+                          "--concurrency", str(args.concurrency), "--duration", f"{args.duration:g}", "--warmup", f"{args.warmup:g}", "--dataset", args.dataset,
                           "--machine", args.machine, "--engine-version", args.engine_version, "--out", args.out,
                           "--shapes", ",".join(name for name, _ in shapes)])
     manifest = {
@@ -159,7 +164,7 @@ def main(argv=None):
         "dataset": args.dataset,
         "engine": args.engine,
         "engine_version": args.engine_version,
-        "load": {"concurrency": args.concurrency, "duration_seconds": args.duration},
+        "load": {"concurrency": args.concurrency, "duration_seconds": args.duration, "warmup_seconds": args.warmup},
         "shapes": [name for name, _ in shapes],
         "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         "commit": args.commit or current_commit(),

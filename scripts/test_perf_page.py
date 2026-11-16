@@ -47,7 +47,7 @@ def write_results(root, compile_mean=12345.6, slow=False):
     for engine, version in (("postgres", "PostgreSQL 16.4"), ("mongo", "MongoDB 7.0.14")):
         manifest = {
             "machine": "test-box", "platform": "Linux 6.8, 4 logical CPUs, Python 3.12", "dataset": "10k", "engine": engine,
-            "engine_version": version, "load": {"concurrency": 8, "duration_seconds": 60}, "shapes": ["number-gt.json"],
+            "engine_version": version, "load": {"concurrency": 8, "duration_seconds": 60, "warmup_seconds": 5}, "shapes": ["number-gt.json"],
             "date": "2026-11-20", "commit": "abc1234",
             "command": f"python3 perf/load.py --engine {engine} --dataset 10k --out perf/results/2026-11-20",
             "summary": {"count": 5000, "errors": 0, "requests_per_second": 83.33, "p50_ms": 8.5, "p95_ms": 15.6, "p99_ms": 21.2},
@@ -132,7 +132,7 @@ class RenderTests(unittest.TestCase):
 
     def test_each_run_states_machine_dataset_versions_load_date_commit_and_the_repeat_command(self):  # T3
         page, _, _ = self.render()
-        for expected in ("test-box", "10k", "PostgreSQL 16.4", "MongoDB 7.0.14", "8 threads", "60 seconds", "2026-11-20", "abc1234",
+        for expected in ("test-box", "10k", "PostgreSQL 16.4", "MongoDB 7.0.14", "8 threads", "60 seconds", "5 seconds of warm-up", "2026-11-20", "abc1234",
                          "python3 perf/load.py --engine postgres --dataset 10k"):
             self.assertIn(expected, page)
 
