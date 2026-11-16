@@ -36,7 +36,9 @@ def metrics(results):
         for pair in benchmark["Parameters"].split("&"):
             key, _, value = pair.partition("=")
             params[key] = value
-        found[f"compile {params['Backend']}/{params['Shape']} mean"] = (benchmark["Statistics"]["Mean"], reports[0])
+        path = params.get("SchemaPath", "full-compile")
+        suffix = " prepared" if path == "prepared-schema" else ""
+        found[f"compile {params['Backend']}/{params['Shape']}{suffix} mean"] = (benchmark["Statistics"]["Mean"], reports[0])
     manifests = sorted(results.glob("manifest-*.json"))
     if not manifests:
         raise RunError(f"{results}: no load manifest")
