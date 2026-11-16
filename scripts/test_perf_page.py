@@ -98,6 +98,24 @@ class RenderTests(unittest.TestCase):
                     checked += 1
             self.assertGreaterEqual(checked, 12)
 
+    def test_the_ef_engine_has_its_own_row_and_label(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            results = write_results(root)
+            manifest = json.loads((results / "manifest-postgres-10k.json").read_text(encoding="utf-8"))
+            manifest["engine"] = "ef"
+            manifest["engine_version"] = "PostgreSQL 16.4 through Npgsql.EntityFrameworkCore.PostgreSQL 10.0.3"
+            manifest["summary"]["p50_ms"] = 9.9
+            (results / "manifest-ef-10k.json").write_text(json.dumps(manifest), encoding="utf-8")
+            (results / "load-ef-10k.jsonl").write_text("{}\n", encoding="utf-8")
+            page_dir = root / "site" / "pages"
+            page_dir.mkdir(parents=True)
+            page = module.render(results, page_dir)
+            self.assertIn("PostgreSQL through EF Core", page)
+            self.assertIn("9.9 ms", page)
+            self.assertIn("Npgsql.EntityFrameworkCore.PostgreSQL 10.0.3", page)
+
     def test_the_numbers_come_from_the_results_not_from_the_text(self):  # T1
         page, _, _ = self.render()
         for expected in ("12.3 µs", "6.8 KiB", "8.5 ms", "15.6 ms", "21.2 ms", "83.3 /s"):
