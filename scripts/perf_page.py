@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generates the performance page of the docs site from the raw results of a run (story #3324, task #3849, spec FR-20).
 
-Usage: python3 scripts/perf_page.py <results dir> [--repeat <repeat run dir>] [--page site/pages/performance.md] [--site-json site/site.json]
+Usage: python3 scripts/perf_page.py <results dir> [--repeat <repeat run dir>] [--single <one-client run dir>] [--page site/pages/performance.md] [--site-json site/site.json]
 Reads <results dir>/compile/results/*-report-full.json (the BenchmarkDotNet output), compile/manifest-compile.json and every
 manifest-<engine>-<dataset>.json; writes the page, then registers it once in the site config. Every number in a table is a link to the
 raw file it came from, so none is typed by hand. Exit 0 = written, 2 = no results or an unreadable result file (nothing is written).
@@ -101,7 +101,34 @@ def repeatability(results, repeat, page_dir, limit=10.0):
     return lines + [""]
 
 
-def render(results, page_dir, repeat=None):
+def load_rows(manifests, page_dir):
+    rows = []
+    for path, manifest in sorted(manifests, key=lambda item: (item[1]["dataset"], item[1]["engine"])):
+        s = manifest["summary"]
+        engine = ENGINE_LABELS.get(manifest["engine"], manifest["engine"])
+        cells = [
+            link(f"{s['p50_ms']:.1f} ms", path, page_dir),
+            link(f"{s['p95_ms']:.1f} ms", path, page_dir),
+            link(f"{s['p99_ms']:.1f} ms", path, page_dir),
+            link(f"{s['requests_per_second']:.1f} /s", path, page_dir),
+            link(str(s["errors"]), path, page_dir),
+        ]
+        rows.append(f"| {engine} | {manifest['dataset']} | " + " | ".join(cells) + " |")
+    return rows
+
+
+def single_client(single, page_dir):
+    manifests = [(path, read_json(path)) for path in sorted(Path(single).glob("manifest-*.json"))]
+    if not manifests:
+        raise ResultsError(f"{single}: no load manifest")
+    return ["## One client at a time", "",
+            "The table above has 8 clients sending requests at once on the same machine, so at 1 million rows it includes waiting. "
+            "These runs use one client, so each number is what a single request costs on an otherwise idle server.", "",
+            "| Engine | Rows | p50 | p95 | p99 | Throughput | Failed |", "|---|---|---|---|---|---|---|",
+            *load_rows(manifests, page_dir), ""]
+
+
+def render(results, page_dir, repeat=None, single=None):
     results, page_dir = Path(results), Path(page_dir)
     report_files = sorted((results / "compile" / "results").glob("*-report-full.json"))
     manifest_files = sorted(results.glob("manifest-*.json"))
@@ -138,18 +165,10 @@ def render(results, page_dir, repeat=None):
         "| Engine | Rows | p50 | p95 | p99 | Throughput | Failed |",
         "|---|---|---|---|---|---|---|",
     ]
-    for path, manifest in sorted(manifests, key=lambda item: (item[1]["dataset"], item[1]["engine"])):
-        s = manifest["summary"]
-        engine = ENGINE_LABELS.get(manifest["engine"], manifest["engine"])
-        cells = [
-            link(f"{s['p50_ms']:.1f} ms", path, page_dir),
-            link(f"{s['p95_ms']:.1f} ms", path, page_dir),
-            link(f"{s['p99_ms']:.1f} ms", path, page_dir),
-            link(f"{s['requests_per_second']:.1f} /s", path, page_dir),
-            link(str(s["errors"]), path, page_dir),
-        ]
-        out.append(f"| {engine} | {manifest['dataset']} | " + " | ".join(cells) + " |")
+    out += load_rows(manifests, page_dir)
     out += [""]
+    if single is not None:
+        out += single_client(single, page_dir)
     if repeat is not None:
         out += repeatability(results, Path(repeat), page_dir)
     out += ["## How each result was produced", "", "### Compile benchmark", "",
@@ -189,10 +208,11 @@ def main(argv=None):
     parser.add_argument("--page", default=str(ROOT / "site" / "pages" / "performance.md"))
     parser.add_argument("--site-json", default=str(ROOT / "site" / "site.json"))
     parser.add_argument("--repeat")
+    parser.add_argument("--single")
     args = parser.parse_args(argv)
     page = Path(args.page)
     try:
-        text = render(Path(args.results), page.parent, Path(args.repeat) if args.repeat else None)
+        text = render(Path(args.results), page.parent, Path(args.repeat) if args.repeat else None, Path(args.single) if args.single else None)
     except (ResultsError, KeyError, TypeError) as error:
         print(f"perf_page.py: {error}", file=sys.stderr)
         return 2
