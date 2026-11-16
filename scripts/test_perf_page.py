@@ -152,6 +152,49 @@ class RenderTests(unittest.TestCase):
         self.assertLess(max(len(line) for line in page.splitlines() if line.startswith("## ")), 60)
 
 
+class RepeatabilityTests(unittest.TestCase):
+    """NFR-08, AC-4: the page states how a repeat run compared, and every number it quotes links to its raw file."""
+
+    def scaled(self, results, factor):
+        for path in results.glob("manifest-*-*.json"):
+            manifest = json.loads(path.read_text(encoding="utf-8"))
+            manifest["summary"]["p99_ms"] *= factor
+            path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    def render(self, factor):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as one, tempfile.TemporaryDirectory() as two:
+            first, second = write_results(Path(one)), write_results(Path(two))
+            self.scaled(second, factor)
+            page_dir = Path(one) / "site" / "pages"
+            page_dir.mkdir(parents=True)
+            page = module.render(first, page_dir, repeat=second)
+            return page
+
+    def test_identical_runs_say_every_measurement_is_within_the_limit(self):
+        page = self.render(1.0)
+        self.assertIn("## Repeatability", page)
+        self.assertIn("within 10%", page)
+        self.assertNotIn("are not", page)
+
+    def test_a_difference_above_the_limit_is_listed_with_both_numbers_linked(self):
+        page = self.render(1.25)
+        self.assertIn("are not", page)
+        bullets = [line for line in page.splitlines() if line.startswith("- ") and "apart" in line]
+        self.assertEqual(2, len(bullets))
+        for line in bullets:
+            self.assertIn("25.0% apart", line)
+            self.assertEqual(2, line.count("]("), line)
+
+    def test_without_a_repeat_there_is_no_repeatability_section(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            results = write_results(Path(tmp))
+            page_dir = Path(tmp) / "site" / "pages"
+            page_dir.mkdir(parents=True)
+            self.assertNotIn("Repeatability", module.render(results, page_dir))
+
+
 class CompareTests(unittest.TestCase):
     """T6: perf/compare.py <first run> <second run> [--limit 10]: exit 0 = every metric of the second run is within the limit
     (percent, default 10, NFR-08) of the first, 1 = at least one is not (each is listed), 2 = a run is missing or unreadable."""
@@ -251,6 +294,17 @@ class CliTests(unittest.TestCase):
         args = [sys.executable, "-I", str(PAGE_SCRIPT), str(results), "--page", str(page), "--site-json", str(site_json),
                 *extra]
         return subprocess.run(args, capture_output=True, text=True, timeout=60), page, site_json
+
+    def test_the_cli_takes_the_repeat_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            results = write_results(root)
+            repeat = root / "perf" / "results" / "2026-11-20-repeat"
+            import shutil
+            shutil.copytree(results, repeat)
+            result, page, _ = self.run_cli(root, results, "--repeat", str(repeat))
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertIn("## Repeatability", page.read_text(encoding="utf-8"))
 
     def test_it_writes_the_page_and_registers_it_once(self):  # T4
         with tempfile.TemporaryDirectory() as tmp:
