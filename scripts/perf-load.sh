@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Load test of one demo engine on a throwaway local stack (story #3324, task #3847, spec FR-18).
-# Usage: bash scripts/perf-load.sh <postgres|mongo> <10k|1m> [extra perf/load.py arguments]
+# Usage: bash scripts/perf-load.sh <postgres|ef|mongo> <10k|1m> [extra perf/load.py arguments]
+# `ef` is the same PostgreSQL database reached through the EF Core adapter (route /api/ef): it uses the postgres container and seed.
 # Starts the database in its own compose project (craticula-perf, its own ports and volumes: your dev demo data is untouched),
 # seeds it with that many rows, starts the API WITHOUT public mode (the public demos refuse more than 60 requests a minute per
 # address), runs perf/load.py, then stops everything and removes the throwaway volumes.
@@ -8,10 +9,12 @@
 # PERF_OUT (default perf/results/<date>, relative to the repository: the manifest repeats it as given), PERF_API_PORT (default 5081). Needs docker compose, the .NET SDK and Python 3.10+.
 set -euo pipefail
 
-usage() { echo "usage: bash scripts/perf-load.sh <postgres|mongo> <10k|1m> [extra perf/load.py arguments]" >&2; exit 2; }
+usage() { echo "usage: bash scripts/perf-load.sh <postgres|ef|mongo> <10k|1m> [extra perf/load.py arguments]" >&2; exit 2; }
 [ $# -ge 2 ] || usage
 ENGINE="$1"; SIZE="$2"; shift 2
-case "$ENGINE" in postgres|mongo) ;; *) usage ;; esac
+case "$ENGINE" in postgres|ef|mongo) ;; *) usage ;; esac
+# the database behind the route: `ef` is PostgreSQL through another adapter
+DATABASE="$ENGINE"; [ "$ENGINE" = ef ] && DATABASE=postgres
 case "$SIZE" in 10k) ROWS=10000 ;; 1m) ROWS=1000000 ;; *) usage ;; esac
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -36,16 +39,20 @@ cleanup() {
 }
 trap cleanup EXIT
 
-compose up -d --wait "$ENGINE"
-CONTAINER="$(compose ps -q "$ENGINE")"
+compose up -d --wait "$DATABASE"
+CONTAINER="$(compose ps -q "$DATABASE")"
 IMAGE="$(docker inspect --format '{{.Config.Image}}' "$CONTAINER")"
 VERSION="$IMAGE"
-case "$ENGINE" in
+case "$DATABASE" in
   postgres) VERSION="$(docker exec "$CONTAINER" postgres --version | tr -d '\r')" ;;
   mongo) VERSION="MongoDB $(docker exec "$CONTAINER" mongod --version | sed -n 's/^db version v//p' | head -1)" ;;
 esac
+if [ "$ENGINE" = ef ]; then
+  EF_PROVIDER="$(sed -n 's/.*"Npgsql.EntityFrameworkCore.PostgreSQL" Version="\([^"]*\)".*/\1/p' "$DEMO/Directory.Packages.props")"
+  VERSION="$VERSION through Npgsql.EntityFrameworkCore.PostgreSQL $EF_PROVIDER"
+fi
 
-dotnet run --project "$DEMO/Api" -c Release -- seed "$ENGINE" --rows "$ROWS"
+dotnet run --project "$DEMO/Api" -c Release -- seed "$DATABASE" --rows "$ROWS"
 Logging__LogLevel__Default=Warning dotnet run --project "$DEMO/Api" -c Release --no-build --no-launch-profile --urls "http://127.0.0.1:$API_PORT" &
 API_PID=$!
 for _ in $(seq 1 60); do

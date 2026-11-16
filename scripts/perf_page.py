@@ -15,7 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TARGET_NS = 50_000
-ENGINE_LABELS = {"postgres": "PostgreSQL", "mongo": "MongoDB"}
+ENGINE_LABELS = {"postgres": "PostgreSQL", "ef": "PostgreSQL through EF Core", "mongo": "MongoDB"}
 SITE_ENTRY = {
     "slug": "performance",
     "title": "Performance",

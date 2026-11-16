@@ -4,7 +4,7 @@
 Offline: a fake demo on 127.0.0.1 (plain http, a thread) answers the rows route; nothing leaves the machine.
 Contract of perf/load.py (exit 0 = the run finished and the oversized request was refused the way the demo refuses it,
 1 = it finished but the oversized request was not handled, 2 = bad arguments):
-  --engine <postgres|mongo>   --base-url <url>   --concurrency <n>   --duration <seconds>   --dataset <label, e.g. 10k>
+  --engine <postgres|ef|mongo>   --base-url <url>   --concurrency <n>   --duration <seconds>   --dataset <label, e.g. 10k>
   --machine <label>   --engine-version <text>   --out <dir>   [--shapes a.json,b.json]   [--commit <sha>]   [--repeat-command <text>]
   Posts the request bodies of examples/demo/smoke to <base-url>/api/<engine>/rows from <concurrency> threads for <duration>
   seconds; prints p50, p95, p99 (milliseconds) and requests per second; writes load-<engine>-<dataset>.jsonl (one line per request)
@@ -148,6 +148,18 @@ class RunTests(unittest.TestCase):
             self.assertEqual(1, run_load(url, out).returncode)
 
 
+class EfEngineTests(unittest.TestCase):
+    """The demo serves PostgreSQL twice: through Dapper (route postgres) and through the EF Core adapter (route ef)."""
+
+    def test_the_ef_route_is_loaded_and_keeps_its_own_files(self):
+        with Demo() as url, tempfile.TemporaryDirectory() as out:
+            result = run_load(url, out, engine="ef")
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertTrue(Path(out, "load-ef-10k.jsonl").is_file())
+            manifest = json.loads(Path(out, "manifest-ef-10k.json").read_text(encoding="utf-8"))
+            self.assertEqual("ef", manifest["engine"])
+
+
 class RepeatCommandTests(unittest.TestCase):
     """FR-19: a reviewer repeats a run from the page alone, so the manifest records the command that does everything."""
 
@@ -171,6 +183,12 @@ class ScriptGuardTests(unittest.TestCase):
         result = self.run_script("perf-load.sh", ["postgres", "10k"], {})
         self.assertEqual(2, result.returncode)
         self.assertIn("PERF_MACHINE", result.stderr)
+
+    def test_perf_load_accepts_the_ef_engine_name(self):
+        result = self.run_script("perf-load.sh", ["ef", "10k"], {})
+        self.assertEqual(2, result.returncode)
+        self.assertIn("PERF_MACHINE", result.stderr)  # past the engine check, stopped by the next guard
+        self.assertNotIn("usage:", result.stderr)
 
     def test_perf_load_refuses_an_absolute_output_path(self):
         result = self.run_script("perf-load.sh", ["postgres", "10k"], {"PERF_MACHINE": "box", "PERF_OUT": ABSOLUTE_PATH})
