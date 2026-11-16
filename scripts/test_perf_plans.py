@@ -35,6 +35,11 @@ class LiteralTests(unittest.TestCase):
         self.assertEqual("'acme'", plans.sql_literal("acme"))
         self.assertEqual("'O''Brien'", plans.sql_literal("O'Brien"))
 
+    def test_a_list_is_an_array_literal(self):
+        plans = load_module()
+        self.assertEqual("ARRAY['shipped', 'delivered']", plans.sql_literal(["shipped", "delivered"]))
+        self.assertEqual("ARRAY[1, 2]", plans.sql_literal([1, 2]))
+
     def test_the_statement_prepares_then_explains_with_the_parameters(self):
         plans = load_module()
         statement = plans.explain_statement('SELECT 1 FROM "orders" WHERE "quantity" > $1 LIMIT $2', [8, 100])
@@ -94,6 +99,37 @@ Execution Time: 912.5 ms"""
         plans = load_module()
         with self.assertRaises(ValueError):
             plans.summarize_mongo({"ok": 1})
+
+
+class CountStatementTests(unittest.TestCase):
+    """The demo asks for the total row count on every block (includeRowCount: true): SELECT COUNT(*) FROM (<statement without its row window>)."""
+
+    def test_the_row_window_is_removed_and_its_parameters_dropped(self):
+        plans = load_module()
+        sql, params = plans.count_statement('SELECT "id" FROM "orders" WHERE "quantity" > $1 ORDER BY "id" ASC LIMIT $2 OFFSET $3', [8, 100, 0])
+        self.assertEqual('SELECT COUNT(*) FROM (SELECT "id" FROM "orders" WHERE "quantity" > $1 ORDER BY "id" ASC) craticula_count', sql)
+        self.assertEqual([8], params)
+
+    def test_a_statement_without_a_row_window_is_wrapped_unchanged(self):
+        plans = load_module()
+        sql, params = plans.count_statement('SELECT "country" FROM "orders" GROUP BY "country"', [])
+        self.assertEqual('SELECT COUNT(*) FROM (SELECT "country" FROM "orders" GROUP BY "country") craticula_count', sql)
+        self.assertEqual([], params)
+
+
+class MongoCommandTests(unittest.TestCase):
+    def test_a_plain_pipeline_has_no_options(self):
+        plans = load_module()
+        pipeline, options = plans.mongo_parts('[{"$match": {"quantity": {"$gt": 8}}}]')
+        self.assertEqual([{"$match": {"quantity": {"$gt": 8}}}], pipeline)
+        self.assertEqual({}, options)
+
+    def test_a_pipeline_with_a_collation_passes_it_as_an_option(self):
+        plans = load_module()
+        text = json.dumps({"pipeline": [{"$match": {"status": {"$in": ["shipped"]}}}], "collation": {"locale": "en", "strength": 2}})
+        pipeline, options = plans.mongo_parts(text)
+        self.assertEqual([{"$match": {"status": {"$in": ["shipped"]}}}], pipeline)
+        self.assertEqual({"collation": {"locale": "en", "strength": 2}}, options)
 
 
 class CliTests(unittest.TestCase):
