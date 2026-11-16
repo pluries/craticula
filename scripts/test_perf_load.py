@@ -239,6 +239,15 @@ class ScriptGuardTests(unittest.TestCase):
         self.assertIn("PERF_MACHINE", result.stderr)  # past the engine check, stopped by the next guard
         self.assertNotIn("usage:", result.stderr)
 
+    def test_perf_single_requires_the_machine_label(self):
+        result = self.run_script("perf-single.sh", [], {})
+        self.assertEqual(2, result.returncode)
+        self.assertIn("PERF_MACHINE", result.stderr)
+
+    def test_perf_single_refuses_an_absolute_date_folder(self):
+        result = self.run_script("perf-single.sh", [ABSOLUTE_PATH], {"PERF_MACHINE": "box"})
+        self.assertEqual(2, result.returncode)
+
     def test_perf_load_refuses_an_absolute_output_path(self):
         result = self.run_script("perf-load.sh", ["postgres", "10k"], {"PERF_MACHINE": "box", "PERF_OUT": ABSOLUTE_PATH})
         self.assertEqual(2, result.returncode)

@@ -152,6 +152,61 @@ class RenderTests(unittest.TestCase):
         self.assertLess(max(len(line) for line in page.splitlines() if line.startswith("## ")), 60)
 
 
+class SingleClientTests(unittest.TestCase):
+    """AC-2 of story #3856: the page shows a run with one client next to the concurrent one, every number linked."""
+
+    def single_run(self, root):
+        results = write_results(root)
+        for path in results.glob("manifest-*-*.json"):
+            manifest = json.loads(path.read_text(encoding="utf-8"))
+            manifest["load"]["concurrency"] = 1
+            manifest["summary"]["p50_ms"] = 3.3
+            path.write_text(json.dumps(manifest), encoding="utf-8")
+        return results
+
+    def render(self, with_single=True):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as one, tempfile.TemporaryDirectory() as two:
+            first = write_results(Path(one))
+            single = self.single_run(Path(two)) if with_single else None
+            page_dir = Path(one) / "site" / "pages"
+            page_dir.mkdir(parents=True)
+            return module.render(first, page_dir, single=single)
+
+    def test_the_page_has_a_section_with_the_one_client_numbers(self):
+        page = self.render()
+        self.assertIn("## One client at a time", page)
+        self.assertIn("3.3 ms", page)
+
+    def test_every_number_of_that_section_is_a_link(self):
+        page = self.render()
+        section = page.split("## One client at a time")[1].split("\n## ")[0]
+        rows = [line for line in section.splitlines() if line.startswith("|") and is_measurement(line.strip("|").split("|")[2].strip())]
+        self.assertGreaterEqual(len(rows), 2)
+        for row in rows:
+            for cell in [c.strip() for c in row.strip("|").split("|")][2:6]:
+                self.assertTrue(cell.startswith("[") and "](" in cell, f"a number without a link: {cell!r}")
+
+    def test_without_a_single_client_run_there_is_no_such_section(self):
+        self.assertNotIn("One client at a time", self.render(with_single=False))
+
+    def test_the_cli_takes_the_single_client_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            results = write_results(root)
+            import shutil
+            single = root / "perf" / "results" / "2026-11-20-single"
+            shutil.copytree(results, single)
+            page = root / "site" / "pages" / "performance.md"
+            site_json = root / "site" / "site.json"
+            site_json.parent.mkdir(parents=True, exist_ok=True)
+            site_json.write_text(json.dumps({"pages": []}), encoding="utf-8")
+            result = subprocess.run([sys.executable, "-I", str(PAGE_SCRIPT), str(results), "--single", str(single), "--page", str(page),
+                                     "--site-json", str(site_json)], capture_output=True, text=True, timeout=60)
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertIn("## One client at a time", page.read_text(encoding="utf-8"))
+
+
 class RepeatabilityTests(unittest.TestCase):
     """NFR-08, AC-4: the page states how a repeat run compared, and every number it quotes links to its raw file."""
 
