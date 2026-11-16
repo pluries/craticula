@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>Craticula.Benchmarks.CompileBenchmarks-20261116-134311</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.15.8, Linux Ubuntu 26.04.1 LTS (Resolute Raccoon)
+Intel Xeon CPU E5-1650 v4 3.60GHz, 1 CPU, 10 logical and 10 physical cores
+.NET SDK 10.0.404
+  [Host]     : .NET 10.0.15 (10.0.15, 10.0.1526.53008), X64 RyuJIT x86-64-v3
+  DefaultJob : .NET 10.0.15 (10.0.15, 10.0.1526.53008), X64 RyuJIT x86-64-v3
+</code></pre>
+<pre><code></code></pre>
+
+<table>
+<thead><tr><th>Method</th><th>Shape    </th><th>Backend</th><th>Mean</th><th>Error</th><th>StdDev</th><th>Median</th><th>Gen0</th><th>Allocated</th>
+</tr>
+</thead><tbody><tr><td>Compile</td><td>deep-filter</td><td>mongo</td><td>46.57 &mu;s</td><td>2.183 &mu;s</td><td>6.227 &mu;s</td><td>45.17 &mu;s</td><td>1.9531</td><td>17.72 KB</td>
+</tr><tr><td>Compile</td><td>deep-filter</td><td>postgres</td><td>42.40 &mu;s</td><td>1.477 &mu;s</td><td>4.286 &mu;s</td><td>41.97 &mu;s</td><td>1.4648</td><td>13.44 KB</td>
+</tr><tr><td>Compile</td><td>deep-filter</td><td>search</td><td>41.60 &mu;s</td><td>1.536 &mu;s</td><td>4.481 &mu;s</td><td>40.72 &mu;s</td><td>1.9531</td><td>17.83 KB</td>
+</tr><tr><td>Compile</td><td>filter-tree</td><td>mongo</td><td>51.00 &mu;s</td><td>2.750 &mu;s</td><td>7.935 &mu;s</td><td>49.24 &mu;s</td><td>1.9531</td><td>17.67 KB</td>
+</tr><tr><td>Compile</td><td>filter-tree</td><td>postgres</td><td>50.35 &mu;s</td><td>2.111 &mu;s</td><td>5.988 &mu;s</td><td>49.87 &mu;s</td><td>1.4648</td><td>13.92 KB</td>
+</tr><tr><td>Compile</td><td>filter-tree</td><td>search</td><td>48.79 &mu;s</td><td>2.443 &mu;s</td><td>6.970 &mu;s</td><td>48.63 &mu;s</td><td>0.9766</td><td>15.18 KB</td>
+</tr><tr><td>Compile</td><td>group-aggregate</td><td>mongo</td><td>58.56 &mu;s</td><td>2.308 &mu;s</td><td>6.622 &mu;s</td><td>58.26 &mu;s</td><td>1.9531</td><td>17.24 KB</td>
+</tr><tr><td>Compile</td><td>group-aggregate</td><td>postgres</td><td>55.03 &mu;s</td><td>1.759 &mu;s</td><td>5.159 &mu;s</td><td>53.71 &mu;s</td><td>1.4648</td><td>15.1 KB</td>
+</tr><tr><td>Compile</td><td>group-aggregate</td><td>search</td><td>60.92 &mu;s</td><td>2.392 &mu;s</td><td>6.940 &mu;s</td><td>59.97 &mu;s</td><td>1.4648</td><td>15.04 KB</td>
+</tr><tr><td>Compile</td><td>plain-page</td><td>mongo</td><td>21.28 &mu;s</td><td>0.529 &mu;s</td><td>1.535 &mu;s</td><td>20.95 &mu;s</td><td>1.3123</td><td>10.73 KB</td>
+</tr><tr><td>Compile</td><td>plain-page</td><td>postgres</td><td>16.72 &mu;s</td><td>0.449 &mu;s</td><td>1.280 &mu;s</td><td>16.36 &mu;s</td><td>0.7324</td><td>6.89 KB</td>
+</tr><tr><td>Compile</td><td>plain-page</td><td>search</td><td>16.68 &mu;s</td><td>0.331 &mu;s</td><td>0.905 &mu;s</td><td>16.52 &mu;s</td><td>0.7324</td><td>6.55 KB</td>
+</tr></tbody></table>
+</body>
+</html>
