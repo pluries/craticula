@@ -21,6 +21,28 @@ internal static class SqlExecutionRunner
             .Where(name => File.Exists(RepoPaths.Fixture([.. name.Split('/'), "expected", $"{backend}.artifact.json"])))
             .Select(name => new object[] { name });
 
+    /// <summary>
+    /// SC-2 of story #3863 for one fixture on one engine: the count equals the number of rows the same request returns when
+    /// nothing bounds the window (a grouped level counts its groups). A fixture the engine is expected to refuse (XEQ-4)
+    /// or a distinct-values request has no count to compare.
+    /// </summary>
+    public static async Task AssertCountEqualsUnpagedRowsAsync(SqlEngine engine, string name)
+    {
+        var fixture = ExecutionFixture.Load(name);
+        if (!SqlFixtureCompiler.IsRowFetch(fixture) || fixture.ExpectationFor(engine.Backend) is ExpectError)
+        {
+            return;
+        }
+
+        var unpaged = await engine.RunAsync(fixture, SqlFixtureCompiler.CompileUnpaged(fixture, engine.Dialect));
+        var counted = await engine.RunAsync(fixture, SqlFixtureCompiler.CompileCount(fixture, engine.Dialect));
+
+        var total = Convert.ToInt64(Assert.Single(counted.Rows)[0], System.Globalization.CultureInfo.InvariantCulture);
+        Assert.True(
+            total == unpaged.Rows.Count,
+            $"{name} on {engine.Backend}: the count says {total} but the unpaged request returns {unpaged.Rows.Count} row(s).\n  count SQL: {counted.SentSql}\n  rows SQL: {unpaged.SentSql}");
+    }
+
     public static async Task AssertMatchesOracleAsync(SqlEngine engine, string name)
     {
         var fixture = ExecutionFixture.Load(name);
