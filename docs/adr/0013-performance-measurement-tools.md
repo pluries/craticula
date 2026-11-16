@@ -1,9 +1,9 @@
 # ADR-0013: Performance is measured with BenchmarkDotNet, a standard-library load script and a generated page
 
-Status: Proposed   Date: 2026-11-15
+Status: Accepted   Date: 2026-11-16
 Work items: #3324, #3845, #3846, #3847, #3848, #3849   Classification: Public
 
-It names no private path or host. Accepting it needs the maintainer's entry for BenchmarkDotNet in the approved stack record (#3845); until then the story runs with that deviation, which the maintainer allowed on 2026-11-15.
+The maintainer accepted this record on 2026-11-16 as project lead and technical lead (solo mode), after entering BenchmarkDotNet in the approved stack record (#3845, commit 2f021b7f). Between 2026-11-15 and that entry the story used the library with the maintainer's agreement. It names no private path or host.
 
 ## Context
 
@@ -28,9 +28,9 @@ It names no private path or host. Accepting it needs the maintainer's entry for 
 
 - Positive: repeatable, linked numbers; no new binary beyond one NuGet package.
 - Negative: BenchmarkDotNet adds a large transitive dependency tree to `csharp/tools` (licence gate: 0 failures at 161 packages). Python's thread-based load script limits the rate it can generate, which is enough for the demo API.
-- Follow-up: the maintainer records BenchmarkDotNet (#3845) and runs the measurement on a quiet machine (#3848).
+- Follow-up: none for the tools. The first measurement ran on 2026-11-16 (#3848).
 
 ## Compliance
 
-- Third-party library: needs the Engineering Lead's approval (`compliance.md` §4), pending #3845. No PII: the seed is synthetic. No secret: the throwaway database uses the demo's public development password.
+- Third-party library: the Engineering Lead's approval (`compliance.md` §4) is the maintainer's entry in the approved stack record (#3845). No PII: the seed is synthetic. No secret: the throwaway database uses the demo's public development password.
 - Published files carry a machine label chosen by the maintainer, never the host name or an absolute path; the scripts refuse both.
