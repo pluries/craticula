@@ -1,5 +1,7 @@
 using System.Text.Json.Nodes;
 using Craticula.Conformance.Driver;
+using Craticula.Mongo;
+using Craticula.Search;
 using Craticula.Sql;
 
 namespace Craticula.Conformance.Tests;
@@ -74,12 +76,37 @@ public class CompileModeTests
         Assert.Empty(query.Parameters);
     }
 
+    [Fact]
+    public void A_Count_Request_On_Mongo_Compiles_To_A_Pipeline_Ending_In_Count()
+    {
+        var query = Assert.IsType<MongoQuery>(
+            RequestCompiler.Compile("mongo", Read(FlatCase, "schema.json"), Read(FlatCase, "agGridRequest.json")));
+
+        Assert.Equal("""{"$count":"count"}""", query.Pipeline[^1].ToJsonString());
+        Assert.DoesNotContain(query.Pipeline, stage => stage.First().Key is "$sort" or "$skip" or "$limit");
+    }
+
+    [Fact]
+    public void A_Count_Request_On_Search_Compiles_To_A_Body_Without_Rows()
+    {
+        var query = Assert.IsType<SearchQuery>(
+            RequestCompiler.Compile("search", Read(FlatCase, "schema.json"), Read(FlatCase, "agGridRequest.json")));
+
+        var body = query.ToArtifact();
+        Assert.Equal(0, body["size"]!.GetValue<int>());
+        Assert.False(body.ContainsKey("sort"));
+        Assert.False(body.ContainsKey("from"));
+    }
+
     [Theory]
+    [InlineData("postgres")]
     [InlineData("mongo")]
     [InlineData("search")]
-    public void Count_Mode_On_A_Backend_Without_A_Count_Builder_Is_An_Error_Not_A_Page_Artifact(string backend)
+    public void Count_Mode_On_A_Set_Values_Request_Is_An_Error(string backend)
     {
+        var request = JsonNode.Parse("""{"setValuesRequest":{"colId":"lastName"},"requestContext":{"compileMode":"count"}}""")!.ToJsonString();
+
         Assert.Throws<NotSupportedException>(
-            () => RequestCompiler.Compile(backend, Read(FlatCase, "schema.json"), Read(FlatCase, "agGridRequest.json")));
+            () => RequestCompiler.Compile(backend, Read(FlatCase, "schema.json"), request));
     }
 }

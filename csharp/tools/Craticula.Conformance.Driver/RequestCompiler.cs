@@ -62,10 +62,10 @@ internal static class RequestCompiler
 
         var request = Prepare(schema, agGridRequestJson);
 
-        if (request.CountMode && (request.IsSetValues || backend is "mongo" or "search"))
+        if (request.CountMode && request.IsSetValues)
         {
             throw new NotSupportedException(
-                $"Count mode (requestContext.compileMode \"count\") has no entry point yet for backend '{backend}' or for a set-values request.");
+                "Count mode (requestContext.compileMode \"count\") counts the rows of a row request; a set-values request has no count.");
         }
 
         return backend switch
@@ -132,7 +132,7 @@ internal static class RequestCompiler
 
         var row = PrepareRowFetch(request);
 
-        return MongoPipelineBuilder.Build(new MongoQueryRequest
+        var mongoRequest = new MongoQueryRequest
         {
             Schema = row.Schema,
             Filter = row.Filter,
@@ -142,7 +142,9 @@ internal static class RequestCompiler
             Aggregations = row.Parsed.Aggregations,
             Projection = row.Parsed.Export?.ProjectionColumns,
             MaxQueryTimeMs = request.Limits.MaxQueryTimeMs
-        });
+        };
+
+        return request.CountMode ? MongoPipelineBuilder.BuildCount(mongoRequest) : MongoPipelineBuilder.Build(mongoRequest);
     }
 
     /// <summary>No <c>Projection</c> on the row-fetch path, exactly as <c>SearchFixtureCompiler</c>:
@@ -166,7 +168,7 @@ internal static class RequestCompiler
 
         var row = PrepareRowFetch(request);
 
-        return SearchQueryBuilder.Build(new SearchQueryRequest
+        var searchRequest = new SearchQueryRequest
         {
             Schema = row.Schema,
             Filter = row.Filter,
@@ -175,7 +177,9 @@ internal static class RequestCompiler
             Group = row.Parsed.Group,
             Aggregations = row.Parsed.Aggregations,
             MaxQueryTimeMs = request.Limits.MaxQueryTimeMs
-        });
+        };
+
+        return request.CountMode ? SearchQueryBuilder.BuildCount(searchRequest) : SearchQueryBuilder.Build(searchRequest);
     }
 
     /// <summary>SEC-3's default <see cref="ResourceLimits"/>, never raised or lowered, plus the harness's TL-4 query time limit when the fixture declares one (§3).</summary>
