@@ -1,0 +1,8 @@
+{
+  "dialect": "sqlite",
+  "sql": "SELECT COUNT(*) FROM \"sales_fact\" WHERE (\"region\" = ? AND \"segment\" = ?)",
+  "params": [
+    "EMEA",
+    "Enterprise"
+  ]
+}

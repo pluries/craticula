@@ -1,0 +1,8 @@
+{
+  "dialect": "postgres",
+  "sql": "SELECT COUNT(*) FROM \"sales_fact\" WHERE (\"region\" = $1 AND \"segment\" = $2)",
+  "params": [
+    "EMEA",
+    "Enterprise"
+  ]
+}

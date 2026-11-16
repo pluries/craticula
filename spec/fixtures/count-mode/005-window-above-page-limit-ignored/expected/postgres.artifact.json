@@ -1,0 +1,5 @@
+{
+  "dialect": "postgres",
+  "sql": "SELECT COUNT(*) FROM \"employees\"",
+  "params": []
+}

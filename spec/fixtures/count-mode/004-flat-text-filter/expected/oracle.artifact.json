@@ -1,0 +1,7 @@
+{
+  "dialect": "oracle",
+  "sql": "SELECT COUNT(*) FROM \"employees\" WHERE \"lastName\" COLLATE BINARY_CI LIKE '%' || :p1 || '%' ESCAPE '\\'",
+  "params": [
+    "smith"
+  ]
+}

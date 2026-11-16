@@ -1,0 +1,23 @@
+{
+  "mode": "strict",
+  "source": "employees",
+  "stableKey": "id",
+  "fields": {
+    "id": {
+      "type": "int64",
+      "physical": {
+        "sql": { "column": "id" },
+        "mongo": { "path": "id" },
+        "search": { "field": "id" }
+      }
+    },
+    "lastName": {
+      "type": "string",
+      "physical": {
+        "sql": { "column": "lastName" },
+        "mongo": { "path": "lastName" },
+        "search": { "field": "lastName", "keywordSubField": "lastName.keyword" }
+      }
+    }
+  }
+}

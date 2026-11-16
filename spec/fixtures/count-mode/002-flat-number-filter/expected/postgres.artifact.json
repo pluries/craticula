@@ -1,0 +1,7 @@
+{
+  "dialect": "postgres",
+  "sql": "SELECT COUNT(*) FROM \"employees\" WHERE (\"age\" <> $1 OR \"age\" IS NULL)",
+  "params": [
+    30
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "dialect": "oracle",
+  "sql": "SELECT COUNT(*) FROM \"employees\" WHERE \"lastName\" COLLATE BINARY_CI IN (:p1, :p2)",
+  "params": [
+    "smith",
+    "jones"
+  ]
+}

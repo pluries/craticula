@@ -1,0 +1,43 @@
+{
+  "startRow": 0,
+  "endRow": 100,
+  "rowGroupCols": [
+    {
+      "id": "region",
+      "displayName": "Region",
+      "field": "region"
+    },
+    {
+      "id": "segment",
+      "displayName": "Segment",
+      "field": "segment"
+    }
+  ],
+  "valueCols": [
+    {
+      "id": "amount",
+      "displayName": "Amount",
+      "field": "amount",
+      "aggFunc": "sum"
+    }
+  ],
+  "pivotCols": [],
+  "pivotMode": false,
+  "groupKeys": [],
+  "filterModel": {
+    "amount": {
+      "filterType": "number",
+      "type": "greaterThan",
+      "filter": 1000
+    }
+  },
+  "sortModel": [
+    {
+      "colId": "amount",
+      "sort": "desc"
+    }
+  ],
+  "requestContext": {
+    "compileMode": "count"
+  }
+}

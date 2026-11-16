@@ -1,0 +1,7 @@
+{
+  "dialect": "oracle",
+  "sql": "SELECT COUNT(*) FROM \"employees\" WHERE (\"age\" <> :p1 OR \"age\" IS NULL)",
+  "params": [
+    30
+  ]
+}

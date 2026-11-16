@@ -1,0 +1,37 @@
+{
+  "startRow": 0,
+  "endRow": 100,
+  "rowGroupCols": [
+    {
+      "id": "region",
+      "displayName": "Region",
+      "field": "region"
+    },
+    {
+      "id": "segment",
+      "displayName": "Segment",
+      "field": "segment"
+    },
+    {
+      "id": "product",
+      "displayName": "Product",
+      "field": "product"
+    }
+  ],
+  "valueCols": [
+    {
+      "id": "amount",
+      "displayName": "Amount",
+      "field": "amount",
+      "aggFunc": "sum"
+    }
+  ],
+  "pivotCols": [],
+  "pivotMode": false,
+  "groupKeys": [],
+  "filterModel": null,
+  "sortModel": [],
+  "requestContext": {
+    "compileMode": "count"
+  }
+}

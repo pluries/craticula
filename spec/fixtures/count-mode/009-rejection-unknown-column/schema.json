@@ -1,0 +1,150 @@
+{
+  "mode": "strict",
+  "source": "items",
+  "stableKey": "id",
+  "fields": {
+    "id": {
+      "type": "int64",
+      "filterable": true,
+      "sortable": true,
+      "groupable": false,
+      "physical": {
+        "sql": {
+          "column": "id"
+        },
+        "mongo": {
+          "path": "_id"
+        },
+        "search": {
+          "field": "id"
+        }
+      }
+    },
+    "name": {
+      "type": "string",
+      "filterable": true,
+      "sortable": true,
+      "groupable": true,
+      "text": {
+        "caseSensitivity": "insensitive",
+        "searchMode": "substring"
+      },
+      "physical": {
+        "sql": {
+          "column": "name"
+        },
+        "mongo": {
+          "path": "name"
+        },
+        "search": {
+          "field": "name",
+          "keywordSubField": "name.keyword"
+        }
+      }
+    },
+    "amount": {
+      "type": "decimal",
+      "filterable": true,
+      "sortable": true,
+      "physical": {
+        "sql": {
+          "column": "amount"
+        },
+        "mongo": {
+          "path": "amount"
+        },
+        "search": {
+          "field": "amount"
+        }
+      }
+    },
+    "quantity": {
+      "type": "int64",
+      "filterable": true,
+      "sortable": true,
+      "groupable": true,
+      "aggregatable": [
+        "sum",
+        "avg",
+        "min",
+        "max",
+        "count"
+      ],
+      "physical": {
+        "sql": {
+          "column": "quantity"
+        },
+        "mongo": {
+          "path": "quantity"
+        },
+        "search": {
+          "field": "quantity"
+        }
+      }
+    },
+    "price": {
+      "type": "double",
+      "filterable": true,
+      "sortable": true,
+      "physical": {
+        "sql": {
+          "column": "price"
+        },
+        "mongo": {
+          "path": "price"
+        },
+        "search": {
+          "field": "price"
+        }
+      }
+    },
+    "active": {
+      "type": "boolean",
+      "filterable": true,
+      "sortable": true,
+      "physical": {
+        "sql": {
+          "column": "active"
+        },
+        "mongo": {
+          "path": "active"
+        },
+        "search": {
+          "field": "active"
+        }
+      }
+    },
+    "createdDate": {
+      "type": "date",
+      "filterable": true,
+      "sortable": true,
+      "physical": {
+        "sql": {
+          "column": "created_date"
+        },
+        "mongo": {
+          "path": "createdDate"
+        },
+        "search": {
+          "field": "createdDate"
+        }
+      }
+    },
+    "createdAt": {
+      "type": "datetime",
+      "filterable": true,
+      "sortable": true,
+      "physical": {
+        "sql": {
+          "column": "created_at"
+        },
+        "mongo": {
+          "path": "createdAt"
+        },
+        "search": {
+          "field": "createdAt"
+        }
+      }
+    }
+  }
+}

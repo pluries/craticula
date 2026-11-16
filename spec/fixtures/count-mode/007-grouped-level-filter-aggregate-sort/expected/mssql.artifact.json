@@ -1,0 +1,7 @@
+{
+  "dialect": "mssql",
+  "sql": "SELECT COUNT(*) FROM (SELECT [region] FROM [sales_fact] WHERE [amount] > @p1 GROUP BY [region]) craticula_count",
+  "params": [
+    "1000"
+  ]
+}

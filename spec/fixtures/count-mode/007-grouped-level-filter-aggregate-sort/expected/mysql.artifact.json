@@ -1,0 +1,7 @@
+{
+  "dialect": "mysql",
+  "sql": "SELECT COUNT(*) FROM (SELECT `region` FROM `sales_fact` WHERE `amount` > ? GROUP BY `region`) craticula_count",
+  "params": [
+    "1000"
+  ]
+}
