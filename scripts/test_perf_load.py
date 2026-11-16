@@ -6,6 +6,7 @@ Contract of perf/load.py (exit 0 = the run finished and the oversized request wa
 1 = it finished but the oversized request was not handled, 2 = bad arguments):
   --engine <postgres|ef|mongo>   --base-url <url>   --concurrency <n>   --duration <seconds>   --dataset <label, e.g. 10k>
   --machine <label>   --engine-version <text>   --out <dir>   [--shapes a.json,b.json]   [--commit <sha>]   [--repeat-command <text>]
+  [--warmup <seconds, default 5>]: requests sent before the measured period are discarded (the first requests are slower: connections, JIT)
   Posts the request bodies of examples/demo/smoke to <base-url>/api/<engine>/rows from <concurrency> threads for <duration>
   seconds; prints p50, p95, p99 (milliseconds) and requests per second; writes load-<engine>-<dataset>.jsonl (one line per request)
   and manifest-<engine>-<dataset>.json (machine, dataset, engine version, load, date, commit, the command that repeats the run) into <out>: one
@@ -37,7 +38,7 @@ def load_module():
 
 
 class FakeDemo(BaseHTTPRequestHandler):
-    """server.oversized_status / server.oversized_kind script the answer to a page of 100000 rows; everything else is 200."""
+    """server.oversized_status / server.oversized_kind script the answer to a page of 100000 rows; everything else is 200. server.rows_requests counts the others."""
 
     def log_message(self, *args):
         """Silences the request log."""
@@ -48,6 +49,7 @@ class FakeDemo(BaseHTTPRequestHandler):
             status = self.server.oversized_status
             payload = {"error": {"kind": self.server.oversized_kind, "message": "too large"}} if status != 200 else {"rows": []}
         else:
+            self.server.rows_requests += 1
             status, payload = 200, {"rows": [], "lastRow": 0}
         data = json.dumps(payload).encode()
         self.send_response(status)
@@ -62,6 +64,7 @@ class Demo:
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), FakeDemo)
         self.server.oversized_status = oversized_status
         self.server.oversized_kind = oversized_kind
+        self.server.rows_requests = 0
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
 
     def __enter__(self):
@@ -73,9 +76,9 @@ class Demo:
         self.server.server_close()
 
 
-def run_load(base_url, out, extra=(), engine="postgres", concurrency="2", duration="0.5"):
+def run_load(base_url, out, extra=(), engine="postgres", concurrency="2", duration="0.5", warmup="0"):
     args = [sys.executable, "-I", str(LOAD), "--engine", engine, "--base-url", base_url, "--concurrency", concurrency,
-            "--duration", duration, "--dataset", "10k", "--machine", "test-box", "--engine-version", "postgres 16.4",
+            "--duration", duration, "--warmup", warmup, "--dataset", "10k", "--machine", "test-box", "--engine-version", "postgres 16.4",
             "--commit", "abc1234", "--out", str(out), *extra]
     return subprocess.run(args, capture_output=True, text=True, timeout=60)
 
@@ -114,7 +117,7 @@ class RunTests(unittest.TestCase):
                 self.assertIn(key, manifest)
             self.assertEqual("abc1234", manifest["commit"])
             self.assertEqual("10k", manifest["dataset"])
-            self.assertEqual({"concurrency": 2, "duration_seconds": 0.5}, manifest["load"])
+            self.assertEqual({"concurrency": 2, "duration_seconds": 0.5, "warmup_seconds": 0.0}, manifest["load"])
             self.assertIn("perf/load.py", manifest["command"])
             self.assertIn("--dataset 10k", manifest["command"])
             for key in ("count", "errors", "p50_ms", "p95_ms", "p99_ms", "requests_per_second"):
@@ -146,6 +149,52 @@ class RunTests(unittest.TestCase):
     def test_an_oversized_request_refused_with_another_kind_is_a_failure(self):  # T3
         with Demo(oversized_kind="invalid-page") as url, tempfile.TemporaryDirectory() as out:
             self.assertEqual(1, run_load(url, out).returncode)
+
+
+class WarmupTests(unittest.TestCase):
+    """Requests sent during the warm-up are not measured: not in the raw file, not in the summary."""
+
+    def raw_count(self, out):
+        return len(Path(out, "load-postgres-10k.jsonl").read_text(encoding="utf-8").splitlines())
+
+    def test_warmup_requests_are_sent_but_not_recorded(self):
+        with tempfile.TemporaryDirectory() as out:
+            demo = Demo()
+            with demo as url:
+                result = run_load(url, out, warmup="0.6", duration="0.4")
+                self.assertEqual(0, result.returncode, result.stderr)
+                sent = demo.server.rows_requests
+            recorded = self.raw_count(out)
+            self.assertGreater(recorded, 0)
+            self.assertGreater(sent, recorded * 1.5, f"{sent} requests were sent but {recorded} were recorded: the warm-up should be the larger part")
+            manifest = json.loads(Path(out, "manifest-postgres-10k.json").read_text(encoding="utf-8"))
+            self.assertEqual(recorded, manifest["summary"]["count"])
+
+    def test_without_a_warmup_every_request_is_recorded(self):
+        with tempfile.TemporaryDirectory() as out:
+            demo = Demo()
+            with demo as url:
+                run_load(url, out, warmup="0")
+                sent = demo.server.rows_requests
+            self.assertEqual(sent, self.raw_count(out))
+
+    def test_the_manifest_records_the_warmup_length(self):
+        with Demo() as url, tempfile.TemporaryDirectory() as out:
+            run_load(url, out, warmup="0.3")
+            manifest = json.loads(Path(out, "manifest-postgres-10k.json").read_text(encoding="utf-8"))
+            self.assertEqual(0.3, manifest["load"]["warmup_seconds"])
+
+    def test_the_default_warmup_is_five_seconds(self):
+        load = load_module()
+        args = load.parse(["--engine", "postgres", "--base-url", "http://x", "--concurrency", "1", "--duration", "1", "--dataset", "10k",
+                           "--machine", "m", "--engine-version", "v", "--out", "o"])
+        self.assertEqual(5.0, args.warmup)
+
+    def test_a_negative_warmup_is_refused(self):
+        with tempfile.TemporaryDirectory() as out:
+            result = run_load("http://127.0.0.1:9", out, warmup="-1")
+            self.assertEqual(2, result.returncode)
+            self.assertIn("warmup", result.stderr)
 
 
 class EfEngineTests(unittest.TestCase):
