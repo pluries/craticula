@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Generates the performance page of the docs site from the raw results of a run (story #3324, task #3849, spec FR-20).
 
-Usage: python3 scripts/perf_page.py <results dir> [--page site/pages/performance.md] [--site-json site/site.json]
+Usage: python3 scripts/perf_page.py <results dir> [--repeat <repeat run dir>] [--page site/pages/performance.md] [--site-json site/site.json]
 Reads <results dir>/compile/results/*-report-full.json (the BenchmarkDotNet output), compile/manifest-compile.json and every
 manifest-<engine>-<dataset>.json; writes the page, then registers it once in the site config. Every number in a table is a link to the
 raw file it came from, so none is typed by hand. Exit 0 = written, 2 = no results or an unreadable result file (nothing is written).
 Tests: scripts/test_perf_page.py.
 """
 import argparse
+import importlib.util
 import json
 import os
 import sys
@@ -67,7 +68,40 @@ def compile_rows(report, report_path, page_dir):
     return lines, summary
 
 
-def render(results, page_dir):
+def load_compare():
+    spec = importlib.util.spec_from_file_location("perf_compare", ROOT / "perf" / "compare.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def show(name, value):
+    if name.endswith("mean"):
+        return f"{value / 1000:.1f} µs"
+    if name.endswith("requests per second"):
+        return f"{value:.1f} /s"
+    return f"{value:.1f} ms"
+
+
+def repeatability(results, repeat, page_dir, limit=10.0):
+    compare = load_compare()
+    total, outside = compare.compare(results, repeat, limit)
+    lines = ["## Repeatability", "",
+             f"Every measurement was taken twice on the same machine, in two runs one after the other. The target is that the second "
+             f"run lands within {limit:g}% of the first."]
+    if not outside:
+        lines += ["", f"All {total} measurements of the repeat run are within {limit:g}% of this run."]
+        return lines + [""]
+    lines += ["", f"{total - len(outside)} of {total} measurements of the repeat run are within {limit:g}% of this run. "
+              f"These {len(outside)} are not, so read them with that spread in mind:", ""]
+    for item in outside:
+        first = link(show(item["name"], item["first"]), item["first_path"], page_dir)
+        second = link(show(item["name"], item["second"]), item["second_path"], page_dir)
+        lines.append(f"- {item['name']}: {first} then {second}, {item['change']:.1f}% apart")
+    return lines + [""]
+
+
+def render(results, page_dir, repeat=None):
     results, page_dir = Path(results), Path(page_dir)
     report_files = sorted((results / "compile" / "results").glob("*-report-full.json"))
     manifest_files = sorted(results.glob("manifest-*.json"))
@@ -115,7 +149,10 @@ def render(results, page_dir):
             link(str(s["errors"]), path, page_dir),
         ]
         out.append(f"| {engine} | {manifest['dataset']} | " + " | ".join(cells) + " |")
-    out += ["", "## How each result was produced", "", "### Compile benchmark", "",
+    out += [""]
+    if repeat is not None:
+        out += repeatability(results, Path(repeat), page_dir)
+    out += ["## How each result was produced", "", "### Compile benchmark", "",
             f"- Machine: {compile_manifest['machine']}",
             f"- Tool: {compile_manifest['benchmark']} on .NET {compile_manifest['dotnet']}",
             f"- Date: {compile_manifest['date']}, commit {compile_manifest['commit']}",
@@ -150,10 +187,11 @@ def main(argv=None):
     parser.add_argument("results")
     parser.add_argument("--page", default=str(ROOT / "site" / "pages" / "performance.md"))
     parser.add_argument("--site-json", default=str(ROOT / "site" / "site.json"))
+    parser.add_argument("--repeat")
     args = parser.parse_args(argv)
     page = Path(args.page)
     try:
-        text = render(Path(args.results), page.parent)
+        text = render(Path(args.results), page.parent, Path(args.repeat) if args.repeat else None)
     except (ResultsError, KeyError, TypeError) as error:
         print(f"perf_page.py: {error}", file=sys.stderr)
         return 2
