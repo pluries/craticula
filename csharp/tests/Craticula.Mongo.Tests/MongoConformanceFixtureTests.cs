@@ -76,7 +76,9 @@ public class MongoConformanceFixtureTests
         ["adversarial"] = "Rejection-only fixtures: they carry expected/rejection.json, not a compiled artifact, " +
                           "and are already exercised by Craticula.Core.Tests' allowlist/limits/coercion suites. " +
                           "(They also carry no mongo.artifact.json, so discovery would skip them anyway — named " +
-                          "here so the category list stays exhaustive.)"
+                          "here so the category list stays exhaustive.)",
+        ["count-mode"] = "Count-mode fixtures (CNT-1..CNT-8) carry the five SQL artifacts only for now; their mongo artifacts and " +
+                         "the compile that grades them arrive with BuildCount (#3870), when this entry is removed."
     };
 
     /// <summary>

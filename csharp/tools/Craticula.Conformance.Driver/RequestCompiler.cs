@@ -32,7 +32,7 @@ internal static class RequestCompiler
 
     /// <summary>Everything a request resolves to before any backend sees it: the schema and the
     /// parse options a host would build, plus which entry point the request takes.</summary>
-    private sealed record Prepared(GridSchema Schema, string RequestJson, AgGridParseOptions Options, bool IsSetValues, ResourceLimits Limits);
+    private sealed record Prepared(GridSchema Schema, string RequestJson, AgGridParseOptions Options, bool IsSetValues, ResourceLimits Limits, bool CountMode);
 
     /// <summary>A row-fetch request after <see cref="AgGridRequestParser.Parse"/> and
     /// <see cref="GridFilterPipeline.Process"/> — the helpers' <c>RowFetch</c>.</summary>
@@ -61,6 +61,12 @@ internal static class RequestCompiler
         }
 
         var request = Prepare(schema, agGridRequestJson);
+
+        if (request.CountMode && (request.IsSetValues || backend is "mongo" or "search"))
+        {
+            throw new NotSupportedException(
+                $"Count mode (requestContext.compileMode \"count\") has no entry point yet for backend '{backend}' or for a set-values request.");
+        }
 
         return backend switch
         {
@@ -94,18 +100,18 @@ internal static class RequestCompiler
 
         var row = PrepareRowFetch(request);
 
-        return SqlQueryBuilder.Build(
-            new SqlQueryRequest
-            {
-                Schema = row.Schema,
-                Filter = row.Filter,
-                Sort = row.Parsed.Sort,
-                Page = row.Parsed.Page,
-                Group = row.Parsed.Group,
-                Aggregations = row.Parsed.Aggregations,
-                Projection = row.Parsed.Export?.ProjectionColumns
-            },
-            dialect);
+        var sqlRequest = new SqlQueryRequest
+        {
+            Schema = row.Schema,
+            Filter = row.Filter,
+            Sort = row.Parsed.Sort,
+            Page = row.Parsed.Page,
+            Group = row.Parsed.Group,
+            Aggregations = row.Parsed.Aggregations,
+            Projection = row.Parsed.Export?.ProjectionColumns
+        };
+
+        return request.CountMode ? SqlQueryBuilder.BuildCount(sqlRequest, dialect) : SqlQueryBuilder.Build(sqlRequest, dialect);
     }
 
     private static MongoQuery CompileMongo(Prepared request)
@@ -177,10 +183,11 @@ internal static class RequestCompiler
     {
         var parsed = AgGridRequestParser.Parse(request.RequestJson, request.Options);
 
+        // CNT-3: SEC-3's page-size check runs inside the pipeline, so a count is processed with the unpaginated page.
         var filter = GridFilterPipeline.Process(
             parsed.NativeFilter,
             parsed.CustomFilters,
-            parsed.Page,
+            request.CountMode ? new NonePage() : parsed.Page,
             request.Schema,
             request.Limits,
             parsed.Group,
@@ -241,7 +248,31 @@ internal static class RequestCompiler
             agGridRequestJson,
             options,
             isObject && root.TryGetProperty("setValuesRequest", out _),
-            new ResourceLimits { MaxQueryTimeMs = ReadHarnessQueryTimeLimit(root) });
+            new ResourceLimits { MaxQueryTimeMs = ReadHarnessQueryTimeLimit(root) },
+            ReadHarnessCountMode(root));
+    }
+
+    /// <summary>
+    /// CNT-8's harness instruction: <c>requestContext.compileMode</c> set to <c>"count"</c> selects count mode
+    /// (<c>conformance-runner.md</c> §3). Absent means the page; any other value is refused rather than ignored, so a typo
+    /// can never silently grade a page artifact against a count expectation.
+    /// </summary>
+    private static bool ReadHarnessCountMode(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object
+            || !root.TryGetProperty(RequestContextMember, out var context)
+            || context.ValueKind != JsonValueKind.Object
+            || !context.TryGetProperty("compileMode", out var mode))
+        {
+            return false;
+        }
+
+        if (mode.ValueKind == JsonValueKind.String && mode.GetString() == "count")
+        {
+            return true;
+        }
+
+        throw new ArgumentException("requestContext.compileMode is not recognised; the only value is \"count\" (CNT-8).");
     }
 
     /// <summary>
