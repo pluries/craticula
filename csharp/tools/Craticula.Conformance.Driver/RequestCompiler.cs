@@ -48,7 +48,11 @@ internal static class RequestCompiler
     /// for <see cref="ArtifactWriter"/> to print. Any refusal surfaces as the exception the library
     /// throws; the caller turns it into an <c>error</c> answer (§2.2).
     /// </summary>
-    public static object Compile(string backend, string schemaJson, string agGridRequestJson)
+    public static object Compile(string backend, string schemaJson, string agGridRequestJson) =>
+        Compile(backend, GridSchema.Parse(schemaJson), agGridRequestJson);
+
+    /// <summary>The same compile for a schema the caller already built, as a host that builds its <see cref="GridSchema"/> once does; the compile benchmark times it next to the string path.</summary>
+    public static object Compile(string backend, GridSchema schema, string agGridRequestJson)
     {
         if (!Backends.Contains(backend))
         {
@@ -56,7 +60,7 @@ internal static class RequestCompiler
                 $"Backend '{backend}' is not one this driver declares ({string.Join(", ", Backends)}).");
         }
 
-        var request = Prepare(schemaJson, agGridRequestJson);
+        var request = Prepare(schema, agGridRequestJson);
 
         return backend switch
         {
@@ -210,10 +214,8 @@ internal static class RequestCompiler
     /// harness, so it does. <c>requestContext.zone</c> needs nothing here: the parser itself reads it,
     /// as it does for any request.
     /// </summary>
-    private static Prepared Prepare(string schemaJson, string agGridRequestJson)
+    private static Prepared Prepare(GridSchema schema, string agGridRequestJson)
     {
-        var schema = GridSchema.Parse(schemaJson);
-
         using var document = JsonDocument.Parse(agGridRequestJson);
         var root = document.RootElement;
         var isObject = root.ValueKind == JsonValueKind.Object;
