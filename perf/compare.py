@@ -36,7 +36,7 @@ def metrics(results):
         for pair in benchmark["Parameters"].split("&"):
             key, _, value = pair.partition("=")
             params[key] = value
-        found[f"compile {params['Backend']}/{params['Shape']} mean"] = benchmark["Statistics"]["Mean"]
+        found[f"compile {params['Backend']}/{params['Shape']} mean"] = (benchmark["Statistics"]["Mean"], reports[0])
     manifests = sorted(results.glob("manifest-*.json"))
     if not manifests:
         raise RunError(f"{results}: no load manifest")
@@ -46,8 +46,22 @@ def metrics(results):
             value = manifest["summary"][key]
             if value is None:
                 raise RunError(f"{path}: {label} is missing (did every request fail?)")
-            found[f"load {manifest['engine']} {manifest['dataset']} {label}"] = value
+            found[f"load {manifest['engine']} {manifest['dataset']} {label}"] = (value, path)
     return found
+
+
+def compare(first_dir, second_dir, limit=10.0):
+    """(number of measurements, the ones more than `limit` percent apart: name, both values, both source files, change in percent)."""
+    first, second = metrics(first_dir), metrics(second_dir)
+    if set(first) != set(second):
+        raise RunError("the two runs do not hold the same measurements")
+    outside = []
+    for name in sorted(first):
+        a, b = first[name][0], second[name][0]
+        change = abs(b - a) / a * 100 if a else 0.0
+        if change > limit:
+            outside.append({"name": name, "first": a, "second": b, "change": change, "first_path": first[name][1], "second_path": second[name][1]})
+    return len(first), outside
 
 
 def main(argv=None):
@@ -57,23 +71,16 @@ def main(argv=None):
     parser.add_argument("--limit", type=float, default=10.0)
     args = parser.parse_args(argv)
     try:
-        first, second = metrics(args.first), metrics(args.second)
+        total, outside = compare(args.first, args.second, args.limit)
     except (RunError, KeyError, TypeError) as error:
         print(f"compare.py: {error}", file=sys.stderr)
         return 2
-    if set(first) != set(second):
-        print("compare.py: the two runs do not hold the same measurements", file=sys.stderr)
-        return 2
-    outside = []
-    for name in sorted(first):
-        change = abs(second[name] - first[name]) / first[name] * 100 if first[name] else 0.0
-        if change > args.limit:
-            outside.append(f"{name}: {first[name]:g} then {second[name]:g}, {change:.1f}% apart")
     if outside:
-        print(f"{len(outside)} of {len(first)} measurements are more than {args.limit:g}% apart:")
-        print("\n".join(outside))
+        print(f"{len(outside)} of {total} measurements are more than {args.limit:g}% apart:")
+        for item in outside:
+            print(f"{item['name']}: {item['first']:g} then {item['second']:g}, {item['change']:.1f}% apart")
         return 1
-    print(f"all {len(first)} measurements are within {args.limit:g}% of the first run")
+    print(f"all {total} measurements are within {args.limit:g}% of the first run")
     return 0
 
 
