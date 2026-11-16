@@ -8,7 +8,7 @@ internal static class Perf1Report
 {
     private const double TargetNanoseconds = 50_000;
 
-    public static string Line(string shape, string backend, double meanNanoseconds, double allocatedBytes)
+    public static string Line(string shape, string backend, double meanNanoseconds, double allocatedBytes, string? schemaPath = null)
     {
         var verdict = meanNanoseconds < TargetNanoseconds ? "meets PERF-1" : "does not meet PERF-1";
         var allocation = allocatedBytes >= 1024
@@ -16,8 +16,15 @@ internal static class Perf1Report
             : string.Create(CultureInfo.InvariantCulture, $"{allocatedBytes:0} B");
 
         return string.Create(CultureInfo.InvariantCulture,
-            $"{backend}/{shape}: mean {meanNanoseconds / 1000:0.0} µs, {allocation} allocated per request, {verdict} (target under 50 µs)");
+            $"{backend}/{shape}{PathLabel(schemaPath)}: mean {meanNanoseconds / 1000:0.0} µs, {allocation} allocated per request, {verdict} (target under 50 µs)");
     }
+
+    private static string PathLabel(string? schemaPath) => schemaPath switch
+    {
+        "prepared-schema" => " [prepared schema]",
+        "full-compile" => " [full compile]",
+        _ => ""
+    };
 
     public static IReadOnlyList<string> Lines(string benchmarkJson)
     {
@@ -38,7 +45,8 @@ internal static class Perf1Report
                 parameters["Shape"],
                 parameters["Backend"],
                 benchmark.GetProperty("Statistics").GetProperty("Mean").GetDouble(),
-                benchmark.GetProperty("Memory").GetProperty("BytesAllocatedPerOperation").GetDouble()));
+                benchmark.GetProperty("Memory").GetProperty("BytesAllocatedPerOperation").GetDouble(),
+                parameters.GetValueOrDefault("SchemaPath")));
         }
 
         return lines;

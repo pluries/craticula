@@ -32,7 +32,7 @@ def load_module():
     return module
 
 
-def write_results(root, compile_mean=12345.6, slow=False):
+def write_results(root, compile_mean=12345.6, slow=False, both_paths=False):
     """Fake run: two compile benchmarks and two load manifests, laid out as perf/results/<date>/."""
     results = root / "perf" / "results" / "2026-11-20"
     (results / "compile" / "results").mkdir(parents=True)
@@ -40,6 +40,10 @@ def write_results(root, compile_mean=12345.6, slow=False):
         {"Parameters": "Backend=postgres&Shape=plain-page", "Statistics": {"Mean": compile_mean}, "Memory": {"BytesAllocatedPerOperation": 7000}},
         {"Parameters": "Backend=mongo&Shape=deep-filter", "Statistics": {"Mean": 90000.0 if slow else 26600.0}, "Memory": {"BytesAllocatedPerOperation": 18000}},
     ]
+    if both_paths:   # the same shapes on the two paths: SchemaPath=full-compile, and prepared-schema at a third of the time
+        benchmarks = [{**b, "Parameters": b["Parameters"] + "&SchemaPath=full-compile"} for b in benchmarks] + [
+            {**b, "Parameters": b["Parameters"] + "&SchemaPath=prepared-schema", "Statistics": {"Mean": b["Statistics"]["Mean"] / 3},
+             "Memory": {"BytesAllocatedPerOperation": b["Memory"]["BytesAllocatedPerOperation"] / 2}} for b in benchmarks]
     (results / COMPILE_JSON).write_text(json.dumps({"Benchmarks": benchmarks}), encoding="utf-8")
     (results / "compile" / "manifest-compile.json").write_text(json.dumps({
         "machine": "test-box", "date": "2026-11-20", "commit": "abc1234", "dotnet": "10.0.100", "benchmark": "BenchmarkDotNet 0.15.8",
@@ -207,6 +211,57 @@ class SingleClientTests(unittest.TestCase):
             self.assertIn("## One client at a time", page.read_text(encoding="utf-8"))
 
 
+class SchemaPathTests(unittest.TestCase):
+    """The compile table shows the full compile (schema parsed from JSON on every call) and the prepared-schema path side by side."""
+
+    def render(self, both_paths, slow=False):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            results = write_results(Path(tmp), both_paths=both_paths, slow=slow)
+            page_dir = Path(tmp) / "site" / "pages"
+            page_dir.mkdir(parents=True)
+            return module.render(results, page_dir)
+
+    def compile_section(self, page):
+        return page.split("## Compile time")[1].split("\n## ")[0]
+
+    def test_both_paths_are_columns_of_one_table(self):
+        section = self.compile_section(self.render(True))
+        self.assertIn("Full compile", section)
+        self.assertIn("Prepared schema", section)
+        rows = [line for line in section.splitlines() if line.startswith("| postgres | plain-page") or line.startswith("| mongo | deep-filter")]
+        self.assertEqual(2, len(rows), "one row per backend and shape, with both paths in it")
+
+    def test_every_number_of_both_paths_is_a_link(self):
+        section = self.compile_section(self.render(True))
+        row = next(line for line in section.splitlines() if line.startswith("| postgres | plain-page"))
+        cells = [c.strip() for c in row.strip("|").split("|")]
+        measured = [c for c in cells if is_measurement(c[1:c.index("]")] if c.startswith("[") else c)]
+        self.assertGreaterEqual(len(measured), 4)   # full mean and allocation, prepared mean and allocation
+        for cell in measured:
+            self.assertTrue(cell.startswith("[") and "](" in cell, f"a number without a link: {cell!r}")
+
+    def test_each_path_has_its_own_verdict(self):
+        page = self.render(True, slow=True)   # mongo/deep-filter: 90 us full, 30 us prepared
+        row = next(line for line in self.compile_section(page).splitlines() if line.startswith("| mongo | deep-filter"))
+        self.assertIn("does not meet PERF-1", row)
+        self.assertIn("meets PERF-1", row.replace("does not meet PERF-1", ""))
+
+    def test_the_prepared_numbers_are_the_prepared_run_not_the_full_one(self):
+        section = self.compile_section(self.render(True))
+        self.assertIn("12.3 µs", section)   # full postgres/plain-page
+        self.assertIn("4.1 µs", section)    # prepared: a third of it
+
+    def test_results_without_a_schema_path_still_render_and_say_the_prepared_path_was_not_measured(self):
+        section = self.compile_section(self.render(False))
+        self.assertIn("not measured", section)
+        self.assertIn("12.3 µs", section)
+
+    def test_the_section_explains_the_two_paths(self):
+        section = self.compile_section(self.render(True))
+        self.assertIn("builds its schema once", section)
+
+
 class RepeatabilityTests(unittest.TestCase):
     """NFR-08, AC-4: the page states how a repeat run compared, and every number it quotes links to its raw file."""
 
@@ -271,6 +326,20 @@ class CompareTests(unittest.TestCase):
         for benchmark in data["Benchmarks"]:
             benchmark["Statistics"]["Mean"] *= factor
         report.write_text(json.dumps(data), encoding="utf-8")
+
+    def test_the_two_paths_are_compared_as_separate_measurements(self):
+        with tempfile.TemporaryDirectory() as one, tempfile.TemporaryDirectory() as two:
+            a, b = write_results(Path(one), both_paths=True), write_results(Path(two), both_paths=True)
+            report = b / COMPILE_JSON
+            data = json.loads(report.read_text(encoding="utf-8"))
+            for benchmark in data["Benchmarks"]:
+                if "SchemaPath=prepared-schema" in benchmark["Parameters"]:
+                    benchmark["Statistics"]["Mean"] *= 1.5     # only the prepared path moves
+            report.write_text(json.dumps(data), encoding="utf-8")
+            result = self.run_compare(a, b)
+            self.assertEqual(1, result.returncode, result.stdout)
+            self.assertIn("prepared", result.stdout)
+            self.assertNotIn("compile postgres/plain-page mean:", result.stdout)
 
     def test_two_identical_runs_are_within_the_limit(self):
         with tempfile.TemporaryDirectory() as one, tempfile.TemporaryDirectory() as two:

@@ -45,27 +45,39 @@ def kib(value):
     return f"{value / 1024:.1f} KiB" if value >= 1024 else f"{value:.0f} B"
 
 
+def verdict_for(mean):
+    return "meets PERF-1" if mean < TARGET_NS else "does not meet PERF-1"
+
+
 def compile_rows(report, report_path, page_dir):
-    rows = []
+    """One row per backend and shape: the full compile (schema parsed from JSON on every call) and, when the run has it, the prepared-schema path."""
+    measured = {}
     for benchmark in report["Benchmarks"]:
         params = {}
         for pair in benchmark["Parameters"].split("&"):
             key, _, value = pair.partition("=")
             params[key] = value
-        mean = benchmark["Statistics"]["Mean"]
-        allocated = benchmark["Memory"]["BytesAllocatedPerOperation"]
-        rows.append((params["Backend"], params["Shape"], mean, allocated))
-    rows.sort(key=lambda r: (r[1], r[0]))
-    lines = ["| Backend | Request shape | Mean time | Allocated per request | PERF-1 |", "|---|---|---|---|---|"]
-    for backend, shape, mean, allocated in rows:
-        verdict = "meets PERF-1" if mean < TARGET_NS else "does not meet PERF-1"
-        mean_cell = link(f"{mean / 1000:.1f} µs", report_path, page_dir)
-        allocated_cell = link(kib(allocated), report_path, page_dir)
-        lines.append(f"| {backend} | {shape} | {mean_cell} | {allocated_cell} | {verdict} |")
-    over = sum(1 for r in rows if r[2] >= TARGET_NS)
-    summary = ("Every measured compile time is under the target." if over == 0
-               else f"{over} of {len(rows)} measured compile times are not under the target.")
-    return lines, summary
+        path = params.get("SchemaPath", "full-compile")
+        measured[(params["Shape"], params["Backend"], path)] = (benchmark["Statistics"]["Mean"], benchmark["Memory"]["BytesAllocatedPerOperation"])
+    keys = sorted({(shape, backend) for shape, backend, _ in measured})
+    lines = ["| Backend | Request shape | Full compile | Allocated | PERF-1 | Prepared schema | Allocated | PERF-1 |", "|---|---|---|---|---|---|---|---|"]
+    for shape, backend in keys:
+        cells = [backend, shape]
+        for path in ("full-compile", "prepared-schema"):
+            if (shape, backend, path) in measured:
+                mean, allocated = measured[(shape, backend, path)]
+                cells += [link(f"{mean / 1000:.1f} µs", report_path, page_dir), link(kib(allocated), report_path, page_dir), verdict_for(mean)]
+            else:
+                cells += ["not measured", "not measured", "not measured"]
+        lines.append("| " + " | ".join(cells) + " |")
+    parts = []
+    for path, label in (("full-compile", "full compile"), ("prepared-schema", "prepared schema")):
+        means = [value[0] for key, value in measured.items() if key[2] == path]
+        if means:
+            over = sum(1 for mean in means if mean >= TARGET_NS)
+            parts.append(f"On the {label} path, " + ("every measured compile time is under the target." if over == 0
+                         else f"{over} of {len(means)} measured compile times are not under the target."))
+    return lines, " ".join(parts)
 
 
 def load_compare():
@@ -153,7 +165,11 @@ def render(results, page_dir, repeat=None, single=None):
         "",
         "Compiling a request means parsing it, checking it against the schema and building the query. Nothing is executed. The "
         "specification sets a target of under 50 µs per typical request (PERF-1). The target is benchmarked, not enforced, and "
-        "the results below say plainly whether it is met. " + summary,
+        "the results below say plainly whether it is met.",
+        "",
+        "The table has two paths. **Full compile** parses the schema from JSON on every call, as the conformance driver does, because "
+        "it receives the schema as text with each request. **Prepared schema** uses a schema built once, which is what a host does: it "
+        "builds its schema once and compiles every request against it. The second is what a host pays per request. " + summary,
         "",
         *table,
         "",
