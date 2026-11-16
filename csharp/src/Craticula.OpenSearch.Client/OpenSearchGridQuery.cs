@@ -146,8 +146,8 @@ public static class OpenSearchGridQuery
         var columns = request.Schema.FieldOrder;
         var types = ResolveFieldTypes(columns, request.Schema);
 
-        // SC-4's physical field mapping, resolved the SAME way ResolveGroupFieldTarget already does for
-        // the grouped path (review finding) — a colId's own `_source` key can differ from its logical
+        // SC-4's physical field mapping, resolved the same way the compiler resolves the group field
+        // (review finding) — a colId's own `_source` key can differ from its logical
         // name when a schema declares `physical.search.field`, and reading `_source[colId]` directly
         // would silently return null for a remapped column even though the compiler correctly filtered
         // and sorted against the real underlying field.
@@ -372,8 +372,7 @@ public static class OpenSearchGridQuery
     private static async Task<long?> CountRowsAsync(
         IOpenSearchLowLevelClient client, SearchQueryRequest request, OpenSearchDeepPagingOptions options, CancellationToken cancellationToken)
     {
-        var compiled = SearchQueryBuilder.Build(request with { Page = new RangePage { StartRow = 0, EndRow = 0 } });
-        var body = compiled.ToArtifact();
+        var body = SearchQueryBuilder.BuildCount(request).ToArtifact();
 
         // PERF-3: capped by default, never the uncapped `true` unless the host opted in (OSE-16, ExactRowCount) — see
         // OpenSearchGridPage.RowCount's own remarks for why MaxResultWindow is reused as the cap rather than a second knob.
@@ -424,7 +423,7 @@ public static class OpenSearchGridQuery
         // evict a cache entry a moment-earlier successful fetch just wrote. It is an opt-in value
         // (includeRowCount); if it fails, let it fail on its own terms without touching the cursor cache.
         long? rowCount = includeRowCount
-            ? await CountBucketsAsync(client, request, groupColumn, cancellationToken).ConfigureAwait(false)
+            ? await CountBucketsAsync(client, request, cancellationToken).ConfigureAwait(false)
             : null;
 
         return new OpenSearchGridPage { Columns = columns, Rows = rows, RowCount = rowCount, LastRow = lastRow };
@@ -579,35 +578,13 @@ public static class OpenSearchGridQuery
     }
 
     /// <summary>
-    /// AR-8/BM-2's null bucket accounted for, not just the distinct-value count. <c>missing_bucket:
-    /// true</c> (<c>Craticula.Search.SearchQueryBuilder.RenderGroupedAggregations</c>'s own rendering)
-    /// gives a null/missing group value its OWN bucket rather than dropping it — but <c>cardinality</c>
-    /// only counts distinct values among documents that HAVE the field, so whenever any document is
-    /// missing it, the composite returns N buckets (including the missing-value one) while this count
-    /// alone would report N-1, and the grid would never request the last group's row (review finding).
-    /// A sibling <c>missing</c> aggregation on the SAME field reports how many documents lack it; its
-    /// <c>doc_count</c> contributes at most ONE extra bucket, matching <c>missing_bucket</c>'s own
-    /// single null bucket.
+    /// AR-8/BM-2: <c>cardinality</c> skips documents lacking the group field, but the composite gives them
+    /// one bucket of their own (<c>missing_bucket</c>), so a non-empty <c>missing</c> count adds exactly one.
     /// </summary>
     private static async Task<long> CountBucketsAsync(
-        IOpenSearchLowLevelClient client, SearchQueryRequest request, string groupColumn, CancellationToken cancellationToken)
+        IOpenSearchLowLevelClient client, SearchQueryRequest request, CancellationToken cancellationToken)
     {
-        // Reuses the compiler's OWN query wrapping (GRP-5's drill-down + the user's filter, already
-        // conjoined into `bool.filter`) rather than re-deriving it — the same "read back a decision
-        // already made" discipline this package applies to GroupingPlan itself. Only `aggs`/`size` are
-        // overridden below; `RangePage` here is an arbitrary valid placeholder (RequireBucketWindow only
-        // needs StartRow == 0), discarded along with the rest of the composite it produced.
-        var compiled = SearchQueryBuilder.Build(request with { Page = new RangePage { StartRow = 0, EndRow = 1 } });
-        var body = compiled.ToArtifact();
-        body.Remove("from");
-        body["size"] = 0;
-
-        var groupField = ResolveGroupFieldTarget(request.Schema, groupColumn);
-        body["aggs"] = new JsonObject
-        {
-            ["bucket_count"] = new JsonObject { ["cardinality"] = new JsonObject { ["field"] = groupField } },
-            ["missing_group_values"] = new JsonObject { ["missing"] = new JsonObject { ["field"] = groupField } }
-        };
+        var body = SearchQueryBuilder.BuildCount(request).ToArtifact();
 
         var response = await client.SearchAsync<StringResponse>(request.Schema.Source, PostData.String(body.ToJsonString()), null, cancellationToken)
             .ConfigureAwait(false);
@@ -619,19 +596,6 @@ public static class OpenSearchGridQuery
         var missingCount = aggregations.GetProperty("missing_group_values").GetProperty("doc_count").GetInt64();
 
         return distinctCount + (missingCount > 0 ? 1 : 0);
-    }
-
-    /// <summary>SC-4/SC-3's field-target rule, replicated here because
-    /// <c>Craticula.Search.SearchQueryBuilder</c>'s own field resolver is private: a group column's
-    /// bucket key targets its keyword sub-field when it is a string (falling back to the raw field when
-    /// the schema declares none), the raw field for everything else — exactly
-    /// <c>SearchQueryBuilder.RenderGroupedAggregations</c>'s own choice for the composite source.</summary>
-    private static string ResolveGroupFieldTarget(GridSchema schema, string groupColumn)
-    {
-        var field = schema.Fields[groupColumn];
-        var mapping = field.Physical?.Search;
-        var raw = mapping?.Field ?? groupColumn;
-        return field.Type == FieldType.String ? mapping?.KeywordSubField ?? raw : raw;
     }
 
     // ---- PIT lifecycle -------------------------------------------------------------------------------
@@ -780,13 +744,13 @@ public static class OpenSearchGridQuery
     /// SC-4's physical mapping for an ORDINARY <c>_source</c> read: <c>physical.search.field</c> when a
     /// field declares one, the colId itself otherwise — the same <c>mapping?.Field ?? field</c> rule
     /// <c>Craticula.Search.SearchQueryBuilder.Resolve</c> (private to that package) and this package's
-    /// own <see cref="ResolveGroupFieldTarget"/> both already apply for FILTERING/SORTING and for a
+    /// compiler's group-field target both already apply for FILTERING/SORTING and for a
     /// group column's composite source respectively. Review finding: <see cref="ReadHitBatch"/> used to
     /// read <c>_source</c> by colId directly, so a remapped column's cells all silently came back
     /// <see langword="null"/> (a missing <see cref="JsonElement"/> property, per
     /// <see cref="OpenSearchValueReader.Read"/>'s own contract) even though the compiler correctly
     /// filtered/sorted against the real underlying field. No keyword-sub-field fallback here, unlike
-    /// <see cref="ResolveGroupFieldTarget"/>: <c>_source</c> is the document's own verbatim stored field,
+    /// the group-field target: <c>_source</c> is the document's own verbatim stored field,
     /// never the search/aggregation-only multi-field a keyword sub-field addresses.
     /// </summary>
     private static string[] ResolveSourceFields(IReadOnlyList<string> columns, GridSchema schema)
