@@ -197,6 +197,60 @@ class WarmupTests(unittest.TestCase):
             self.assertIn("warmup", result.stderr)
 
 
+class MachineStateTests(unittest.TestCase):
+    """The manifest records what the machine itself was doing (CPU steal, load, temperature), so a slow run can explain itself."""
+
+    def stat(self, root, text):
+        path = Path(root, "stat")
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def test_cpu_times_read_steal_and_the_total_without_guest_time(self):
+        load = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.stat(tmp, "cpu  100 0 50 800 20 0 10 20 5 0\ncpu0 1 1 1 1 1 1 1 1 1 1\n")
+            self.assertEqual((20, 1000), load.read_cpu_times(path))
+
+    def test_steal_percent_is_the_share_of_the_time_between_two_samples(self):
+        load = load_module()
+        self.assertEqual(2.0, load.steal_percent((20, 1000), (40, 2000)))   # 20 of 1000 ticks
+        self.assertEqual(0.0, load.steal_percent((20, 1000), (20, 1500)))
+
+    def test_steal_percent_without_time_passing_is_unknown(self):
+        load = load_module()
+        self.assertIsNone(load.steal_percent((20, 1000), (20, 1000)))
+        self.assertIsNone(load.steal_percent(None, (20, 1000)))
+
+    def test_a_missing_proc_stat_is_unknown_not_an_error(self):
+        load = load_module()
+        self.assertIsNone(load.read_cpu_times(Path("/no/such/stat")))
+
+    def test_load_average_is_the_first_number(self):
+        load = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp, "loadavg")
+            path.write_text("3.25 2.50 1.00 4/900 12345\n", encoding="utf-8")
+            self.assertEqual(3.25, load.read_load_average(path))
+        self.assertIsNone(load.read_load_average(Path("/no/such/loadavg")))
+
+    def test_thermal_zones_are_named_by_type_in_degrees(self):
+        load = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            for name, kind, milli in (("thermal_zone0", "acpitz", 95000), ("thermal_zone1", "x86_pkg_temp", 71500)):
+                zone = Path(tmp, name)
+                zone.mkdir()
+                Path(zone, "type").write_text(kind + "\n", encoding="utf-8")
+                Path(zone, "temp").write_text(f"{milli}\n", encoding="utf-8")
+            self.assertEqual({"acpitz": 95.0, "x86_pkg_temp": 71.5}, load.read_thermal(Path(tmp)))
+        self.assertEqual({}, load.read_thermal(Path("/no/such/thermal")))
+
+    def test_the_manifest_has_an_environment_section(self):
+        with Demo() as url, tempfile.TemporaryDirectory() as out:
+            run_load(url, out)
+            manifest = json.loads(Path(out, "manifest-postgres-10k.json").read_text(encoding="utf-8"))
+            self.assertEqual({"cpu_steal_percent", "load_average_1m", "thermal_c"}, set(manifest["environment"]))
+
+
 class EfEngineTests(unittest.TestCase):
     """The demo serves PostgreSQL twice: through Dapper (route postgres) and through the EF Core adapter (route ef)."""
 
