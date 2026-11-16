@@ -1,0 +1,8 @@
+{
+  "machine": "bench-vm-10c-34g",
+  "date": "2026-11-16",
+  "commit": "a5b2356",
+  "dotnet": "10.0.404",
+  "benchmark": "BenchmarkDotNet 0.15.8",
+  "command": "bash scripts/perf-compile.sh perf/results/2026-11-16/compile"
+}
