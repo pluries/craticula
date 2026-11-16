@@ -1,0 +1,8 @@
+{
+  "machine": "ltp01",
+  "date": "2026-11-16",
+  "commit": "4f5bf468",
+  "dotnet": "10.0.115",
+  "benchmark": "BenchmarkDotNet 0.15.8",
+  "command": "bash scripts/perf-compile.sh perf/results/2026-11-16-ltp01-repeat/compile"
+}
