@@ -145,6 +145,25 @@ class RenderTests(unittest.TestCase):
         for expected in ("BenchmarkDotNet 0.15.8", ".NET 10.0.100", "bash scripts/perf-compile.sh perf/results/2026-11-20/compile"):
             self.assertIn(expected, page)
 
+    def test_the_machine_state_of_each_load_run_is_stated(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            results = write_results(Path(tmp))
+            for path in results.glob("manifest-*-*.json"):
+                manifest = json.loads(path.read_text(encoding="utf-8"))
+                manifest["environment"] = {"cpu_steal_percent": 1.5, "load_average_1m": 7.25, "thermal_c": {"acpitz": 95.0}}
+                path.write_text(json.dumps(manifest), encoding="utf-8")
+            page_dir = Path(tmp) / "site" / "pages"
+            page_dir.mkdir(parents=True)
+            page = module.render(results, page_dir)
+            self.assertIn("CPU steal 1.5%", page)
+            self.assertIn("load average 7.25", page)
+            self.assertIn("acpitz 95 °C", page)
+
+    def test_a_manifest_without_an_environment_still_renders(self):
+        page, _, _ = self.render()
+        self.assertNotIn("CPU steal", page)
+
     def test_the_oversized_request_is_reported(self):  # T3
         page, _, _ = self.render()
         self.assertIn("resource-limit-exceeded", page)

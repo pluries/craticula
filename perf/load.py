@@ -30,6 +30,47 @@ OVERSIZED_KIND = "resource-limit-exceeded"
 REQUEST_TIMEOUT_SECONDS = 30
 
 
+def read_cpu_times(path=Path("/proc/stat")):
+    """(steal ticks, total ticks) from the first line of /proc/stat, or None where there is no such file (not Linux). Guest time is already in user time."""
+    try:
+        fields = path.read_text(encoding="utf-8").splitlines()[0].split()[1:9]
+        values = [int(f) for f in fields]
+    except (OSError, ValueError, IndexError):
+        return None
+    if len(values) < 8:
+        return None
+    return values[7], sum(values)
+
+
+def steal_percent(before, after):
+    """The share of the CPU time between two samples that the hypervisor gave to something else; None when it cannot be told."""
+    if before is None or after is None or after[1] <= before[1]:
+        return None
+    return round((after[0] - before[0]) / (after[1] - before[1]) * 100, 2)
+
+
+def read_load_average(path=Path("/proc/loadavg")):
+    try:
+        return float(path.read_text(encoding="utf-8").split()[0])
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def read_thermal(root=Path("/sys/class/thermal")):
+    """Temperature in degrees Celsius of each thermal zone, by its type; {} where there are none. Which zone is the CPU's depends on the machine."""
+    zones = {}
+    try:
+        for zone in sorted(root.glob("thermal_zone*")):
+            try:
+                kind = (zone / "type").read_text(encoding="utf-8").strip()
+                zones[kind] = max(zones.get(kind, -273.0), int((zone / "temp").read_text(encoding="utf-8").strip()) / 1000)
+            except (OSError, ValueError):
+                continue
+    except OSError:
+        return {}
+    return zones
+
+
 def percentile(values, p):
     if not values:
         raise ValueError("no values")
@@ -147,7 +188,13 @@ def main(argv=None):
 
     url = f"{args.base_url.rstrip('/')}/api/{args.engine}/rows"
     oversized = check_oversized(url)
+    cpu_before = read_cpu_times()
     results, elapsed = run_load(url, shapes, args.concurrency, args.duration, args.warmup)
+    environment = {
+        "cpu_steal_percent": steal_percent(cpu_before, read_cpu_times()),
+        "load_average_1m": read_load_average(),
+        "thermal_c": read_thermal(),
+    }
     summary = summarize(results, elapsed)
 
     out = Path(args.out)
@@ -171,6 +218,7 @@ def main(argv=None):
         "command": args.repeat_command or command,
         "summary": summary,
         "oversized": oversized,
+        "environment": environment,
     }
     (out / f"manifest-{args.engine}-{args.dataset}.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
