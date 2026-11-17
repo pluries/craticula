@@ -21,6 +21,18 @@ internal static class SqlExecutionRunner
             .Where(name => File.Exists(RepoPaths.Fixture([.. name.Split('/'), "expected", $"{backend}.artifact.json"])))
             .Select(name => new object[] { name });
 
+    /// <summary>The same fixtures as <see cref="FixturesFor"/>, typed so a theory's name parameter is checked at compile time.</summary>
+    public static TheoryData<string> TypedFixturesFor(string backend)
+    {
+        var data = new TheoryData<string>();
+        foreach (var name in FixturesFor(backend))
+        {
+            data.Add((string)name[0]);
+        }
+
+        return data;
+    }
+
     /// <summary>
     /// SC-2 of story #3863 for one fixture on one engine: the count equals the number of rows the same request returns when
     /// nothing bounds the window (a grouped level counts its groups). A fixture the engine is expected to refuse (XEQ-4)

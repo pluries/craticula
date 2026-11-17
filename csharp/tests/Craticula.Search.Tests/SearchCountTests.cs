@@ -14,6 +14,8 @@ public class SearchCountTests
 {
     private const string Category = "count-mode";
 
+    private static readonly string[] ForbiddenCountMembers = ["sort", "from", "search_after", "pit"];
+
     public static TheoryData<string> CountableFixtures =>
     [
         "001-flat-no-filter-sort-ignored",
@@ -77,7 +79,7 @@ public class SearchCountTests
 
         Assert.Equal(0, (int)artifact["size"]!);
         Assert.All(
-            new[] { "sort", "from", "search_after", "pit" },
+            ForbiddenCountMembers,
             member => Assert.False(artifact.ContainsKey(member), $"count body must not carry '{member}'"));
     }
 

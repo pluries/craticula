@@ -9,7 +9,7 @@ namespace Craticula.Integration.Tests.Containers.Sql;
 [Collection(PostgresCollection.Name)]
 public class PostgresCountParityTests(PostgresEngine engine)
 {
-    public static IEnumerable<object[]> Fixtures() => SqlExecutionRunner.FixturesFor("postgres");
+    public static TheoryData<string> Fixtures() => SqlExecutionRunner.TypedFixturesFor("postgres");
 
     [DockerTheory]
     [MemberData(nameof(Fixtures))]
@@ -20,7 +20,7 @@ public class PostgresCountParityTests(PostgresEngine engine)
 [Collection(MssqlCollection.Name)]
 public class MssqlCountParityTests(MssqlEngine engine)
 {
-    public static IEnumerable<object[]> Fixtures() => SqlExecutionRunner.FixturesFor("mssql");
+    public static TheoryData<string> Fixtures() => SqlExecutionRunner.TypedFixturesFor("mssql");
 
     [DockerTheory]
     [MemberData(nameof(Fixtures))]
@@ -31,7 +31,7 @@ public class MssqlCountParityTests(MssqlEngine engine)
 [Collection(MySqlCollection.Name)]
 public class MySqlCountParityTests(MySqlEngine engine)
 {
-    public static IEnumerable<object[]> Fixtures() => SqlExecutionRunner.FixturesFor("mysql");
+    public static TheoryData<string> Fixtures() => SqlExecutionRunner.TypedFixturesFor("mysql");
 
     [DockerTheory]
     [MemberData(nameof(Fixtures))]
@@ -42,7 +42,7 @@ public class MySqlCountParityTests(MySqlEngine engine)
 [Collection(OracleCollection.Name)]
 public class OracleCountParityTests(OracleEngine engine)
 {
-    public static IEnumerable<object[]> Fixtures() => SqlExecutionRunner.FixturesFor("oracle");
+    public static TheoryData<string> Fixtures() => SqlExecutionRunner.TypedFixturesFor("oracle");
 
     [DockerTheory]
     [MemberData(nameof(Fixtures))]
@@ -53,7 +53,7 @@ public class OracleCountParityTests(OracleEngine engine)
 [Collection(SqliteCollection.Name)]
 public class SqliteCountParityTests(SqliteEngine engine)
 {
-    public static IEnumerable<object[]> Fixtures() => SqlExecutionRunner.FixturesFor("sqlite");
+    public static TheoryData<string> Fixtures() => SqlExecutionRunner.TypedFixturesFor("sqlite");
 
     [Theory]
     [MemberData(nameof(Fixtures))]

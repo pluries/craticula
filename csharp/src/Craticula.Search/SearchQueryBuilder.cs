@@ -43,6 +43,8 @@ namespace Craticula.Search;
 /// </summary>
 public static class SearchQueryBuilder
 {
+    private const string FieldKey = "field";
+
     /// <summary>
     /// Compiles <paramref name="request"/> into its search body. Re-runs the IR's own structural
     /// validators first — the same defense in depth every other public entry point in this codebase
@@ -92,8 +94,8 @@ public static class SearchQueryBuilder
         {
             Aggs = new JsonObject
             {
-                ["bucket_count"] = new JsonObject { ["cardinality"] = new JsonObject { ["field"] = field } },
-                ["missing_group_values"] = new JsonObject { ["missing"] = new JsonObject { ["field"] = field } }
+                ["bucket_count"] = new JsonObject { ["cardinality"] = new JsonObject { [FieldKey] = field } },
+                ["missing_group_values"] = new JsonObject { ["missing"] = new JsonObject { [FieldKey] = field } }
             }
         };
     }
@@ -234,7 +236,7 @@ public static class SearchQueryBuilder
 
         var terms = new JsonObject
         {
-            ["field"] = target.Keyword,
+            [FieldKey] = target.Keyword,
             ["size"] = request.RowLimit
         };
 
@@ -446,7 +448,7 @@ public static class SearchQueryBuilder
 
     private static JsonObject Exists(string rawField) => new()
     {
-        ["exists"] = new JsonObject { ["field"] = rawField }
+        ["exists"] = new JsonObject { [FieldKey] = rawField }
     };
 
     private static JsonObject RenderComparison(ComparisonNode node, Context context)
@@ -1048,7 +1050,7 @@ public static class SearchQueryBuilder
 
         var source = new JsonObject
         {
-            ["field"] = ResolveGroupFieldTarget(groupColumn, context),
+            [FieldKey] = ResolveGroupFieldTarget(groupColumn, context),
             ["missing_bucket"] = true
         };
 
@@ -1147,7 +1149,7 @@ public static class SearchQueryBuilder
                     "silently replace the first — the request names the same output column twice.");
             }
 
-            var field = new JsonObject { ["field"] = Resolve(aggregation.Field, context).Raw };
+            var field = new JsonObject { [FieldKey] = Resolve(aggregation.Field, context).Raw };
 
             aggs[output] = new JsonObject
             {

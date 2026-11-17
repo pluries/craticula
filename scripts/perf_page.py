@@ -16,6 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TARGET_NS = 50_000
+NOT_MEASURED = "not measured"
 ENGINE_LABELS = {"postgres": "PostgreSQL", "ef": "PostgreSQL through EF Core", "mongo": "MongoDB"}
 SITE_ENTRY = {
     "slug": "performance",
@@ -68,8 +69,13 @@ def compile_rows(report, report_path, page_dir):
                 mean, allocated = measured[(shape, backend, path)]
                 cells += [link(f"{mean / 1000:.1f} µs", report_path, page_dir), link(kib(allocated), report_path, page_dir), verdict_for(mean)]
             else:
-                cells += ["not measured", "not measured", "not measured"]
+                cells += [NOT_MEASURED] * 3
         lines.append("| " + " | ".join(cells) + " |")
+    return lines, compile_summary(measured)
+
+
+def compile_summary(measured):
+    """One sentence per path: whether every measured compile time is under the PERF-1 target."""
     parts = []
     for path, label in (("full-compile", "full compile"), ("prepared-schema", "prepared schema")):
         means = [value[0] for key, value in measured.items() if key[2] == path]
@@ -77,7 +83,7 @@ def compile_rows(report, report_path, page_dir):
             over = sum(1 for mean in means if mean >= TARGET_NS)
             parts.append(f"On the {label} path, " + ("every measured compile time is under the target." if over == 0
                          else f"{over} of {len(means)} measured compile times are not under the target."))
-    return lines, " ".join(parts)
+    return " ".join(parts)
 
 
 def load_compare():
