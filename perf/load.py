@@ -23,11 +23,52 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SMOKE = ROOT / "examples" / "demo" / "smoke"
-ENGINES = ("postgres", "mongo")
+ENGINES = ("postgres", "ef", "mongo")
 DEFAULT_SHAPES = ("number-gt.json", "text-contains-sort.json", "group-by-country.json", "set-filter-status.json")
 OVERSIZED_SHAPE = "bad-oversized-page.json"
 OVERSIZED_KIND = "resource-limit-exceeded"
 REQUEST_TIMEOUT_SECONDS = 30
+
+
+def read_cpu_times(path=Path("/proc/stat")):
+    """(steal ticks, total ticks) from the first line of /proc/stat, or None where there is no such file (not Linux). Guest time is already in user time."""
+    try:
+        fields = path.read_text(encoding="utf-8").splitlines()[0].split()[1:9]
+        values = [int(f) for f in fields]
+    except (OSError, ValueError, IndexError):
+        return None
+    if len(values) < 8:
+        return None
+    return values[7], sum(values)
+
+
+def steal_percent(before, after):
+    """The share of the CPU time between two samples that the hypervisor gave to something else; None when it cannot be told."""
+    if before is None or after is None or after[1] <= before[1]:
+        return None
+    return round((after[0] - before[0]) / (after[1] - before[1]) * 100, 2)
+
+
+def read_load_average(path=Path("/proc/loadavg")):
+    try:
+        return float(path.read_text(encoding="utf-8").split()[0])
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def read_thermal(root=Path("/sys/class/thermal")):
+    """Temperature in degrees Celsius of each thermal zone, by its type; {} where there are none. Which zone is the CPU's depends on the machine."""
+    zones = {}
+    try:
+        for zone in sorted(root.glob("thermal_zone*")):
+            try:
+                kind = (zone / "type").read_text(encoding="utf-8").strip()
+                zones[kind] = max(zones.get(kind, -273.0), int((zone / "temp").read_text(encoding="utf-8").strip()) / 1000)
+            except (OSError, ValueError):
+                continue
+    except OSError:
+        return {}
+    return zones
 
 
 def percentile(values, p):
@@ -62,28 +103,30 @@ def check_oversized(url):
     return {"handled": status == 400 and kind == OVERSIZED_KIND, "status": status, "kind": kind}
 
 
-def worker(url, shapes, deadline, results, lock):
+def worker(url, shapes, measure_start, deadline, results, lock):
     index = 0
     local = []
     while time.perf_counter() < deadline:
         name, body = shapes[index % len(shapes)]
         index += 1
+        sent_at = time.perf_counter()
         status, _, elapsed = post(url, body)
-        local.append({"shape": name, "status": status, "ms": round(elapsed, 3)})
+        if sent_at >= measure_start:
+            local.append({"shape": name, "status": status, "ms": round(elapsed, 3)})
     with lock:
         results.extend(local)
 
 
-def run_load(url, shapes, concurrency, duration):
+def run_load(url, shapes, concurrency, duration, warmup=0.0):
     results, lock = [], threading.Lock()
-    started = time.perf_counter()
-    deadline = started + duration
-    threads = [threading.Thread(target=worker, args=(url, shapes, deadline, results, lock)) for _ in range(concurrency)]
+    measure_start = time.perf_counter() + warmup
+    deadline = measure_start + duration
+    threads = [threading.Thread(target=worker, args=(url, shapes, measure_start, deadline, results, lock)) for _ in range(concurrency)]
     for thread in threads:
         thread.start()
     for thread in threads:
         thread.join()
-    return results, time.perf_counter() - started
+    return results, time.perf_counter() - measure_start
 
 
 def summarize(results, elapsed):
@@ -107,6 +150,7 @@ def parse(argv):
     parser.add_argument("--base-url", required=True)
     parser.add_argument("--concurrency", type=int, required=True)
     parser.add_argument("--duration", type=float, required=True)
+    parser.add_argument("--warmup", type=float, default=5.0)
     parser.add_argument("--dataset", required=True)
     parser.add_argument("--machine", required=True)
     parser.add_argument("--engine-version", required=True)
@@ -131,6 +175,8 @@ def main(argv=None):
         return refuse("concurrency must be at least 1")
     if args.duration <= 0:
         return refuse("duration must be above 0 seconds")
+    if args.warmup < 0:
+        return refuse("warmup must be 0 or more seconds")
     shapes = []
     for name in (n.strip() for n in args.shapes.split(",") if n.strip()):
         path = SMOKE / name
@@ -142,7 +188,13 @@ def main(argv=None):
 
     url = f"{args.base_url.rstrip('/')}/api/{args.engine}/rows"
     oversized = check_oversized(url)
-    results, elapsed = run_load(url, shapes, args.concurrency, args.duration)
+    cpu_before = read_cpu_times()
+    results, elapsed = run_load(url, shapes, args.concurrency, args.duration, args.warmup)
+    environment = {
+        "cpu_steal_percent": steal_percent(cpu_before, read_cpu_times()),
+        "load_average_1m": read_load_average(),
+        "thermal_c": read_thermal(),
+    }
     summary = summarize(results, elapsed)
 
     out = Path(args.out)
@@ -150,7 +202,7 @@ def main(argv=None):
     raw = out / f"load-{args.engine}-{args.dataset}.jsonl"
     raw.write_text("".join(json.dumps(r) + "\n" for r in results), encoding="utf-8")
     command = shlex.join(["python3", "perf/load.py", "--engine", args.engine, "--base-url", args.base_url,
-                          "--concurrency", str(args.concurrency), "--duration", f"{args.duration:g}", "--dataset", args.dataset,
+                          "--concurrency", str(args.concurrency), "--duration", f"{args.duration:g}", "--warmup", f"{args.warmup:g}", "--dataset", args.dataset,
                           "--machine", args.machine, "--engine-version", args.engine_version, "--out", args.out,
                           "--shapes", ",".join(name for name, _ in shapes)])
     manifest = {
@@ -159,13 +211,14 @@ def main(argv=None):
         "dataset": args.dataset,
         "engine": args.engine,
         "engine_version": args.engine_version,
-        "load": {"concurrency": args.concurrency, "duration_seconds": args.duration},
+        "load": {"concurrency": args.concurrency, "duration_seconds": args.duration, "warmup_seconds": args.warmup},
         "shapes": [name for name, _ in shapes],
         "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         "commit": args.commit or current_commit(),
         "command": args.repeat_command or command,
         "summary": summary,
         "oversized": oversized,
+        "environment": environment,
     }
     (out / f"manifest-{args.engine}-{args.dataset}.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 

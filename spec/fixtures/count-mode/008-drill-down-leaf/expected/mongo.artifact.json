@@ -1,0 +1,21 @@
+[
+  {
+    "$match": {
+      "$and": [
+        {
+          "region": {
+            "$eq": "EMEA"
+          }
+        },
+        {
+          "segment": {
+            "$eq": "Enterprise"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "$count": "count"
+  }
+]

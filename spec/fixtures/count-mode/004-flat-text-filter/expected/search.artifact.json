@@ -1,0 +1,11 @@
+{
+  "query": {
+    "wildcard": {
+      "lastName.keyword": {
+        "value": "*smith*",
+        "case_insensitive": true
+      }
+    }
+  },
+  "size": 0
+}

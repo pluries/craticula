@@ -43,6 +43,8 @@ namespace Craticula.Search;
 /// </summary>
 public static class SearchQueryBuilder
 {
+    private const string FieldKey = "field";
+
     /// <summary>
     /// Compiles <paramref name="request"/> into its search body. Re-runs the IR's own structural
     /// validators first — the same defense in depth every other public entry point in this codebase
@@ -64,6 +66,44 @@ public static class SearchQueryBuilder
 
         // TL-3: an export (EXP-2's unpaginated page) never carries the limit.
         return request.Page is NonePage ? query : query with { TimeoutMs = request.MaxQueryTimeMs };
+    }
+
+    /// <summary>
+    /// CNT-7: compiles the count body of <paramref name="request"/>. <see cref="SearchQueryRequest.Page"/>
+    /// and <see cref="SearchQueryRequest.Sort"/> are ignored. A grouped level counts its buckets with a
+    /// <c>cardinality</c> plus a <c>missing</c> aggregation on the group field (the host adds the two).
+    /// <c>track_total_hits</c> is never emitted: OSE-16 is the host's.
+    /// </summary>
+    public static SearchQuery BuildCount(SearchQueryRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        RequirePositiveTimeLimit(request.MaxQueryTimeMs);
+
+        // The page body is reused for its validation and its query; its window and sort are placeholders
+        // that are dropped below.
+        var body = BuildBody(request with { Page = new RangePage { StartRow = 0, EndRow = 1 }, Sort = null });
+        var counted = body with { Sort = null, From = null, Size = 0, Aggs = null, TimeoutMs = request.MaxQueryTimeMs };
+
+        if (GroupingPlan.Resolve(request.Group, request.Aggregations) is not { GroupColumn: { } groupColumn })
+        {
+            return counted;
+        }
+
+        var field = ResolveGroupFieldTarget(groupColumn, new Context(request.Schema));
+        return counted with
+        {
+            Aggs = new JsonObject
+            {
+                ["bucket_count"] = new JsonObject { ["cardinality"] = new JsonObject { [FieldKey] = field } },
+                ["missing_group_values"] = new JsonObject { ["missing"] = new JsonObject { [FieldKey] = field } }
+            }
+        };
+    }
+
+    private static string ResolveGroupFieldTarget(string groupColumn, Context context)
+    {
+        var target = Resolve(groupColumn, context);
+        return target.Config.Type == FieldType.String ? target.Keyword : target.Raw;
     }
 
     private static SearchQuery BuildBody(SearchQueryRequest request)
@@ -196,7 +236,7 @@ public static class SearchQueryBuilder
 
         var terms = new JsonObject
         {
-            ["field"] = target.Keyword,
+            [FieldKey] = target.Keyword,
             ["size"] = request.RowLimit
         };
 
@@ -408,7 +448,7 @@ public static class SearchQueryBuilder
 
     private static JsonObject Exists(string rawField) => new()
     {
-        ["exists"] = new JsonObject { ["field"] = rawField }
+        ["exists"] = new JsonObject { [FieldKey] = rawField }
     };
 
     private static JsonObject RenderComparison(ComparisonNode node, Context context)
@@ -1006,12 +1046,11 @@ public static class SearchQueryBuilder
     private static JsonObject RenderGroupedAggregations(
         string groupColumn, IReadOnlyList<Aggregation> aggregations, SearchQueryRequest request, Context context)
     {
-        var target = Resolve(groupColumn, context);
         var direction = RequireBucketOrder(groupColumn, aggregations, request, context);
 
         var source = new JsonObject
         {
-            ["field"] = target.Config.Type == FieldType.String ? target.Keyword : target.Raw,
+            [FieldKey] = ResolveGroupFieldTarget(groupColumn, context),
             ["missing_bucket"] = true
         };
 
@@ -1110,7 +1149,7 @@ public static class SearchQueryBuilder
                     "silently replace the first — the request names the same output column twice.");
             }
 
-            var field = new JsonObject { ["field"] = Resolve(aggregation.Field, context).Raw };
+            var field = new JsonObject { [FieldKey] = Resolve(aggregation.Field, context).Raw };
 
             aggs[output] = new JsonObject
             {

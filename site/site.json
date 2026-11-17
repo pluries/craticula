@@ -3,7 +3,9 @@
   "repo": "https://github.com/pluries/craticula",
   "branch": "main",
   "baseUrl": "https://craticula.pluries.dev",
-  "packages": { "nuget": "https://www.nuget.org/packages/Craticula.Core" },
+  "packages": {
+    "nuget": "https://www.nuget.org/packages/Craticula.Core"
+  },
   "groups": {
     "Concepts": "What Craticula is, how a request becomes a query, Strict and Lenient, and the safety model.",
     "Guides": "Quickstarts, index guidance and moving from OData.",
@@ -221,6 +223,13 @@
       "description": "Every member of the query intermediate representation.",
       "generator": "schema-reference",
       "schema": "spec/ir.schema.json"
+    },
+    {
+      "slug": "performance",
+      "title": "Performance",
+      "source": "site/pages/performance.md",
+      "group": "Reference",
+      "description": "Measured compile time and load results, each number linked to its raw file."
     }
   ]
 }

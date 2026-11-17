@@ -49,6 +49,38 @@ public class Perf1ReportTests
     }
 
     [Fact]
+    public void Lines_ASchemaPathParameterNamesThePathOnTheLine()
+    {
+        const string json = """
+            { "Benchmarks": [
+              { "Parameters": "Shape=plain-page&Backend=postgres&SchemaPath=prepared-schema", "Statistics": { "Mean": 4000.0 }, "Memory": { "BytesAllocatedPerOperation": 1024 } },
+              { "Parameters": "Shape=plain-page&Backend=postgres&SchemaPath=full-compile", "Statistics": { "Mean": 12000.0 }, "Memory": { "BytesAllocatedPerOperation": 4096 } }
+            ] }
+            """;
+
+        var lines = Perf1Report.Lines(json);
+
+        Assert.Contains("prepared schema", lines[0]);
+        Assert.Contains("full compile", lines[1]);
+        Assert.Contains("meets PERF-1", lines[0]);
+    }
+
+    [Fact]
+    public void Lines_WithoutASchemaPathParameterKeepTheOldFormat()
+    {
+        const string json = """
+            { "Benchmarks": [
+              { "Parameters": "Shape=plain-page&Backend=postgres", "Statistics": { "Mean": 4000.0 }, "Memory": { "BytesAllocatedPerOperation": 1024 } }
+            ] }
+            """;
+
+        var lines = Perf1Report.Lines(json);
+
+        Assert.StartsWith("postgres/plain-page:", lines[0]);
+        Assert.DoesNotContain("prepared", lines[0]);
+    }
+
+    [Fact]
     public void Lines_JsonWithoutBenchmarks_Throws()
     {
         Assert.Throws<InvalidOperationException>(() => Perf1Report.Lines("{ }"));

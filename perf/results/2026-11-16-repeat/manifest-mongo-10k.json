@@ -1,0 +1,33 @@
+{
+  "machine": "bench-vm-10c-34g",
+  "platform": "Linux 7.0.0-43-generic, 10 logical CPUs, Python 3.14.4",
+  "dataset": "10k",
+  "engine": "mongo",
+  "engine_version": "MongoDB 7.0.48",
+  "load": {
+    "concurrency": 8,
+    "duration_seconds": 60.0
+  },
+  "shapes": [
+    "number-gt.json",
+    "text-contains-sort.json",
+    "group-by-country.json",
+    "set-filter-status.json"
+  ],
+  "date": "2026-11-16",
+  "commit": "a5b2356",
+  "command": "PERF_MACHINE=bench-vm-10c-34g PERF_CONCURRENCY=8 PERF_DURATION=60 PERF_OUT=perf/results/2026-11-16-repeat bash scripts/perf-load.sh mongo 10k",
+  "summary": {
+    "count": 7374,
+    "errors": 0,
+    "requests_per_second": 122.8,
+    "p50_ms": 59.196,
+    "p95_ms": 113.83,
+    "p99_ms": 166.322
+  },
+  "oversized": {
+    "handled": true,
+    "status": 400,
+    "kind": "resource-limit-exceeded"
+  }
+}

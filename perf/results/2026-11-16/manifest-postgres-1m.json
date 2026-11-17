@@ -1,0 +1,33 @@
+{
+  "machine": "bench-vm-10c-34g",
+  "platform": "Linux 7.0.0-43-generic, 10 logical CPUs, Python 3.14.4",
+  "dataset": "1m",
+  "engine": "postgres",
+  "engine_version": "postgres (PostgreSQL) 16.16 (Debian 16.16-1.pgdg13+1)",
+  "load": {
+    "concurrency": 8,
+    "duration_seconds": 60.0
+  },
+  "shapes": [
+    "number-gt.json",
+    "text-contains-sort.json",
+    "group-by-country.json",
+    "set-filter-status.json"
+  ],
+  "date": "2026-11-16",
+  "commit": "a5b2356",
+  "command": "PERF_MACHINE=bench-vm-10c-34g PERF_CONCURRENCY=8 PERF_DURATION=60 PERF_OUT=perf/results/2026-11-16 bash scripts/perf-load.sh postgres 1m",
+  "summary": {
+    "count": 378,
+    "errors": 0,
+    "requests_per_second": 6.12,
+    "p50_ms": 1123.044,
+    "p95_ms": 2677.338,
+    "p99_ms": 3966.353
+  },
+  "oversized": {
+    "handled": true,
+    "status": 400,
+    "kind": "resource-limit-exceeded"
+  }
+}

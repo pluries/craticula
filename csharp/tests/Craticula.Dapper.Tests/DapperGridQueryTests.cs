@@ -65,6 +65,41 @@ public class DapperGridQueryTests
     }
 
     /// <summary>
+    /// CNT-2/CNT-4 (story #3863): the count is one statement of its own, not the page query wrapped in a derived
+    /// table — it carries neither the page's <c>ORDER BY</c> nor its row window.
+    /// </summary>
+    [Fact]
+    public async Task The_Standalone_Count_Is_One_Statement_Without_The_Pages_Ordering_Or_Window()
+    {
+        var fixture = Paged();
+        using var database = SqliteFixtureDatabase.Create(fixture.Schema, Datasets.PagedLastNames());
+        var recording = new RecordingConnection((System.Data.Common.DbConnection)database.Connection);
+
+        var total = await DapperGridQuery.CountAsync(recording, fixture.Sql, Sqlite);
+
+        Assert.Equal(35, total);
+        var statement = Assert.Single(recording.CommandTexts);
+        Assert.StartsWith("SELECT COUNT(*) FROM", statement);
+        Assert.DoesNotContain("ORDER BY", statement);
+        Assert.DoesNotContain("LIMIT", statement);
+    }
+
+    /// <summary>
+    /// CNT-3: a window far above any page limit changes nothing about the count, because the window plays no part in it.
+    /// </summary>
+    [Fact]
+    public async Task The_Standalone_Count_Ignores_The_Requests_Window()
+    {
+        var fixture = Paged();
+        using var database = SqliteFixtureDatabase.Create(fixture.Schema, Datasets.PagedLastNames());
+        var huge = fixture.Sql with { Page = new RangePage { StartRow = 0, EndRow = 100_000 } };
+
+        var total = await DapperGridQuery.CountAsync(database.Connection, huge, Sqlite);
+
+        Assert.Equal(35, total);
+    }
+
+    /// <summary>
     /// EXP-1(b): a grid page with no explicit projection returns every declared field in GRP-3's
     /// declaration order, under its LOGICAL colId — not the physical column names a bare <c>SELECT *</c>
     /// would hand back. sort-paging/011's <c>lastName</c> lives in <c>last_name</c>, so the two differ

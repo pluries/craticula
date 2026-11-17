@@ -34,16 +34,6 @@ namespace Craticula.Dapper;
 /// </summary>
 public static class DapperGridQuery
 {
-    /// <summary>The row window this package compiles a count query with — large enough to never bound a
-    /// real result, and present ONLY so that wrapping the compiled statement's own <c>ORDER BY</c> in a
-    /// derived table is legal SQL on every dialect: SQL Server specifically REJECTS an <c>ORDER BY</c>
-    /// inside a derived table/subquery unless it also carries <c>TOP</c>/<c>OFFSET</c>/<c>FOR XML</c>,
-    /// and <see cref="SqlQueryBuilder.Build"/> always renders a trailing <c>ORDER BY</c> (SEM-6
-    /// guarantees at least one key). The ordering itself is wasted work for a count — the same point
-    /// <c>EfCoreGridQuery</c>'s own count query makes — but <c>Craticula.Sql</c> has no public
-    /// "just the WHERE clause" primitive to avoid it.</summary>
-    private const int CountRowWindow = int.MaxValue;
-
     /// <summary>
     /// Compiles and executes one grid page: filter, order, row window, projection — whatever shape
     /// <see cref="SqlQueryBuilder.Build"/> resolves <paramref name="request"/> to.
@@ -111,17 +101,11 @@ public static class DapperGridQuery
     }
 
     /// <summary>
-    /// The filtered row count on its own — the same query <see cref="FetchPageAsync"/> runs when asked,
-    /// exposed so that asking for it separately cannot mean asking a different question. For a grouped
-    /// level this is the BUCKET count, automatically: see this type's own remarks.
-    ///
-    /// <para><b>How, given <c>Craticula.Sql</c> exposes no count-mode build.</b> The request is
-    /// recompiled with a huge <see cref="RangePage"/> (see <see cref="CountRowWindow"/>) and wrapped as
-    /// <c>SELECT COUNT(*) FROM (&lt;compiled statement&gt;) craticula_count</c> — no <c>AS</c> before
-    /// the derived-table alias, deliberately: Oracle's grammar does not accept one there (only before a
-    /// COLUMN alias), while every other dialect this compiler targets accepts a bare alias too, so
-    /// omitting it is the one spelling that is simultaneously correct SQL everywhere rather than correct
-    /// on four dialects out of five.</para>
+    /// The filtered row count on its own — the same question <see cref="FetchPageAsync"/> asks when told to,
+    /// so asking for it separately cannot mean asking a different question. For a grouped level this is the
+    /// BUCKET count, automatically. It runs <see cref="SqlQueryBuilder.BuildCount"/>'s statement (CNT-4,
+    /// CNT-5): no <c>ORDER BY</c>, no row window, whatever <see cref="SqlQueryRequest.Page"/> and
+    /// <see cref="SqlQueryRequest.Sort"/> say.
     /// </summary>
     public static async Task<long> CountAsync(
         IDbConnection connection,
@@ -133,11 +117,7 @@ public static class DapperGridQuery
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(dialect);
 
-        var inner = SqlQueryBuilder.Build(
-            request with { Page = new RangePage { StartRow = 0, EndRow = CountRowWindow } }, dialect);
-        var wrapped = inner with { Sql = $"SELECT COUNT(*) FROM ({inner.Sql}) craticula_count" };
-
-        var (sql, parameters) = DapperParameterBinder.Prepare(wrapped);
+        var (sql, parameters) = DapperParameterBinder.Prepare(SqlQueryBuilder.BuildCount(request, dialect));
         var command = new CommandDefinition(sql, parameters, cancellationToken: cancellationToken);
 
         return await connection.ExecuteScalarAsync<long>(command).ConfigureAwait(false);

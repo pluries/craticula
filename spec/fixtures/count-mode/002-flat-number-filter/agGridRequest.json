@@ -1,0 +1,20 @@
+{
+  "startRow": 0,
+  "endRow": 100,
+  "rowGroupCols": [],
+  "valueCols": [],
+  "pivotCols": [],
+  "pivotMode": false,
+  "groupKeys": [],
+  "filterModel": {
+    "age": {
+      "filterType": "number",
+      "type": "notEqual",
+      "filter": 30
+    }
+  },
+  "sortModel": [],
+  "requestContext": {
+    "compileMode": "count"
+  }
+}

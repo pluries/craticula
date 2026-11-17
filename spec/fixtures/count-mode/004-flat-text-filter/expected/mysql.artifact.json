@@ -1,0 +1,7 @@
+{
+  "dialect": "mysql",
+  "sql": "SELECT COUNT(*) FROM `employees` WHERE `lastName` LIKE CONCAT('%', ?, '%') ESCAPE '\\\\'",
+  "params": [
+    "smith"
+  ]
+}

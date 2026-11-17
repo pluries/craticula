@@ -1,0 +1,5 @@
+{
+  "rejectedAt": "allowlist",
+  "reason": "unknown-field",
+  "note": "colId 'secretNotes' referenced by filterModel is absent from GridSchema.fields."
+}

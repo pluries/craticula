@@ -36,6 +36,9 @@ namespace Craticula.Mongo;
 /// </summary>
 public static class MongoPipelineBuilder
 {
+    /// <summary>The page stages a count leaves out; every other stage is kept and followed by <c>$count</c> (CNT-2, CNT-6).</summary>
+    private static readonly HashSet<string> CountDroppedStages = ["$skip", "$limit", "$project", "$sort", "$addFields", "$unset"];
+
     /// <summary>
     /// SEM-1's case-insensitive mechanism on MongoDB. <c>strength: 2</c> is the level that folds case
     /// while still distinguishing base characters, and it keeps a supporting index usable — which is
@@ -70,6 +73,25 @@ public static class MongoPipelineBuilder
 
         // TL-3: an export (EXP-2's unpaginated page) is long by design and never carries the limit.
         return request.Page is NonePage ? query : query with { MaxTimeMs = request.MaxQueryTimeMs };
+    }
+
+    /// <summary>
+    /// CNT-6: the page pipeline without its <c>$skip</c>, <c>$limit</c>, <c>$project</c>, <c>$sort</c>, <c>$addFields</c> and
+    /// <c>$unset</c> stages, ending in <c>{ "$count": "count" }</c>. Page, Sort and Projection are ignored.
+    /// </summary>
+    public static MongoQuery BuildCount(MongoQueryRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        RequirePositiveTimeLimit(request.MaxQueryTimeMs);
+        var query = BuildPipeline(request with { Page = new NonePage(), Projection = null, Sort = null });
+
+        // The NonePage above makes the page path omit the limit (TL-3), but a count is not an export: it carries it.
+        var stages = query.Pipeline
+            .Where(stage => !CountDroppedStages.Contains(stage.Select(property => property.Key).First()))
+            .Append(new JsonObject { ["$count"] = "count" })
+            .ToList();
+
+        return query with { Pipeline = stages, MaxTimeMs = request.MaxQueryTimeMs };
     }
 
     private static MongoQuery BuildPipeline(MongoQueryRequest request)

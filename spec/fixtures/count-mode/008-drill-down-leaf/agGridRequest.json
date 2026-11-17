@@ -1,0 +1,46 @@
+{
+  "startRow": 0,
+  "endRow": 100,
+  "rowGroupCols": [
+    {
+      "id": "region",
+      "displayName": "Region",
+      "field": "region"
+    },
+    {
+      "id": "segment",
+      "displayName": "Segment",
+      "field": "segment"
+    }
+  ],
+  "valueCols": [
+    {
+      "id": "amount",
+      "displayName": "Amount",
+      "field": "amount",
+      "aggFunc": "sum"
+    }
+  ],
+  "pivotCols": [],
+  "pivotMode": false,
+  "groupKeys": [
+    {
+      "type": "string",
+      "value": "EMEA"
+    },
+    {
+      "type": "string",
+      "value": "Enterprise"
+    }
+  ],
+  "filterModel": null,
+  "sortModel": [
+    {
+      "colId": "product",
+      "sort": "asc"
+    }
+  ],
+  "requestContext": {
+    "compileMode": "count"
+  }
+}

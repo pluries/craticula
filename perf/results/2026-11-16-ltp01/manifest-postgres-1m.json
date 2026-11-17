@@ -1,0 +1,34 @@
+{
+  "machine": "ltp01",
+  "platform": "Linux 7.0.0-38-generic, 16 logical CPUs, Python 3.14.4",
+  "dataset": "1m",
+  "engine": "postgres",
+  "engine_version": "postgres (PostgreSQL) 16.15 (Debian 16.15-1.pgdg13+2)",
+  "load": {
+    "concurrency": 8,
+    "duration_seconds": 60.0,
+    "warmup_seconds": 5.0
+  },
+  "shapes": [
+    "number-gt.json",
+    "text-contains-sort.json",
+    "group-by-country.json",
+    "set-filter-status.json"
+  ],
+  "date": "2026-11-16",
+  "commit": "4f5bf468",
+  "command": "PERF_MACHINE=ltp01 PERF_CONCURRENCY=8 PERF_DURATION=60 PERF_WARMUP=5 PERF_OUT=perf/results/2026-11-16-ltp01 bash scripts/perf-load.sh postgres 1m",
+  "summary": {
+    "count": 629,
+    "errors": 0,
+    "requests_per_second": 10.4,
+    "p50_ms": 626.549,
+    "p95_ms": 1568.932,
+    "p99_ms": 2478.506
+  },
+  "oversized": {
+    "handled": true,
+    "status": 400,
+    "kind": "resource-limit-exceeded"
+  }
+}

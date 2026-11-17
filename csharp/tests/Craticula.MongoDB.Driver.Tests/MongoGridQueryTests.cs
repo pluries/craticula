@@ -373,24 +373,28 @@ public sealed class MongoGridQueryTests
     }
 
     /// <summary>
-    /// <c>MongoGridQuery.BuildCountPipeline</c>'s own review found it dropped only
-    /// <c>$skip</c>/<c>$limit</c>/<c>$project</c>, leaving SEM-6's mandatory <c>$sort</c> (plus its two
-    /// SEM-3 bucket-labeling stages) in every count pipeline — turning an order-independent scalar count
-    /// into an unbounded blocking sort of the whole filtered set on every filter change. Structural,
-    /// mirroring <c>Craticula.Dapper.Tests</c>' own "no offset" source-scan guards: the fix is a property
-    /// of the code, not of the datasets this suite happens to try.
+    /// The count must not keep SEM-6's mandatory <c>$sort</c> (nor its two SEM-3 bucket-labeling stages): that would turn an
+    /// order-independent scalar count into an unbounded blocking sort of the whole filtered set on every filter change. Since
+    /// story #3863 the stage list lives in <c>MongoPipelineBuilder.BuildCount</c> (CNT-6, pinned by the count-mode fixtures in
+    /// <c>MongoCountTests</c>), and this adapter must use it and strip nothing itself. Structural, mirroring
+    /// <c>Craticula.Dapper.Tests</c>' own "no offset" source-scan guards: the property is of the code, not of the datasets
+    /// this suite happens to try.
     /// </summary>
     [Fact]
-    public void The_Count_Pipeline_Drops_Skip_Limit_Project_Sort_AddFields_And_Unset()
+    public void The_Count_Runs_The_Builders_Count_Pipeline_And_Strips_Nothing_Itself()
     {
-        var path = RepoPaths.AdapterSource("MongoGridQuery.cs");
-        Assert.True(File.Exists(path), $"Expected the grid entry point's source at '{path}'.");
+        var adapter = RepoPaths.AdapterSource("MongoGridQuery.cs");
+        var builder = Path.Combine(RepoPaths.Root, "csharp", "src", "Craticula.Mongo", "MongoPipelineBuilder.cs");
+        Assert.True(File.Exists(adapter), $"Expected the grid entry point's source at '{adapter}'.");
+        Assert.True(File.Exists(builder), $"Expected the pipeline builder's source at '{builder}'.");
 
-        var source = File.ReadAllText(path);
+        var adapterSource = File.ReadAllText(adapter);
 
+        Assert.Contains("MongoPipelineBuilder.BuildCount(", adapterSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("BuildCountPipeline", adapterSource, StringComparison.Ordinal);
         Assert.Contains(
-            "name is \"$skip\" or \"$limit\" or \"$project\" or \"$sort\" or \"$addFields\" or \"$unset\"",
-            source,
+            "\"$skip\" or \"$limit\" or \"$project\" or \"$sort\" or \"$addFields\" or \"$unset\"",
+            File.ReadAllText(builder),
             StringComparison.Ordinal);
     }
 }

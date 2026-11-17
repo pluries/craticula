@@ -1,0 +1,8 @@
+{
+  "dialect": "mysql",
+  "sql": "SELECT COUNT(*) FROM `employees` WHERE `lastName` IN (?, ?)",
+  "params": [
+    "smith",
+    "jones"
+  ]
+}

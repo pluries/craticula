@@ -1,0 +1,7 @@
+{
+  "dialect": "sqlite",
+  "sql": "SELECT COUNT(*) FROM \"employees\" WHERE (\"age\" <> ? OR \"age\" IS NULL)",
+  "params": [
+    30
+  ]
+}

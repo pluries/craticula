@@ -51,11 +51,14 @@ public class ExecutionTierFixtureShapeTests
         Assert.NotEmpty(TierFixtures());
     }
 
-    /// <summary>Every fixture directory with at least one <c>expected/*.artifact.json</c>: its query returns rows (XEQ-1).</summary>
+    /// <summary>Every fixture directory with at least one <c>expected/*.artifact.json</c>: its query returns rows (XEQ-1).
+    /// Not <c>count-mode/</c> (CNT-1..CNT-8): those artifacts return one number, and their execution-tier proof is
+    /// <c>SqlCountParityTests</c>, which runs the count against the unpaged rows of the source fixtures' own datasets.</summary>
     public static IEnumerable<object[]> ExecutableFixtures() =>
         Directory.EnumerateFiles(RepoPaths.Fixture(), "schema.json", SearchOption.AllDirectories)
             .Select(Path.GetDirectoryName)
             .OfType<string>()
+            .Where(d => !Path.GetRelativePath(RepoPaths.Fixture(), d).Replace('\\', '/').StartsWith("count-mode/", StringComparison.Ordinal))
             .Where(d => Directory.Exists(Path.Combine(d, "expected"))
                 && Directory.EnumerateFiles(Path.Combine(d, "expected"), "*.artifact.json").Any())
             .OrderBy(d => d, StringComparer.Ordinal)

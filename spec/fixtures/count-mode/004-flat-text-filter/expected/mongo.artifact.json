@@ -1,0 +1,13 @@
+[
+  {
+    "$match": {
+      "lastName": {
+        "$regex": "smith",
+        "$options": "i"
+      }
+    }
+  },
+  {
+    "$count": "count"
+  }
+]

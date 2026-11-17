@@ -4,8 +4,9 @@
 Offline: a fake demo on 127.0.0.1 (plain http, a thread) answers the rows route; nothing leaves the machine.
 Contract of perf/load.py (exit 0 = the run finished and the oversized request was refused the way the demo refuses it,
 1 = it finished but the oversized request was not handled, 2 = bad arguments):
-  --engine <postgres|mongo>   --base-url <url>   --concurrency <n>   --duration <seconds>   --dataset <label, e.g. 10k>
+  --engine <postgres|ef|mongo>   --base-url <url>   --concurrency <n>   --duration <seconds>   --dataset <label, e.g. 10k>
   --machine <label>   --engine-version <text>   --out <dir>   [--shapes a.json,b.json]   [--commit <sha>]   [--repeat-command <text>]
+  [--warmup <seconds, default 5>]: requests sent before the measured period are discarded (the first requests are slower: connections, JIT)
   Posts the request bodies of examples/demo/smoke to <base-url>/api/<engine>/rows from <concurrency> threads for <duration>
   seconds; prints p50, p95, p99 (milliseconds) and requests per second; writes load-<engine>-<dataset>.jsonl (one line per request)
   and manifest-<engine>-<dataset>.json (machine, dataset, engine version, load, date, commit, the command that repeats the run) into <out>: one
@@ -37,7 +38,7 @@ def load_module():
 
 
 class FakeDemo(BaseHTTPRequestHandler):
-    """server.oversized_status / server.oversized_kind script the answer to a page of 100000 rows; everything else is 200."""
+    """server.oversized_status / server.oversized_kind script the answer to a page of 100000 rows; everything else is 200. server.rows_requests counts the others."""
 
     def log_message(self, *args):
         """Silences the request log."""
@@ -48,6 +49,7 @@ class FakeDemo(BaseHTTPRequestHandler):
             status = self.server.oversized_status
             payload = {"error": {"kind": self.server.oversized_kind, "message": "too large"}} if status != 200 else {"rows": []}
         else:
+            self.server.rows_requests += 1
             status, payload = 200, {"rows": [], "lastRow": 0}
         data = json.dumps(payload).encode()
         self.send_response(status)
@@ -62,6 +64,7 @@ class Demo:
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), FakeDemo)
         self.server.oversized_status = oversized_status
         self.server.oversized_kind = oversized_kind
+        self.server.rows_requests = 0
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
 
     def __enter__(self):
@@ -73,9 +76,9 @@ class Demo:
         self.server.server_close()
 
 
-def run_load(base_url, out, extra=(), engine="postgres", concurrency="2", duration="0.5"):
+def run_load(base_url, out, extra=(), engine="postgres", concurrency="2", duration="0.5", warmup="0"):
     args = [sys.executable, "-I", str(LOAD), "--engine", engine, "--base-url", base_url, "--concurrency", concurrency,
-            "--duration", duration, "--dataset", "10k", "--machine", "test-box", "--engine-version", "postgres 16.4",
+            "--duration", duration, "--warmup", warmup, "--dataset", "10k", "--machine", "test-box", "--engine-version", "postgres 16.4",
             "--commit", "abc1234", "--out", str(out), *extra]
     return subprocess.run(args, capture_output=True, text=True, timeout=60)
 
@@ -114,7 +117,7 @@ class RunTests(unittest.TestCase):
                 self.assertIn(key, manifest)
             self.assertEqual("abc1234", manifest["commit"])
             self.assertEqual("10k", manifest["dataset"])
-            self.assertEqual({"concurrency": 2, "duration_seconds": 0.5}, manifest["load"])
+            self.assertEqual({"concurrency": 2, "duration_seconds": 0.5, "warmup_seconds": 0.0}, manifest["load"])
             self.assertIn("perf/load.py", manifest["command"])
             self.assertIn("--dataset 10k", manifest["command"])
             for key in ("count", "errors", "p50_ms", "p95_ms", "p99_ms", "requests_per_second"):
@@ -148,6 +151,118 @@ class RunTests(unittest.TestCase):
             self.assertEqual(1, run_load(url, out).returncode)
 
 
+class WarmupTests(unittest.TestCase):
+    """Requests sent during the warm-up are not measured: not in the raw file, not in the summary."""
+
+    def raw_count(self, out):
+        return len(Path(out, "load-postgres-10k.jsonl").read_text(encoding="utf-8").splitlines())
+
+    def test_warmup_requests_are_sent_but_not_recorded(self):
+        with tempfile.TemporaryDirectory() as out:
+            demo = Demo()
+            with demo as url:
+                result = run_load(url, out, warmup="0.6", duration="0.4")
+                self.assertEqual(0, result.returncode, result.stderr)
+                sent = demo.server.rows_requests
+            recorded = self.raw_count(out)
+            self.assertGreater(recorded, 0)
+            self.assertGreater(sent, recorded * 1.5, f"{sent} requests were sent but {recorded} were recorded: the warm-up should be the larger part")
+            manifest = json.loads(Path(out, "manifest-postgres-10k.json").read_text(encoding="utf-8"))
+            self.assertEqual(recorded, manifest["summary"]["count"])
+
+    def test_without_a_warmup_every_request_is_recorded(self):
+        with tempfile.TemporaryDirectory() as out:
+            demo = Demo()
+            with demo as url:
+                run_load(url, out, warmup="0")
+                sent = demo.server.rows_requests
+            self.assertEqual(sent, self.raw_count(out))
+
+    def test_the_manifest_records_the_warmup_length(self):
+        with Demo() as url, tempfile.TemporaryDirectory() as out:
+            run_load(url, out, warmup="0.3")
+            manifest = json.loads(Path(out, "manifest-postgres-10k.json").read_text(encoding="utf-8"))
+            self.assertEqual(0.3, manifest["load"]["warmup_seconds"])
+
+    def test_the_default_warmup_is_five_seconds(self):
+        load = load_module()
+        args = load.parse(["--engine", "postgres", "--base-url", "http://x", "--concurrency", "1", "--duration", "1", "--dataset", "10k",
+                           "--machine", "m", "--engine-version", "v", "--out", "o"])
+        self.assertEqual(5.0, args.warmup)
+
+    def test_a_negative_warmup_is_refused(self):
+        with tempfile.TemporaryDirectory() as out:
+            result = run_load("http://127.0.0.1:9", out, warmup="-1")
+            self.assertEqual(2, result.returncode)
+            self.assertIn("warmup", result.stderr)
+
+
+class MachineStateTests(unittest.TestCase):
+    """The manifest records what the machine itself was doing (CPU steal, load, temperature), so a slow run can explain itself."""
+
+    def stat(self, root, text):
+        path = Path(root, "stat")
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def test_cpu_times_read_steal_and_the_total_without_guest_time(self):
+        load = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.stat(tmp, "cpu  100 0 50 800 20 0 10 20 5 0\ncpu0 1 1 1 1 1 1 1 1 1 1\n")
+            self.assertEqual((20, 1000), load.read_cpu_times(path))
+
+    def test_steal_percent_is_the_share_of_the_time_between_two_samples(self):
+        load = load_module()
+        self.assertEqual(2.0, load.steal_percent((20, 1000), (40, 2000)))   # 20 of 1000 ticks
+        self.assertEqual(0.0, load.steal_percent((20, 1000), (20, 1500)))
+
+    def test_steal_percent_without_time_passing_is_unknown(self):
+        load = load_module()
+        self.assertIsNone(load.steal_percent((20, 1000), (20, 1000)))
+        self.assertIsNone(load.steal_percent(None, (20, 1000)))
+
+    def test_a_missing_proc_stat_is_unknown_not_an_error(self):
+        load = load_module()
+        self.assertIsNone(load.read_cpu_times(Path("/no/such/stat")))
+
+    def test_load_average_is_the_first_number(self):
+        load = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp, "loadavg")
+            path.write_text("3.25 2.50 1.00 4/900 12345\n", encoding="utf-8")
+            self.assertEqual(3.25, load.read_load_average(path))
+        self.assertIsNone(load.read_load_average(Path("/no/such/loadavg")))
+
+    def test_thermal_zones_are_named_by_type_in_degrees(self):
+        load = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            for name, kind, milli in (("thermal_zone0", "acpitz", 95000), ("thermal_zone1", "x86_pkg_temp", 71500)):
+                zone = Path(tmp, name)
+                zone.mkdir()
+                Path(zone, "type").write_text(kind + "\n", encoding="utf-8")
+                Path(zone, "temp").write_text(f"{milli}\n", encoding="utf-8")
+            self.assertEqual({"acpitz": 95.0, "x86_pkg_temp": 71.5}, load.read_thermal(Path(tmp)))
+        self.assertEqual({}, load.read_thermal(Path("/no/such/thermal")))
+
+    def test_the_manifest_has_an_environment_section(self):
+        with Demo() as url, tempfile.TemporaryDirectory() as out:
+            run_load(url, out)
+            manifest = json.loads(Path(out, "manifest-postgres-10k.json").read_text(encoding="utf-8"))
+            self.assertEqual({"cpu_steal_percent", "load_average_1m", "thermal_c"}, set(manifest["environment"]))
+
+
+class EfEngineTests(unittest.TestCase):
+    """The demo serves PostgreSQL twice: through Dapper (route postgres) and through the EF Core adapter (route ef)."""
+
+    def test_the_ef_route_is_loaded_and_keeps_its_own_files(self):
+        with Demo() as url, tempfile.TemporaryDirectory() as out:
+            result = run_load(url, out, engine="ef")
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertTrue(Path(out, "load-ef-10k.jsonl").is_file())
+            manifest = json.loads(Path(out, "manifest-ef-10k.json").read_text(encoding="utf-8"))
+            self.assertEqual("ef", manifest["engine"])
+
+
 class RepeatCommandTests(unittest.TestCase):
     """FR-19: a reviewer repeats a run from the page alone, so the manifest records the command that does everything."""
 
@@ -171,6 +286,21 @@ class ScriptGuardTests(unittest.TestCase):
         result = self.run_script("perf-load.sh", ["postgres", "10k"], {})
         self.assertEqual(2, result.returncode)
         self.assertIn("PERF_MACHINE", result.stderr)
+
+    def test_perf_load_accepts_the_ef_engine_name(self):
+        result = self.run_script("perf-load.sh", ["ef", "10k"], {})
+        self.assertEqual(2, result.returncode)
+        self.assertIn("PERF_MACHINE", result.stderr)  # past the engine check, stopped by the next guard
+        self.assertNotIn("usage:", result.stderr)
+
+    def test_perf_single_requires_the_machine_label(self):
+        result = self.run_script("perf-single.sh", [], {})
+        self.assertEqual(2, result.returncode)
+        self.assertIn("PERF_MACHINE", result.stderr)
+
+    def test_perf_single_refuses_an_absolute_date_folder(self):
+        result = self.run_script("perf-single.sh", [ABSOLUTE_PATH], {"PERF_MACHINE": "box"})
+        self.assertEqual(2, result.returncode)
 
     def test_perf_load_refuses_an_absolute_output_path(self):
         result = self.run_script("perf-load.sh", ["postgres", "10k"], {"PERF_MACHINE": "box", "PERF_OUT": ABSOLUTE_PATH})

@@ -1,0 +1,20 @@
+{
+  "startRow": 0,
+  "endRow": 100,
+  "rowGroupCols": [],
+  "valueCols": [],
+  "pivotCols": [],
+  "pivotMode": false,
+  "groupKeys": [],
+  "filterModel": {
+    "lastName": {
+      "filterType": "text",
+      "type": "contains",
+      "filter": "smith"
+    }
+  },
+  "sortModel": [],
+  "requestContext": {
+    "compileMode": "count"
+  }
+}

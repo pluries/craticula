@@ -1,0 +1,5 @@
+{
+  "dialect": "sqlite",
+  "sql": "SELECT COUNT(*) FROM \"employees\"",
+  "params": []
+}

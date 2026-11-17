@@ -1,0 +1,7 @@
+{
+  "dialect": "sqlite",
+  "sql": "SELECT COUNT(*) FROM \"employees\" WHERE \"lastName\" LIKE '%' || ? || '%' ESCAPE '\\'",
+  "params": [
+    "smith"
+  ]
+}

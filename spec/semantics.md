@@ -3220,3 +3220,54 @@ range page for the opposite reason (EXP-1: `exportScope: "page"` is one bounded 
 code, not of the client's request, so they are not wire errors. The streaming entry points read the unpaginated page whether it
 came from an export of everything (PG-2) or from an allowed `ignorePageLimit` (PG-3). The compilers themselves accept every page
 spec, since the streaming entry points compile through them.
+## Addendum — count mode (CNT-1..CNT-8; not numbered SEM-*, for the same reason as the aggregation addendum above)
+
+A host that shows a grid needs the total number of rows that match a request, next to the page. Count mode is a second compile
+entry point that answers exactly that question. It exists because a count has no use for the page's ordering or window:
+measured at one million rows, the PostgreSQL count that kept the page query's `ORDER BY` took 3.7 to 5.6 times longer on a
+filter matching many rows than the same count without it (`docs/feat/3324/query-plans.md`).
+
+**CNT-1. Same rows as the page.** A request compiled in count mode goes through the same field allowlist, filter merge, type
+coercion, static filters and SEC-3 limits as the page request, and a request the page compile refuses (an unknown column, a
+filter over the leaf budget) is refused in count mode with the same error, except a refusal that comes only from the sort model
+(CNT-3). The count and the page cannot disagree about which
+rows match, because they share one filter.
+
+**CNT-2. What a count leaves out.** The count artifact has no ordering (no `ORDER BY`, `$sort`, `sort`), no SEM-6 tiebreaker, no
+row window (no `LIMIT`/`OFFSET`/`FETCH`, `$skip`/`$limit`, `from`) and no projection: a flat SQL count selects only `COUNT(*)`, a
+grouped SQL count selects only the group expression, a MongoDB count ends in `$count`, and a Search count has `size` 0.
+
+**CNT-3. The window plays no part.** The request's `startRow`, `endRow`, sort model and `ignorePageLimit` do not change the count
+artifact, and a window that the page compile would refuse as `max-page-size-exceeded` (SEC-3) does not make a count fail.
+Because SEC-3's page-size check runs in the filter pipeline, a host compiling a count passes the pipeline the unpaginated page
+(`NonePage`), not the request's window. The sort model is not read at all: a sort on a column the schema does not declare, or one
+the page would refuse for its collation, does not make a count fail and does not change its artifact.
+
+**CNT-4. SQL, flat requests and the drill-down leaf.** The artifact is `SELECT COUNT(*) FROM <source> [WHERE <filter>]`. Its
+`params` are the filter's parameters in the order the page query binds them, without the two paging parameters. A drill-down leaf
+(GRP-1: every group column consumed by a group key) counts the rows under those keys, with the key predicates in the `WHERE`
+exactly as the page renders them.
+
+**CNT-5. SQL, a grouped level.** The artifact counts the groups of that level:
+`SELECT COUNT(*) FROM (SELECT <group expression> FROM <source> [WHERE <filter>] GROUP BY <group expression>) craticula_count`.
+The group expression is the page query's own (GRP-2 folds no case on a group key). The derived-table alias is written without
+`AS`, because Oracle does not accept `AS` before a derived-table alias while every other dialect accepts the bare form. A group
+with a NULL key is one group, as in the page query. Aggregations, `HAVING`-style conditions and the sort are not part of a count.
+
+**CNT-6. MongoDB.** The artifact is the page pipeline with the stages `$skip`, `$limit`, `$project`, `$sort`, `$addFields` and
+`$unset` removed and `{ "$count": "count" }` appended; none of those six can appear before a grouped level's own `$group`, so
+removing them never removes a stage the count needs. A grouped level therefore counts its groups. Wrapper members of the
+artifact (`collation`, `maxTimeMS`, TL-1) are kept.
+
+**CNT-7. Search.** The artifact is the page body with `size` 0 and without `sort`, `from`, `search_after` and `pit`; a flat or
+drill-down request keeps its `query` and nothing else. A grouped level also replaces `aggs` with two sibling aggregations on the
+group field's target (the keyword sub-field for a string, as the page's composite source uses): `bucket_count`, a `cardinality`,
+and `missing_group_values`, a `missing`. The count of groups is `bucket_count.value` plus 1 when `missing_group_values.doc_count`
+is above 0, because `cardinality` ignores documents without the field while CNT-5 (and the page's `missing_bucket`) make them one
+group. It is approximate above the engine's precision threshold, as OSE-16 already states. `track_total_hits` is not part of the
+artifact: whether the host asks for the exact total or a capped one is its policy (OSE-16, `ExactRowCount`). The `timeout` member
+(TL-2) is kept.
+
+**CNT-8. A separate entry point; nothing else moves.** Count mode is entered through its own call
+(`BuildCount`), selected in the conformance fixtures by the harness member `requestContext.compileMode` set to `"count"`
+(`conformance-runner.md` §3). The page entry point and every expected artifact outside `fixtures/count-mode/` are unchanged.

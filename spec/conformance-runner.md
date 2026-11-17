@@ -109,6 +109,7 @@ implementation compiles the same thing:
 - **Page defaults** — `agGridRequest.requestContext.defaultPageSize` (a whole number) sets the host's default page size, and
   `requestContext.allowUnboundedRows: true` sets the host's switch for `ignorePageLimit` (PG-1, PG-3). Like `now`, they are
   harness instructions that a production parser never reads from the wire. Absent, the defaults are 100 and off.
+- **Compile mode** — `agGridRequest.requestContext.compileMode`, when `"count"`, selects count mode (CNT-8): the driver compiles the request with the backend's count entry point and passes the filter pipeline the unpaginated page, so a window above the page-size limit does not refuse it (CNT-3). Like `now`, it is a harness instruction that a production parser never reads from the wire. Absent, the page entry point is used; any other value is an `error` response.
 - **Zone** — `requestContext.zone`, when present, is read as SEM-4 prescribes for any request.
 - **Entry point** — a request with a top-level `setValuesRequest` member is a set-values request (BM-3) and goes through
   that entry point; every other request is a row request.

@@ -1,0 +1,8 @@
+{
+  "dialect": "mssql",
+  "sql": "SELECT COUNT(*) FROM [sales_fact] WHERE ([region] = @p1 AND [segment] = @p2)",
+  "params": [
+    "EMEA",
+    "Enterprise"
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "dialect": "mssql",
+  "sql": "SELECT COUNT(*) FROM [employees] WHERE [lastName] COLLATE Latin1_General_CI_AS IN (@p1, @p2)",
+  "params": [
+    "smith",
+    "jones"
+  ]
+}

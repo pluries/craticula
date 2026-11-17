@@ -46,7 +46,7 @@ internal sealed record PreparedRequest(
     public static PreparedRequest For(ExecutionFixture fixture, GridSchema schema)
     {
         var requestJson = fixture.Request.GetRawText();
-        var options = new AgGridParseOptions { Schema = schema, Clock = ClockFor(fixture.Request) };
+        var options = new AgGridParseOptions { Schema = schema, Clock = ClockFor(fixture.Request), AllowUnboundedRows = HarnessFlag(fixture.Request, "allowUnboundedRows") };
         var limits = new ResourceLimits();
 
         if (fixture.Request.ValueKind == JsonValueKind.Object && fixture.Request.TryGetProperty("setValuesRequest", out _))
@@ -64,6 +64,14 @@ internal sealed record PreparedRequest(
             row.NativeFilter, row.CustomFilters, row.Page, schema, limits, row.Group, row.Aggregations);
         return new PreparedRequest(schema, false, row, rowFilter, null, 0);
     }
+
+    // The harness setup a port must reproduce: the host's switch for an unbounded request (PG-3), set by requestContext.allowUnboundedRows.
+    private static bool HarnessFlag(JsonElement request, string member) =>
+        request.ValueKind == JsonValueKind.Object
+        && request.TryGetProperty("requestContext", out var context)
+        && context.ValueKind == JsonValueKind.Object
+        && context.TryGetProperty(member, out var value)
+        && value.ValueKind == JsonValueKind.True;
 
     // The harness setup a port must reproduce: a clock pinned to requestContext.now for the cases that declare one.
     private static TimeProvider ClockFor(JsonElement request)

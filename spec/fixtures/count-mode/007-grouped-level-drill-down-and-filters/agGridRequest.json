@@ -1,0 +1,57 @@
+{
+  "startRow": 0,
+  "endRow": 100,
+  "rowGroupCols": [
+    {
+      "id": "region",
+      "displayName": "Region",
+      "field": "region"
+    },
+    {
+      "id": "segment",
+      "displayName": "Segment",
+      "field": "segment"
+    },
+    {
+      "id": "product",
+      "displayName": "Product",
+      "field": "product"
+    }
+  ],
+  "valueCols": [
+    {
+      "id": "amount",
+      "displayName": "Amount",
+      "field": "amount",
+      "aggFunc": "sum"
+    }
+  ],
+  "pivotCols": [],
+  "pivotMode": false,
+  "groupKeys": [
+    {
+      "type": "string",
+      "value": "EMEA"
+    },
+    {
+      "type": "string",
+      "value": "Enterprise"
+    }
+  ],
+  "filterModel": {
+    "fiscalYear": {
+      "filterType": "number",
+      "type": "greaterThanOrEqual",
+      "filter": 2023
+    },
+    "quantity": {
+      "filterType": "number",
+      "type": "lessThan",
+      "filter": 500
+    }
+  },
+  "sortModel": [],
+  "requestContext": {
+    "compileMode": "count"
+  }
+}
