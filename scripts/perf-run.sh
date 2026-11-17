@@ -3,8 +3,9 @@
 # run twice on this machine, then the two runs compared. Run it on the measurement machine with nothing else running on it.
 # Usage: PERF_MACHINE=<label> bash scripts/perf-run.sh [date]        default date: today (UTC)
 # Output: perf/results/<date>/ (the run to publish) and perf/results/<date>-repeat/ (the repeat). It ends with
-# `python3 perf/compare.py` (exit 1 when the repeat is more than 10% apart: say so on the page, do not hide it); when it is within the limit,
-# `python3 scripts/perf_page.py perf/results/<date>` writes the site page. Takes about an hour.
+# `python3 perf/compare.py`, which lists how far the repeat differs from the run (NFR-08: the spread is shown, there is no target; it exits 0 for
+# any spread and 2 only when a run cannot be read). `python3 scripts/perf_page.py perf/results/<date> --repeat perf/results/<date>-repeat`
+# writes the site page with that spread. Takes about an hour.
 # Needs docker compose, the .NET SDK and Python 3.10+. Environment: PERF_MACHINE (required), PERF_CONCURRENCY, PERF_DURATION.
 set -euo pipefail
 
