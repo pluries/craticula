@@ -1,0 +1,10 @@
+{
+  "dialect": "postgres",
+  "sql": "SELECT COUNT(*) FROM (SELECT \"product\" FROM \"sales_fact\" WHERE ((\"region\" = $1 AND \"segment\" = $2) AND (\"fiscal_year\" >= $3 AND \"quantity\" < $4)) GROUP BY \"product\") craticula_count",
+  "params": [
+    "EMEA",
+    "Enterprise",
+    2023,
+    500
+  ]
+}

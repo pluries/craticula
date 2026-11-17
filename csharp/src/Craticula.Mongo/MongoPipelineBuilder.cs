@@ -72,6 +72,25 @@ public static class MongoPipelineBuilder
         return request.Page is NonePage ? query : query with { MaxTimeMs = request.MaxQueryTimeMs };
     }
 
+    /// <summary>
+    /// CNT-6: the page pipeline without its <c>$skip</c>, <c>$limit</c>, <c>$project</c>, <c>$sort</c>, <c>$addFields</c> and
+    /// <c>$unset</c> stages, ending in <c>{ "$count": "count" }</c>. Page, Sort and Projection are ignored.
+    /// </summary>
+    public static MongoQuery BuildCount(MongoQueryRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        RequirePositiveTimeLimit(request.MaxQueryTimeMs);
+        var query = BuildPipeline(request with { Page = new NonePage(), Projection = null, Sort = null });
+
+        // The NonePage above makes the page path omit the limit (TL-3), but a count is not an export: it carries it.
+        var stages = query.Pipeline
+            .Where(stage => stage.First().Key is not ("$skip" or "$limit" or "$project" or "$sort" or "$addFields" or "$unset"))
+            .Append(new JsonObject { ["$count"] = "count" })
+            .ToList();
+
+        return query with { Pipeline = stages, MaxTimeMs = request.MaxQueryTimeMs };
+    }
+
     private static MongoQuery BuildPipeline(MongoQueryRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);

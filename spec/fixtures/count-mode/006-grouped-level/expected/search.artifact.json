@@ -1,0 +1,15 @@
+{
+  "size": 0,
+  "aggs": {
+    "bucket_count": {
+      "cardinality": {
+        "field": "region.keyword"
+      }
+    },
+    "missing_group_values": {
+      "missing": {
+        "field": "region.keyword"
+      }
+    }
+  }
+}

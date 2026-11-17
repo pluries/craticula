@@ -1,0 +1,10 @@
+{
+  "dialect": "mssql",
+  "sql": "SELECT COUNT(*) FROM (SELECT [product] FROM [sales_fact] WHERE (([region] = @p1 AND [segment] = @p2) AND ([fiscal_year] >= @p3 AND [quantity] < @p4)) GROUP BY [product]) craticula_count",
+  "params": [
+    "EMEA",
+    "Enterprise",
+    2023,
+    500
+  ]
+}

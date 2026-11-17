@@ -100,40 +100,9 @@ public static class MongoGridQuery
     }
 
     /// <summary>
-    /// The filtered document count on its own — the same question <see cref="FetchPageAsync"/> answers
-    /// when asked, exposed so that asking for it separately cannot mean asking a different question. For
-    /// a grouped level this is the BUCKET count, automatically: see <see cref="MongoGridPage"/>'s own
-    /// remarks.
-    ///
-    /// <para><b>How, given <c>Craticula.Mongo</c> exposes no count-mode build.</b> The standard MongoDB
-    /// idiom — a <c>$count</c> stage appended to a copy of the pipeline with its row-window, ordering and
-    /// projection stages removed, run as a SEPARATE aggregation — since <c>MongoPipelineBuilder</c> has
-    /// no public "the pipeline up to but not including the page window" entry point to ask for instead
-    /// (checked directly in that file: only <c>Build</c> and <c>BuildSetValues</c> are public).
-    /// <c>$skip</c>/<c>$limit</c> are dropped because they bound the WINDOW, not the filtered total,
-    /// <c>$project</c> is dropped because <c>$count</c> needs no particular document shape to count
-    /// documents, and <c>$sort</c>/<c>$addFields</c>/<c>$unset</c> are dropped because a document COUNT
-    /// is order-independent by definition and the two bucket-labeling stages exist only to feed that
-    /// sort — none of these five can appear before a grouped level's own <c>$group</c> (the compiler's
-    /// own fixed stage order), so dropping them never removes a stage the count still needs.</para>
-    ///
-    /// <para><b>Why dropping <c>$sort</c> specifically matters, not just "one fewer stage."</b> SEM-6
-    /// guarantees at least one sort key on EVERY compiled pipeline, so every count built from a naive
-    /// "drop the window, keep everything else" filter would still carry a full <c>$sort</c> of the
-    /// entire filtered set. The page pipeline's own trailing <c>$skip</c>/<c>$limit</c> let the server
-    /// run a bounded top-k sort; stripping them while leaving <c>$sort</c> removes exactly that bound, so
-    /// a scalar count — which owes the client no ordering at all — would pay for an unbounded blocking
-    /// sort on every filter change, and could fail outright with
-    /// <c>QueryExceededMemoryLimitNoDiskUseAllowed</c> on a server version/dataset size where the
-    /// equivalent page fetch succeeds fine (this package sets no <c>AllowDiskUse</c>). Found by this
-    /// story's own review, not by a fixture: none of the 174 compiled pipelines happens to exercise a
-    /// dataset large enough to trip the memory limit, but 174 of 174 count pipelines carried the
-    /// unbounded sort before this fix.</para>
-    ///
-    /// <para><b>A load-bearing MongoDB fact this method exists to hide:</b> <c>$count</c> emits NO output
-    /// document at all when zero documents reach it — unlike SQL's <c>COUNT(*)</c>, which always returns
-    /// exactly one row, <c>0</c> included. An absent result is therefore read as the answer <c>0</c>, not
-    /// as a signal to retry or an error.</para>
+    /// The filtered document count (CNT-6, <see cref="MongoPipelineBuilder.BuildCount"/>), run as its own
+    /// aggregation; for a grouped level it is the bucket count. <c>$count</c> emits NO document when zero
+    /// documents reach it, so an absent result is the answer 0.
     /// </summary>
     public static async Task<long> CountAsync(
         IMongoDatabase database, MongoQueryRequest request, CancellationToken cancellationToken = default)
@@ -141,11 +110,10 @@ public static class MongoGridQuery
         ArgumentNullException.ThrowIfNull(database);
         ArgumentNullException.ThrowIfNull(request);
 
-        var query = MongoPipelineBuilder.Build(request);
-        var countPipeline = BuildCountPipeline(query.Pipeline);
+        var query = MongoPipelineBuilder.BuildCount(request);
 
         var collection = database.GetCollection<BsonDocument>(query.Collection);
-        var stages = MongoPipelineTranslator.Translate(countPipeline);
+        var stages = MongoPipelineTranslator.Translate(query.Pipeline);
         var options = MongoPipelineTranslator.Options(query);
 
         BsonDocument? document = null;
@@ -273,33 +241,5 @@ public static class MongoGridQuery
         return aggregation.Func == AggregationFunc.Avg && sourceType != FieldType.Decimal
             ? FieldType.Double
             : sourceType;
-    }
-
-    /// <summary>
-    /// <paramref name="pipeline"/> with its row-window, ordering and projection stages removed, plus a
-    /// trailing <c>{"$count": "count"}</c> — see <see cref="CountAsync"/>'s own remarks for why these
-    /// five and no others (a document count is order-independent, so <c>$sort</c> and the two
-    /// bucket-labeling stages that exist only to feed it are dropped alongside the row window).
-    /// </summary>
-    private static List<JsonObject> BuildCountPipeline(IReadOnlyList<JsonObject> pipeline)
-    {
-        var stages = new List<JsonObject>(pipeline.Count + 1);
-
-        foreach (var stage in pipeline)
-        {
-            // Every stage is a single-key document (Craticula.Mongo.MongoPipelineBuilder's own stage
-            // order remarks), so its one property name IS the stage's operator.
-            var name = stage.First().Key;
-            if (name is "$skip" or "$limit" or "$project" or "$sort" or "$addFields" or "$unset")
-            {
-                continue;
-            }
-
-            stages.Add(stage);
-        }
-
-        stages.Add(new JsonObject { ["$count"] = "count" });
-
-        return stages;
     }
 }

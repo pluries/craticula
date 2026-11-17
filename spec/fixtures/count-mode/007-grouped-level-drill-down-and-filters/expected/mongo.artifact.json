@@ -1,0 +1,47 @@
+[
+  {
+    "$match": {
+      "$and": [
+        {
+          "$and": [
+            {
+              "region": {
+                "$eq": "EMEA"
+              }
+            },
+            {
+              "segment": {
+                "$eq": "Enterprise"
+              }
+            }
+          ]
+        },
+        {
+          "$and": [
+            {
+              "fiscalYear": {
+                "$gte": 2023
+              }
+            },
+            {
+              "quantity": {
+                "$lt": 500
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "$group": {
+      "_id": "$product",
+      "amount_sum": {
+        "$sum": "$amount"
+      }
+    }
+  },
+  {
+    "$count": "count"
+  }
+]

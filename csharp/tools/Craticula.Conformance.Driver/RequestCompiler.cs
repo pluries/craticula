@@ -32,7 +32,7 @@ internal static class RequestCompiler
 
     /// <summary>Everything a request resolves to before any backend sees it: the schema and the
     /// parse options a host would build, plus which entry point the request takes.</summary>
-    private sealed record Prepared(GridSchema Schema, string RequestJson, AgGridParseOptions Options, bool IsSetValues, ResourceLimits Limits);
+    private sealed record Prepared(GridSchema Schema, string RequestJson, AgGridParseOptions Options, bool IsSetValues, ResourceLimits Limits, bool CountMode);
 
     /// <summary>A row-fetch request after <see cref="AgGridRequestParser.Parse"/> and
     /// <see cref="GridFilterPipeline.Process"/> — the helpers' <c>RowFetch</c>.</summary>
@@ -61,6 +61,12 @@ internal static class RequestCompiler
         }
 
         var request = Prepare(schema, agGridRequestJson);
+
+        if (request.CountMode && request.IsSetValues)
+        {
+            throw new NotSupportedException(
+                "Count mode (requestContext.compileMode \"count\") counts the rows of a row request; a set-values request has no count.");
+        }
 
         return backend switch
         {
@@ -94,18 +100,18 @@ internal static class RequestCompiler
 
         var row = PrepareRowFetch(request);
 
-        return SqlQueryBuilder.Build(
-            new SqlQueryRequest
-            {
-                Schema = row.Schema,
-                Filter = row.Filter,
-                Sort = row.Parsed.Sort,
-                Page = row.Parsed.Page,
-                Group = row.Parsed.Group,
-                Aggregations = row.Parsed.Aggregations,
-                Projection = row.Parsed.Export?.ProjectionColumns
-            },
-            dialect);
+        var sqlRequest = new SqlQueryRequest
+        {
+            Schema = row.Schema,
+            Filter = row.Filter,
+            Sort = row.Parsed.Sort,
+            Page = row.Parsed.Page,
+            Group = row.Parsed.Group,
+            Aggregations = row.Parsed.Aggregations,
+            Projection = row.Parsed.Export?.ProjectionColumns
+        };
+
+        return request.CountMode ? SqlQueryBuilder.BuildCount(sqlRequest, dialect) : SqlQueryBuilder.Build(sqlRequest, dialect);
     }
 
     private static MongoQuery CompileMongo(Prepared request)
@@ -126,7 +132,7 @@ internal static class RequestCompiler
 
         var row = PrepareRowFetch(request);
 
-        return MongoPipelineBuilder.Build(new MongoQueryRequest
+        var mongoRequest = new MongoQueryRequest
         {
             Schema = row.Schema,
             Filter = row.Filter,
@@ -136,7 +142,9 @@ internal static class RequestCompiler
             Aggregations = row.Parsed.Aggregations,
             Projection = row.Parsed.Export?.ProjectionColumns,
             MaxQueryTimeMs = request.Limits.MaxQueryTimeMs
-        });
+        };
+
+        return request.CountMode ? MongoPipelineBuilder.BuildCount(mongoRequest) : MongoPipelineBuilder.Build(mongoRequest);
     }
 
     /// <summary>No <c>Projection</c> on the row-fetch path, exactly as <c>SearchFixtureCompiler</c>:
@@ -160,7 +168,7 @@ internal static class RequestCompiler
 
         var row = PrepareRowFetch(request);
 
-        return SearchQueryBuilder.Build(new SearchQueryRequest
+        var searchRequest = new SearchQueryRequest
         {
             Schema = row.Schema,
             Filter = row.Filter,
@@ -169,7 +177,9 @@ internal static class RequestCompiler
             Group = row.Parsed.Group,
             Aggregations = row.Parsed.Aggregations,
             MaxQueryTimeMs = request.Limits.MaxQueryTimeMs
-        });
+        };
+
+        return request.CountMode ? SearchQueryBuilder.BuildCount(searchRequest) : SearchQueryBuilder.Build(searchRequest);
     }
 
     /// <summary>SEC-3's default <see cref="ResourceLimits"/>, never raised or lowered, plus the harness's TL-4 query time limit when the fixture declares one (§3).</summary>
@@ -177,10 +187,11 @@ internal static class RequestCompiler
     {
         var parsed = AgGridRequestParser.Parse(request.RequestJson, request.Options);
 
+        // CNT-3: SEC-3's page-size check runs inside the pipeline, so a count is processed with the unpaginated page.
         var filter = GridFilterPipeline.Process(
             parsed.NativeFilter,
             parsed.CustomFilters,
-            parsed.Page,
+            request.CountMode ? new NonePage() : parsed.Page,
             request.Schema,
             request.Limits,
             parsed.Group,
@@ -241,7 +252,31 @@ internal static class RequestCompiler
             agGridRequestJson,
             options,
             isObject && root.TryGetProperty("setValuesRequest", out _),
-            new ResourceLimits { MaxQueryTimeMs = ReadHarnessQueryTimeLimit(root) });
+            new ResourceLimits { MaxQueryTimeMs = ReadHarnessQueryTimeLimit(root) },
+            ReadHarnessCountMode(root));
+    }
+
+    /// <summary>
+    /// CNT-8's harness instruction: <c>requestContext.compileMode</c> set to <c>"count"</c> selects count mode
+    /// (<c>conformance-runner.md</c> §3). Absent means the page; any other value is refused rather than ignored, so a typo
+    /// can never silently grade a page artifact against a count expectation.
+    /// </summary>
+    private static bool ReadHarnessCountMode(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object
+            || !root.TryGetProperty(RequestContextMember, out var context)
+            || context.ValueKind != JsonValueKind.Object
+            || !context.TryGetProperty("compileMode", out var mode))
+        {
+            return false;
+        }
+
+        if (mode.ValueKind == JsonValueKind.String && mode.GetString() == "count")
+        {
+            return true;
+        }
+
+        throw new ArgumentException("requestContext.compileMode is not recognised; the only value is \"count\" (CNT-8).");
     }
 
     /// <summary>

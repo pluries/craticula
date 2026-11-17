@@ -1,0 +1,22 @@
+{
+  "startRow": 0,
+  "endRow": 100,
+  "rowGroupCols": [],
+  "valueCols": [],
+  "pivotCols": [],
+  "pivotMode": false,
+  "groupKeys": [],
+  "filterModel": {
+    "lastName": {
+      "filterType": "set",
+      "values": [
+        "smith",
+        "jones"
+      ]
+    }
+  },
+  "sortModel": [],
+  "requestContext": {
+    "compileMode": "count"
+  }
+}

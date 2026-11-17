@@ -1,0 +1,5 @@
+{
+  "dialect": "mssql",
+  "sql": "SELECT COUNT(*) FROM [employees]",
+  "params": []
+}

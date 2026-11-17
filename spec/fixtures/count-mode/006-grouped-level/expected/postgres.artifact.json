@@ -1,0 +1,5 @@
+{
+  "dialect": "postgres",
+  "sql": "SELECT COUNT(*) FROM (SELECT \"region\" FROM \"sales_fact\" GROUP BY \"region\") craticula_count",
+  "params": []
+}

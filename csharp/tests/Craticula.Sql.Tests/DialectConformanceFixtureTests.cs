@@ -104,6 +104,7 @@ public class DialectConformanceFixtureTests
     [
         .. Directory.EnumerateDirectories(RepoPaths.Fixture())
             .Select(path => Path.GetFileName(path)!)
+            .Where(category => category != "count-mode") // count fixtures are not pages; SqlCountTests compiles them
             .OrderBy(name => name, StringComparer.Ordinal)
             .SelectMany(category => Directory
                 .EnumerateDirectories(RepoPaths.Fixture(category))

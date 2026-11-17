@@ -1,0 +1,23 @@
+{
+  "query": {
+    "bool": {
+      "filter": [
+        {
+          "term": {
+            "region.keyword": {
+              "value": "EMEA"
+            }
+          }
+        },
+        {
+          "term": {
+            "segment.keyword": {
+              "value": "Enterprise"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "size": 0
+}

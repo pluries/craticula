@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Craticula.AgGrid;
+using Craticula.Core.Ir;
 using Craticula.Core.Schema;
 using Craticula.Integration.Tests.Oracle;
 using Craticula.Sql;
@@ -55,6 +56,39 @@ internal static class SqlFixtureCompiler
             dialect);
     }
 
+    /// <summary>A row fetch (ordinary, grouped or drill-down leaf), as opposed to BM-3's distinct-values request, which has no count.</summary>
+    public static bool IsRowFetch(ExecutionFixture fixture) =>
+        !IsSetValuesRequest(File.ReadAllText(Path.Combine(fixture.Directory, "agGridRequest.json")));
+
+    /// <summary>The fixture's row fetch with no window at all (EXP-2's unpaginated page): every row the request matches, or every group of a grouped level.</summary>
+    public static SqlQuery CompileUnpaged(ExecutionFixture fixture, ISqlDialect dialect) => CompileUnpagedOrCount(fixture, dialect, count: false);
+
+    /// <summary>The fixture's request in count mode (CNT-1..CNT-5): the pipeline gets the unpaginated page, as CNT-3 requires of a host.</summary>
+    public static SqlQuery CompileCount(ExecutionFixture fixture, ISqlDialect dialect) => CompileUnpagedOrCount(fixture, dialect, count: true);
+
+    private static SqlQuery CompileUnpagedOrCount(ExecutionFixture fixture, ISqlDialect dialect, bool count)
+    {
+        var requestJson = File.ReadAllText(Path.Combine(fixture.Directory, "agGridRequest.json"));
+        var schema = fixture.Schema;
+        var parsed = AgGridRequestParser.Parse(
+            requestJson,
+            new AgGridParseOptions { Schema = schema, Clock = ClockFor(requestJson), AllowUnboundedRows = HarnessFlag(requestJson, "allowUnboundedRows") });
+        var filter = GridFilterPipeline.Process(
+            parsed.NativeFilter, parsed.CustomFilters, new NonePage(), schema, new ResourceLimits(), parsed.Group, parsed.Aggregations);
+        var request = new SqlQueryRequest
+        {
+            Schema = schema,
+            Filter = filter,
+            Sort = parsed.Sort,
+            Page = new NonePage(),
+            Group = parsed.Group,
+            Aggregations = parsed.Aggregations,
+            Projection = parsed.Export?.ProjectionColumns
+        };
+
+        return count ? SqlQueryBuilder.BuildCount(request, dialect) : SqlQueryBuilder.Build(request, dialect);
+    }
+
     private static SqlQuery CompileSetValues(string requestJson, AgGridParseOptions options, GridSchema schema, ISqlDialect dialect)
     {
         var limits = new ResourceLimits();
@@ -70,6 +104,16 @@ internal static class SqlFixtureCompiler
                 RowLimit = ResourceLimitsValidator.ResolveSetValuesLimit(parsed.SetValues.Limit, limits)
             },
             dialect);
+    }
+
+    // requestContext.allowUnboundedRows is the harness's switch for ignorePageLimit (conformance-runner.md section 3), not a wire field.
+    private static bool HarnessFlag(string requestJson, string member)
+    {
+        using var document = JsonDocument.Parse(requestJson);
+        return document.RootElement.TryGetProperty("requestContext", out var context)
+            && context.ValueKind == JsonValueKind.Object
+            && context.TryGetProperty(member, out var value)
+            && value.ValueKind == JsonValueKind.True;
     }
 
     private static bool IsSetValuesRequest(string requestJson)

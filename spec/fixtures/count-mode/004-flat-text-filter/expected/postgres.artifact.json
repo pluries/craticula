@@ -1,0 +1,7 @@
+{
+  "dialect": "postgres",
+  "sql": "SELECT COUNT(*) FROM \"employees\" WHERE \"lastName\" ILIKE '%' || $1 || '%' ESCAPE '\\'",
+  "params": [
+    "smith"
+  ]
+}

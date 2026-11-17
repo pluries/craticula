@@ -76,7 +76,9 @@ public class MongoConformanceFixtureTests
         ["adversarial"] = "Rejection-only fixtures: they carry expected/rejection.json, not a compiled artifact, " +
                           "and are already exercised by Craticula.Core.Tests' allowlist/limits/coercion suites. " +
                           "(They also carry no mongo.artifact.json, so discovery would skip them anyway — named " +
-                          "here so the category list stays exhaustive.)"
+                          "here so the category list stays exhaustive.)",
+        ["count-mode"] = "Count-mode fixtures (CNT-1..CNT-8) carry mongo artifacts that are not pages: the page theory above would " +
+                         "compile them as pages. MongoCountTests compiles and grades them through BuildCount (CNT-6)."
     };
 
     /// <summary>
@@ -253,8 +255,8 @@ public class MongoConformanceFixtureTests
                 .EnumerateFiles(RepoPaths.Fixture(category), "mongo.artifact.json", SearchOption.AllDirectories)
                 .Count());
 
-        Assert.Equal(222, onDisk);
-        Assert.Equal(0, excludedCategoryArtifacts);
+        Assert.Equal(232, onDisk);
+        Assert.Equal(10, excludedCategoryArtifacts);
         Assert.Equal(onDisk - excludedCategoryArtifacts - ExcludedFixtures.Count, InScopeFixtures.Count);
     }
 

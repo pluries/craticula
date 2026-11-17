@@ -49,6 +49,62 @@ namespace Craticula.Sql;
 public static class SqlQueryBuilder
 {
     /// <summary>
+    /// Count mode (CNT-1..CNT-5): compiles the statement that counts the rows (or, for a grouped
+    /// level, the groups) <see cref="Build"/> would page over. Ignores <c>Page</c>, <c>Sort</c> and
+    /// <c>Projection</c>.
+    /// </summary>
+    public static SqlQuery BuildCount(SqlQueryRequest request, ISqlDialect dialect)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(dialect);
+
+        FilterNodeValidator.Validate(request.Filter);
+        GroupSpecValidator.Validate(request.Group);
+        AggregationValidator.Validate(request.Aggregations);
+
+        var parameters = new SqlParameterBag(dialect);
+        var grouping = GroupingPlan.Resolve(request.Group, request.Aggregations);
+        var context = new Context(request.Schema, dialect, parameters);
+
+        var inner = new StringBuilder();
+        if (grouping?.GroupColumn is { } groupColumn)
+        {
+            inner.Append("SELECT ").Append(ResolveColumn(groupColumn, context));
+        }
+        else
+        {
+            inner.Append("SELECT COUNT(*)");
+        }
+
+        inner.Append(" FROM ").Append(dialect.QuoteIdentifier(request.Schema.Source));
+
+        if (RenderWhere(request.Filter, grouping?.DrillDown, context) is { } predicate)
+        {
+            inner.Append(" WHERE ").Append(predicate);
+        }
+
+        string sql;
+        if (grouping?.GroupColumn is { } grouped)
+        {
+            inner.Append(" GROUP BY ").Append(ResolveColumn(grouped, context));
+
+            // CNT-5: no AS before the derived-table alias, Oracle rejects it.
+            sql = $"SELECT COUNT(*) FROM ({inner}) {CountSqlShape.DerivedTableAlias}";
+        }
+        else
+        {
+            sql = inner.ToString();
+        }
+
+        return new SqlQuery
+        {
+            Dialect = dialect.Name,
+            Sql = sql,
+            Parameters = parameters.Values
+        };
+    }
+
+    /// <summary>
     /// Compiles <paramref name="request"/> into <paramref name="dialect"/>'s SQL text plus its
     /// ordered parameters. Re-runs the IR's own structural validators first — the same
     /// defense-in-depth every other public entry point in this codebase performs

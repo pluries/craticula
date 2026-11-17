@@ -1,0 +1,13 @@
+[
+  {
+    "$group": {
+      "_id": "$region",
+      "amount_sum": {
+        "$sum": "$amount"
+      }
+    }
+  },
+  {
+    "$count": "count"
+  }
+]

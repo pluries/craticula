@@ -68,7 +68,7 @@ WHEN A SINK OPERAND IS SAFE. Checked by provenance, recursively, under this clos
     and its bases' methods; `obj.M(...)` every in-scope method named M. Tuple components consumed by deconstruction are
     followed one by one;
   - COMPILED QUERY TEXT: `<x>.Sql` where every value x can hold, through locals, parameters (every in-scope call site)
-    and `with` copies, is a call to SqlQueryBuilder.Build or SqlQueryBuilder.BuildSetValues, since that text came out
+    and `with` copies, is a call to SqlQueryBuilder.Build, BuildSetValues or BuildCount, since that text came out
     of the linted builder (the Dapper adapter); the new `Sql` of a `with` copy is query text of its own.
 Anything else is a finding: a member of a runtime object (request.Value, key.Field), a call into code the lint cannot
 see, a lambda parameter. It is reported where it enters: the sink operand, or the call-site argument, assigned value or
@@ -132,7 +132,7 @@ PRIMITIVES = ("Bind", "QuoteIdentifier", "ParameterPlaceholder")
 ESCAPERS = {("MongoRegexEscaping", "Escape"), ("SearchRegexEscaping", "Escape"), ("SearchWildcardEscaping", "Escape"),
             ("SqlPatternEscaping", "Escape"), ("SqlPatternEscaping", "EscapeIncludingLeftBracket")}
 ESCAPER_NAMES = {name for _, name in ESCAPERS}
-COMPILED_QUERY_CALLS = {("SqlQueryBuilder", "Build"), ("SqlQueryBuilder", "BuildSetValues")}
+COMPILED_QUERY_CALLS = {("SqlQueryBuilder", "Build"), ("SqlQueryBuilder", "BuildSetValues"), ("SqlQueryBuilder", "BuildCount")}
 # Statements handed to a database: their text argument is a sink even when no string is built around it.
 EF_RAW_SQL = {"FromSqlRaw", "ExecuteSqlRaw", "ExecuteSqlRawAsync", "SqlQueryRaw"}
 DAPPER_SQL = {
@@ -2491,7 +2491,7 @@ class Analysis:
                            f"identifier, a constant or an enum")
 
     def compiled(self, node, method, origin):
-        """Is this the SqlQuery that SqlQueryBuilder.Build / BuildSetValues returned, through locals, parameters (every
+        """Is this the SqlQuery that SqlQueryBuilder.Build / BuildSetValues / BuildCount returned, through locals, parameters (every
         call site) and `with` copies? A copy's new `Sql` is checked as query text in its own right."""
         k = node.kind
         if k == "paren":

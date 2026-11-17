@@ -80,7 +80,10 @@ public class SearchConformanceFixtureTests
         ["adversarial"] = "Rejection-only fixtures: they carry expected/rejection.json, not a compiled artifact, " +
                           "and are already exercised by Craticula.Core.Tests' allowlist/limits/coercion suites. " +
                           "(They also carry no search.artifact.json, so discovery would skip them anyway — named " +
-                          "here so the category list stays exhaustive.)"
+                          "here so the category list stays exhaustive.)",
+        ["count-mode"] = "Count-mode fixtures (CNT-1..CNT-8) are compiled by SearchQueryBuilder.BuildCount, not Build: " +
+                         "SearchCountTests grades their search artifacts. The exclusion stays so the page theory never " +
+                         "compiles a count fixture as a page."
     };
 
     /// <summary>
@@ -304,8 +307,8 @@ public class SearchConformanceFixtureTests
                 .EnumerateFiles(RepoPaths.Fixture(category), "search.artifact.json", SearchOption.AllDirectories)
                 .Count());
 
-        Assert.Equal(221, onDisk);
-        Assert.Equal(0, excludedCategoryArtifacts);
+        Assert.Equal(231, onDisk);
+        Assert.Equal(10, excludedCategoryArtifacts);
         Assert.Equal(onDisk - excludedCategoryArtifacts - ExcludedFixtures.Count, InScopeFixtures.Count);
     }
 

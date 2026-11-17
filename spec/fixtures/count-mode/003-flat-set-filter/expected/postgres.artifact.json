@@ -1,0 +1,10 @@
+{
+  "dialect": "postgres",
+  "sql": "SELECT COUNT(*) FROM \"employees\" WHERE \"lastName\" COLLATE craticula_ci = ANY($1)",
+  "params": [
+    [
+      "smith",
+      "jones"
+    ]
+  ]
+}
