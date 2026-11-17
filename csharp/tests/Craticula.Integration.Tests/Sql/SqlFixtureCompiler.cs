@@ -23,7 +23,7 @@ internal static class SqlFixtureCompiler
     /// <summary>The same pipeline for a request that is text rather than a fixture file (the parity property's generated cases).</summary>
     public static SqlQuery Compile(string requestJson, GridSchema schema, ISqlDialect dialect)
     {
-        var options = new AgGridParseOptions { Schema = schema, Clock = ClockFor(requestJson) };
+        var options = new AgGridParseOptions { Schema = schema, Clock = ClockFor(requestJson), AllowUnboundedRows = HarnessFlag(requestJson, "allowUnboundedRows") };
 
         return IsSetValuesRequest(requestJson)
             ? CompileSetValues(requestJson, options, schema, dialect)
