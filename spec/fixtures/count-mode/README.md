@@ -15,6 +15,8 @@ Fixtures for count mode (`semantics.md`, CNT-1..CNT-8). Each case is its own fol
 | `007-grouped-level-drill-down-and-filters` | `group-aggregation/023` | CNT-5: a grouped level under group keys, with row filters; the aggregate is left out |
 | `008-drill-down-leaf` | `group-aggregation/005` | CNT-4: the leaf under its group keys |
 | `009-rejection-unknown-column` | `adversarial/001` | CNT-1: refused as the page is |
+| `010-flat-string-sort-ignored` | new (review #3863) | CNT-3: a sort on a case-insensitive string adds no collation to the count |
+| `011-unknown-sort-column-ignored` | new (review #3863) | CNT-3: a sort on an undeclared column is not refused in a count |
 
 **How the expected files were made.** Each is the source fixture's page artifact for the same dialect with the `ORDER BY`, the
 row window and the two paging parameters removed; a grouped level is wrapped as CNT-5 states. They were derived from the page

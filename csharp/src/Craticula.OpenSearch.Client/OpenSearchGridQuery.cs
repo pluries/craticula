@@ -743,8 +743,8 @@ public static class OpenSearchGridQuery
     /// <summary>
     /// SC-4's physical mapping for an ORDINARY <c>_source</c> read: <c>physical.search.field</c> when a
     /// field declares one, the colId itself otherwise — the same <c>mapping?.Field ?? field</c> rule
-    /// <c>Craticula.Search.SearchQueryBuilder.Resolve</c> (private to that package) and this package's
-    /// compiler's group-field target both already apply for FILTERING/SORTING and for a
+    /// <c>Craticula.Search.SearchQueryBuilder.Resolve</c> (private to that package) and its
+    /// <c>ResolveGroupFieldTarget</c> both already apply for FILTERING/SORTING and for a
     /// group column's composite source respectively. Review finding: <see cref="ReadHitBatch"/> used to
     /// read <c>_source</c> by colId directly, so a remapped column's cells all silently came back
     /// <see langword="null"/> (a missing <see cref="JsonElement"/> property, per

@@ -3229,7 +3229,8 @@ filter matching many rows than the same count without it (`docs/feat/3324/query-
 
 **CNT-1. Same rows as the page.** A request compiled in count mode goes through the same field allowlist, filter merge, type
 coercion, static filters and SEC-3 limits as the page request, and a request the page compile refuses (an unknown column, a
-filter over the leaf budget) is refused in count mode with the same error. The count and the page cannot disagree about which
+filter over the leaf budget) is refused in count mode with the same error, except a refusal that comes only from the sort model
+(CNT-3). The count and the page cannot disagree about which
 rows match, because they share one filter.
 
 **CNT-2. What a count leaves out.** The count artifact has no ordering (no `ORDER BY`, `$sort`, `sort`), no SEM-6 tiebreaker, no
@@ -3239,7 +3240,8 @@ grouped SQL count selects only the group expression, a MongoDB count ends in `$c
 **CNT-3. The window plays no part.** The request's `startRow`, `endRow`, sort model and `ignorePageLimit` do not change the count
 artifact, and a window that the page compile would refuse as `max-page-size-exceeded` (SEC-3) does not make a count fail.
 Because SEC-3's page-size check runs in the filter pipeline, a host compiling a count passes the pipeline the unpaginated page
-(`NonePage`), not the request's window.
+(`NonePage`), not the request's window. The sort model is not read at all: a sort on a column the schema does not declare, or one
+the page would refuse for its collation, does not make a count fail and does not change its artifact.
 
 **CNT-4. SQL, flat requests and the drill-down leaf.** The artifact is `SELECT COUNT(*) FROM <source> [WHERE <filter>]`. Its
 `params` are the filter's parameters in the order the page query binds them, without the two paging parameters. A drill-down leaf

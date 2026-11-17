@@ -80,7 +80,7 @@ public static class MongoPipelineBuilder
     {
         ArgumentNullException.ThrowIfNull(request);
         RequirePositiveTimeLimit(request.MaxQueryTimeMs);
-        var query = BuildPipeline(request with { Page = new NonePage(), Projection = null });
+        var query = BuildPipeline(request with { Page = new NonePage(), Projection = null, Sort = null });
 
         // The NonePage above makes the page path omit the limit (TL-3), but a count is not an export: it carries it.
         var stages = query.Pipeline

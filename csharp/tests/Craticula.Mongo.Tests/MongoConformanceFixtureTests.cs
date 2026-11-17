@@ -255,8 +255,8 @@ public class MongoConformanceFixtureTests
                 .EnumerateFiles(RepoPaths.Fixture(category), "mongo.artifact.json", SearchOption.AllDirectories)
                 .Count());
 
-        Assert.Equal(230, onDisk);
-        Assert.Equal(8, excludedCategoryArtifacts);
+        Assert.Equal(232, onDisk);
+        Assert.Equal(10, excludedCategoryArtifacts);
         Assert.Equal(onDisk - excludedCategoryArtifacts - ExcludedFixtures.Count, InScopeFixtures.Count);
     }
 
