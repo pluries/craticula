@@ -53,31 +53,35 @@ The table above has 8 clients sending requests at once on the same machine, so a
 
 ## Repeatability
 
-Every measurement was taken twice on the same machine, in two runs one after the other. The target is that the second run lands within 10% of the first.
+Every measurement was taken twice on the same machine, in two runs one after the other.
 
-27 of 48 measurements of the repeat run are within 10% of this run. These 21 are not, so read them with that spread in mind:
+21 of 48 measurements of the repeat run differ by more than 10% from this run.
 
-- compile mongo/group-aggregate mean: [53.1 µs](../../perf/results/2026-11-16-p/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json) then [62.4 µs](../../perf/results/2026-11-16-p-repeat/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json), 17.6% apart
+Largest difference: load ef 10k p99: [59.8 ms](../../perf/results/2026-11-16-p/manifest-ef-10k.json) then [118.3 ms](../../perf/results/2026-11-16-p-repeat/manifest-ef-10k.json), 98.1% apart.
+
+Differences above 10%, largest first:
+
+- load ef 10k p99: [59.8 ms](../../perf/results/2026-11-16-p/manifest-ef-10k.json) then [118.3 ms](../../perf/results/2026-11-16-p-repeat/manifest-ef-10k.json), 98.1% apart
+- load ef 10k p95: [42.3 ms](../../perf/results/2026-11-16-p/manifest-ef-10k.json) then [65.4 ms](../../perf/results/2026-11-16-p-repeat/manifest-ef-10k.json), 54.6% apart
+- load postgres 10k p99: [52.7 ms](../../perf/results/2026-11-16-p/manifest-postgres-10k.json) then [74.4 ms](../../perf/results/2026-11-16-p-repeat/manifest-postgres-10k.json), 41.2% apart
+- load ef 10k p50: [22.0 ms](../../perf/results/2026-11-16-p/manifest-ef-10k.json) then [30.2 ms](../../perf/results/2026-11-16-p-repeat/manifest-ef-10k.json), 37.0% apart
+- load ef 10k requests per second: [330.6 /s](../../perf/results/2026-11-16-p/manifest-ef-10k.json) then [229.6 /s](../../perf/results/2026-11-16-p-repeat/manifest-ef-10k.json), 30.6% apart
+- load mongo 10k p99: [149.4 ms](../../perf/results/2026-11-16-p/manifest-mongo-10k.json) then [190.7 ms](../../perf/results/2026-11-16-p-repeat/manifest-mongo-10k.json), 27.6% apart
+- load postgres 10k p95: [39.0 ms](../../perf/results/2026-11-16-p/manifest-postgres-10k.json) then [48.3 ms](../../perf/results/2026-11-16-p-repeat/manifest-postgres-10k.json), 23.7% apart
+- load mongo 1m p99: [7970.5 ms](../../perf/results/2026-11-16-p/manifest-mongo-1m.json) then [9608.1 ms](../../perf/results/2026-11-16-p-repeat/manifest-mongo-1m.json), 20.5% apart
 - compile mongo/group-aggregate prepared mean: [13.9 µs](../../perf/results/2026-11-16-p/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json) then [16.4 µs](../../perf/results/2026-11-16-p-repeat/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json), 18.1% apart
+- load mongo 10k p95: [108.0 ms](../../perf/results/2026-11-16-p/manifest-mongo-10k.json) then [127.1 ms](../../perf/results/2026-11-16-p-repeat/manifest-mongo-10k.json), 17.7% apart
+- compile mongo/group-aggregate mean: [53.1 µs](../../perf/results/2026-11-16-p/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json) then [62.4 µs](../../perf/results/2026-11-16-p-repeat/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json), 17.6% apart
+- compile search/filter-tree prepared mean: [16.6 µs](../../perf/results/2026-11-16-p/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json) then [19.5 µs](../../perf/results/2026-11-16-p-repeat/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json), 17.1% apart
+- load mongo 1m p95: [7860.7 ms](../../perf/results/2026-11-16-p/manifest-mongo-1m.json) then [9126.0 ms](../../perf/results/2026-11-16-p-repeat/manifest-mongo-1m.json), 16.1% apart
+- load postgres 10k requests per second: [381.1 /s](../../perf/results/2026-11-16-p/manifest-postgres-10k.json) then [328.5 /s](../../perf/results/2026-11-16-p-repeat/manifest-postgres-10k.json), 13.8% apart
 - compile postgres/group-aggregate mean: [51.9 µs](../../perf/results/2026-11-16-p/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json) then [58.8 µs](../../perf/results/2026-11-16-p-repeat/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json), 13.3% apart
 - compile postgres/group-aggregate prepared mean: [12.3 µs](../../perf/results/2026-11-16-p/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json) then [13.9 µs](../../perf/results/2026-11-16-p-repeat/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json), 13.1% apart
-- compile postgres/plain-page prepared mean: [7.3 µs](../../perf/results/2026-11-16-p/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json) then [8.0 µs](../../perf/results/2026-11-16-p-repeat/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json), 10.5% apart
-- compile search/filter-tree prepared mean: [16.6 µs](../../perf/results/2026-11-16-p/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json) then [19.5 µs](../../perf/results/2026-11-16-p-repeat/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json), 17.1% apart
-- compile search/group-aggregate prepared mean: [12.5 µs](../../perf/results/2026-11-16-p/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json) then [13.9 µs](../../perf/results/2026-11-16-p-repeat/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json), 11.5% apart
-- load ef 10k p50: [22.0 ms](../../perf/results/2026-11-16-p/manifest-ef-10k.json) then [30.2 ms](../../perf/results/2026-11-16-p-repeat/manifest-ef-10k.json), 37.0% apart
-- load ef 10k p95: [42.3 ms](../../perf/results/2026-11-16-p/manifest-ef-10k.json) then [65.4 ms](../../perf/results/2026-11-16-p-repeat/manifest-ef-10k.json), 54.6% apart
-- load ef 10k p99: [59.8 ms](../../perf/results/2026-11-16-p/manifest-ef-10k.json) then [118.3 ms](../../perf/results/2026-11-16-p-repeat/manifest-ef-10k.json), 98.1% apart
-- load ef 10k requests per second: [330.6 /s](../../perf/results/2026-11-16-p/manifest-ef-10k.json) then [229.6 /s](../../perf/results/2026-11-16-p-repeat/manifest-ef-10k.json), 30.6% apart
-- load mongo 10k p50: [57.9 ms](../../perf/results/2026-11-16-p/manifest-mongo-10k.json) then [64.4 ms](../../perf/results/2026-11-16-p-repeat/manifest-mongo-10k.json), 11.3% apart
-- load mongo 10k p95: [108.0 ms](../../perf/results/2026-11-16-p/manifest-mongo-10k.json) then [127.1 ms](../../perf/results/2026-11-16-p-repeat/manifest-mongo-10k.json), 17.7% apart
-- load mongo 10k p99: [149.4 ms](../../perf/results/2026-11-16-p/manifest-mongo-10k.json) then [190.7 ms](../../perf/results/2026-11-16-p-repeat/manifest-mongo-10k.json), 27.6% apart
-- load mongo 10k requests per second: [126.0 /s](../../perf/results/2026-11-16-p/manifest-mongo-10k.json) then [112.5 /s](../../perf/results/2026-11-16-p-repeat/manifest-mongo-10k.json), 10.8% apart
-- load mongo 1m p95: [7860.7 ms](../../perf/results/2026-11-16-p/manifest-mongo-1m.json) then [9126.0 ms](../../perf/results/2026-11-16-p-repeat/manifest-mongo-1m.json), 16.1% apart
-- load mongo 1m p99: [7970.5 ms](../../perf/results/2026-11-16-p/manifest-mongo-1m.json) then [9608.1 ms](../../perf/results/2026-11-16-p-repeat/manifest-mongo-1m.json), 20.5% apart
 - load postgres 10k p50: [18.5 ms](../../perf/results/2026-11-16-p/manifest-postgres-10k.json) then [20.8 ms](../../perf/results/2026-11-16-p-repeat/manifest-postgres-10k.json), 12.4% apart
-- load postgres 10k p95: [39.0 ms](../../perf/results/2026-11-16-p/manifest-postgres-10k.json) then [48.3 ms](../../perf/results/2026-11-16-p-repeat/manifest-postgres-10k.json), 23.7% apart
-- load postgres 10k p99: [52.7 ms](../../perf/results/2026-11-16-p/manifest-postgres-10k.json) then [74.4 ms](../../perf/results/2026-11-16-p-repeat/manifest-postgres-10k.json), 41.2% apart
-- load postgres 10k requests per second: [381.1 /s](../../perf/results/2026-11-16-p/manifest-postgres-10k.json) then [328.5 /s](../../perf/results/2026-11-16-p-repeat/manifest-postgres-10k.json), 13.8% apart
+- compile search/group-aggregate prepared mean: [12.5 µs](../../perf/results/2026-11-16-p/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json) then [13.9 µs](../../perf/results/2026-11-16-p-repeat/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json), 11.5% apart
+- load mongo 10k p50: [57.9 ms](../../perf/results/2026-11-16-p/manifest-mongo-10k.json) then [64.4 ms](../../perf/results/2026-11-16-p-repeat/manifest-mongo-10k.json), 11.3% apart
+- load mongo 10k requests per second: [126.0 /s](../../perf/results/2026-11-16-p/manifest-mongo-10k.json) then [112.5 /s](../../perf/results/2026-11-16-p-repeat/manifest-mongo-10k.json), 10.8% apart
+- compile postgres/plain-page prepared mean: [7.3 µs](../../perf/results/2026-11-16-p/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json) then [8.0 µs](../../perf/results/2026-11-16-p-repeat/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json), 10.5% apart
 
 ## How each result was produced
 

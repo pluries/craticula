@@ -27,5 +27,7 @@ done
 
 python3 perf/compare.py "perf/results/$DATE" "perf/results/$DATE-repeat" || status=$?
 echo
-echo "next: python3 scripts/perf_page.py perf/results/$DATE   (then review the page, commit perf/results and site/)"
+if [ "${status:-0}" -eq 0 ]; then
+  echo "next: python3 scripts/perf_page.py perf/results/$DATE --repeat perf/results/$DATE-repeat   (then review the page, commit perf/results and site/)"
+fi
 exit "${status:-0}"
