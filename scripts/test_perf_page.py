@@ -49,6 +49,11 @@ POSTGRES_MEAN = "compile postgres/plain-page mean"
 FROM_ZERO = "from 0"
 TOTAL = 10   # 2 compile benchmarks + 2 engines x (p50, p95, p99, requests per second)
 CUSTOM_LIMIT = 25
+WIDE_LIMIT = 30
+HUGE_INTEGER = 10**400   # a JSON integer no float can hold
+COMMITTED_RESULTS = "2026-11-16-p"
+COMMITTED_REPEAT = "2026-11-16-p-repeat"
+COMMITTED_SINGLE = "2026-11-16-p-single"
 
 
 def load_module():
@@ -63,14 +68,14 @@ def write_results(root, compile_mean=12345.6, slow=False, both_paths=False):
     results = root / "perf" / "results" / "2026-11-20"
     (results / "compile" / "results").mkdir(parents=True)
     benchmarks = [
-        {"Parameters": "Backend=postgres&Shape=plain-page", "Statistics": {"Mean": compile_mean}, "Memory": {"BytesAllocatedPerOperation": 7000}},
-        {"Parameters": "Backend=mongo&Shape=deep-filter", "Statistics": {"Mean": 90000.0 if slow else 26600.0}, "Memory": {"BytesAllocatedPerOperation": 18000}},
+        {PARAMETERS: "Backend=postgres&Shape=plain-page", STATISTICS: {"Mean": compile_mean}, "Memory": {"BytesAllocatedPerOperation": 7000}},
+        {PARAMETERS: "Backend=mongo&Shape=deep-filter", STATISTICS: {"Mean": 90000.0 if slow else 26600.0}, "Memory": {"BytesAllocatedPerOperation": 18000}},
     ]
     if both_paths:   # the same shapes on the two paths: SchemaPath=full-compile, and prepared-schema at a third of the time
-        benchmarks = [{**b, "Parameters": b["Parameters"] + "&SchemaPath=full-compile"} for b in benchmarks] + [
-            {**b, "Parameters": b["Parameters"] + "&SchemaPath=prepared-schema", "Statistics": {"Mean": b["Statistics"]["Mean"] / 3},
+        benchmarks = [{**b, PARAMETERS: b[PARAMETERS] + "&SchemaPath=full-compile"} for b in benchmarks] + [
+            {**b, PARAMETERS: b[PARAMETERS] + "&SchemaPath=prepared-schema", STATISTICS: {"Mean": b[STATISTICS]["Mean"] / 3},
              "Memory": {"BytesAllocatedPerOperation": b["Memory"]["BytesAllocatedPerOperation"] / 2}} for b in benchmarks]
-    (results / COMPILE_JSON).write_text(json.dumps({"Benchmarks": benchmarks}), encoding="utf-8")
+    (results / COMPILE_JSON).write_text(json.dumps({BENCHMARKS: benchmarks}), encoding="utf-8")
     (results / "compile" / "manifest-compile.json").write_text(json.dumps({
         "machine": "test-box", "date": "2026-11-20", "commit": "abc1234", "dotnet": "10.0.100", "benchmark": "BenchmarkDotNet 0.15.8",
         "command": "bash scripts/perf-compile.sh perf/results/2026-11-20/compile"}), encoding="utf-8")
@@ -80,7 +85,7 @@ def write_results(root, compile_mean=12345.6, slow=False, both_paths=False):
             "engine_version": version, "load": {"concurrency": 8, "duration_seconds": 60, "warmup_seconds": 5}, "shapes": ["number-gt.json"],
             "date": "2026-11-20", "commit": "abc1234",
             "command": f"python3 perf/load.py --engine {engine} --dataset 10k --out perf/results/2026-11-20",
-            "summary": {"count": 5000, "errors": 0, "requests_per_second": 83.33, "p50_ms": 8.5, "p95_ms": 15.6, "p99_ms": 21.2},
+            SUMMARY_KEY: {"count": 5000, "errors": 0, "requests_per_second": 83.33, "p50_ms": 8.5, "p95_ms": 15.6, "p99_ms": 21.2},
             "oversized": {"handled": True, "status": 400, "kind": "resource-limit-exceeded"},
         }
         (results / f"manifest-{engine}-10k.json").write_text(json.dumps(manifest), encoding="utf-8")
@@ -108,6 +113,25 @@ def set_compile_mean(results, parameters_contains, value):
             if parameters_contains in benchmark[PARAMETERS]:
                 benchmark[STATISTICS][MEAN] = value
     edit_report(results, edit)
+
+
+def split_first_benchmark(data):
+    """Two benchmarks that map to the same measurement name: the first one and a copy, told apart only by a third parameter."""
+    first = data[BENCHMARKS][0]
+    copy = json.loads(json.dumps(first))
+    first[PARAMETERS] += "&Rows=1"
+    copy[PARAMETERS] += "&Rows=2"
+    data[BENCHMARKS].append(copy)
+
+
+def use_an_unknown_schema_path(data):
+    data[BENCHMARKS][0][PARAMETERS] += "&SchemaPath=warm-schema"
+
+
+def duplicate_load_manifest(results):
+    """A second manifest file for the same engine and dataset."""
+    source = results / FIRST_LOAD_MANIFEST
+    (results / "manifest-postgres-10k-again.json").write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
 
 
 def repeatability_section(page):
@@ -180,10 +204,10 @@ class RenderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             results = write_results(root)
-            manifest = json.loads((results / "manifest-postgres-10k.json").read_text(encoding="utf-8"))
+            manifest = json.loads((results / FIRST_LOAD_MANIFEST).read_text(encoding="utf-8"))
             manifest["engine"] = "ef"
             manifest["engine_version"] = "PostgreSQL 16.4 through Npgsql.EntityFrameworkCore.PostgreSQL 10.0.3"
-            manifest["summary"]["p50_ms"] = 9.9
+            manifest[SUMMARY_KEY]["p50_ms"] = 9.9
             (results / "manifest-ef-10k.json").write_text(json.dumps(manifest), encoding="utf-8")
             (results / "load-ef-10k.jsonl").write_text("{}\n", encoding="utf-8")
             page_dir = root / "site" / "pages"
@@ -256,7 +280,7 @@ class SingleClientTests(unittest.TestCase):
         for path in results.glob("manifest-*-*.json"):
             manifest = json.loads(path.read_text(encoding="utf-8"))
             manifest["load"]["concurrency"] = 1
-            manifest["summary"]["p50_ms"] = 3.3
+            manifest[SUMMARY_KEY]["p50_ms"] = 3.3
             path.write_text(json.dumps(manifest), encoding="utf-8")
         return results
 
@@ -360,7 +384,7 @@ class RepeatabilityTests(unittest.TestCase):
     def scaled(self, results, factor):
         for path in results.glob("manifest-*-*.json"):
             manifest = json.loads(path.read_text(encoding="utf-8"))
-            manifest["summary"]["p99_ms"] *= factor
+            manifest[SUMMARY_KEY]["p99_ms"] *= factor
             path.write_text(json.dumps(manifest), encoding="utf-8")
 
     def render(self, factor):
@@ -452,6 +476,17 @@ class RepeatabilityTests(unittest.TestCase):
         largest = next(line for line in section.splitlines() if line.startswith(PAGE_LARGEST))
         self.assertIn(FROM_ZERO, largest)
 
+    def test_the_published_page_is_what_the_generator_writes_for_the_committed_runs(self):  # US1-AS4
+        runs = ROOT / "perf" / "results"
+        page_dir = ROOT / "site" / "pages"
+        page = load_module().render(
+            runs / COMMITTED_RESULTS, page_dir, repeat=runs / COMMITTED_REPEAT, single=runs / COMMITTED_SINGLE)
+        self.assertEqual((page_dir / "performance.md").read_text(encoding="utf-8"), page)
+        section = repeatability_section(page)
+        self.assertEqual(21, len(self.bullets(section)))
+        for word in FORBIDDEN_WORDS:
+            self.assertNotIn(word, section.lower())
+
     def test_without_a_repeat_there_is_no_repeatability_section(self):
         module = load_module()
         with tempfile.TemporaryDirectory() as tmp:
@@ -475,12 +510,12 @@ class CompareTests(unittest.TestCase):
             if path.name == "manifest-compile.json":
                 continue
             manifest = json.loads(path.read_text(encoding="utf-8"))
-            manifest["summary"]["p50_ms"] *= factor
+            manifest[SUMMARY_KEY]["p50_ms"] *= factor
             path.write_text(json.dumps(manifest), encoding="utf-8")
         report = results / COMPILE_JSON
         data = json.loads(report.read_text(encoding="utf-8"))
-        for benchmark in data["Benchmarks"]:
-            benchmark["Statistics"]["Mean"] *= factor
+        for benchmark in data[BENCHMARKS]:
+            benchmark[STATISTICS]["Mean"] *= factor
         report.write_text(json.dumps(data), encoding="utf-8")
 
     def test_the_two_paths_are_compared_as_separate_measurements(self):
@@ -488,9 +523,9 @@ class CompareTests(unittest.TestCase):
             a, b = write_results(Path(one), both_paths=True), write_results(Path(two), both_paths=True)
             report = b / COMPILE_JSON
             data = json.loads(report.read_text(encoding="utf-8"))
-            for benchmark in data["Benchmarks"]:
-                if "SchemaPath=prepared-schema" in benchmark["Parameters"]:
-                    benchmark["Statistics"]["Mean"] *= 1.5     # only the prepared path moves
+            for benchmark in data[BENCHMARKS]:
+                if "SchemaPath=prepared-schema" in benchmark[PARAMETERS]:
+                    benchmark[STATISTICS]["Mean"] *= 1.5     # only the prepared path moves
             report.write_text(json.dumps(data), encoding="utf-8")
             result = self.run_compare(a, b)
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
@@ -509,7 +544,9 @@ class CompareTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as one, tempfile.TemporaryDirectory() as two:
             a, b = write_results(Path(one)), write_results(Path(two))
             self.scale(b, 1.09)
-            self.assertEqual(0, self.run_compare(a, b).returncode)
+            result = self.run_compare(a, b)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertIn(f"none of the {TOTAL} measurements differs by more than {LIMIT:g}%", result.stdout)
 
     def test_a_change_above_the_limit_is_listed_and_still_exits_0(self):  # US2-AS1
         with tempfile.TemporaryDirectory() as one, tempfile.TemporaryDirectory() as two:
@@ -586,18 +623,47 @@ class CompareTests(unittest.TestCase):
             edit_report(b, drop_a_benchmark)
             self.assert_bad_input(a, b)
 
+    def test_two_benchmarks_with_the_same_measurement_name_are_exit_2(self):  # US2-AS3
+        with tempfile.TemporaryDirectory() as tmp:
+            a, b = fake_pair(tmp)
+            edit_report(a, split_first_benchmark)
+            edit_report(b, split_first_benchmark)
+            self.assert_bad_input(a, b)
+
+    def test_a_schema_path_that_is_not_known_is_exit_2(self):  # US2-AS3
+        with tempfile.TemporaryDirectory() as tmp:
+            a, b = fake_pair(tmp)
+            edit_report(a, use_an_unknown_schema_path)
+            edit_report(b, use_an_unknown_schema_path)
+            self.assert_bad_input(a, b)
+
+    def test_two_load_manifests_for_the_same_engine_and_dataset_are_exit_2(self):  # US2-AS3
+        with tempfile.TemporaryDirectory() as tmp:
+            a, b = fake_pair(tmp)
+            duplicate_load_manifest(a)
+            duplicate_load_manifest(b)
+            self.assert_bad_input(a, b)
+
+    def test_a_figure_too_big_for_a_float_is_exit_2_without_a_traceback(self):  # US2-AS6
+        with tempfile.TemporaryDirectory() as tmp:
+            a, b = fake_pair(tmp)
+            set_load_figure(b, POSTGRES, P99, HUGE_INTEGER)
+            self.assert_bad_input(a, b)
+
     def test_the_limit_can_be_changed(self):
         with tempfile.TemporaryDirectory() as one, tempfile.TemporaryDirectory() as two:
             a, b = write_results(Path(one)), write_results(Path(two))
             self.scale(b, 1.25)
-            self.assertEqual(0, self.run_compare(a, b, "--limit", "30").returncode)
+            result = self.run_compare(a, b, LIMIT_FLAG, str(WIDE_LIMIT))
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertIn(f"none of the {TOTAL} measurements differs by more than {WIDE_LIMIT:g}%", result.stdout)
 
     def test_a_run_whose_requests_all_failed_is_exit_2_not_exit_1(self):
         with tempfile.TemporaryDirectory() as one, tempfile.TemporaryDirectory() as two:
             a, b = write_results(Path(one)), write_results(Path(two))
-            path = b / "manifest-postgres-10k.json"
+            path = b / FIRST_LOAD_MANIFEST
             manifest = json.loads(path.read_text(encoding="utf-8"))
-            manifest["summary"]["p50_ms"] = None
+            manifest[SUMMARY_KEY]["p50_ms"] = None
             path.write_text(json.dumps(manifest), encoding="utf-8")
             result = self.run_compare(a, b)
             self.assertEqual(2, result.returncode, result.stdout + result.stderr)
@@ -703,6 +769,41 @@ class CompareCoreTests(unittest.TestCase):
                 with self.assertRaises(module.RunError):
                     module.compare(first, second)
 
+    def test_two_benchmarks_with_the_same_measurement_name_raise_run_error(self):  # US2-AS3
+        module = compare_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            first, second = fake_pair(tmp)
+            edit_report(first, split_first_benchmark)
+            edit_report(second, split_first_benchmark)
+            with self.assertRaises(module.RunError):
+                module.compare(first, second)
+
+    def test_a_schema_path_that_is_not_known_raises_run_error(self):  # US2-AS3
+        module = compare_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            first, second = fake_pair(tmp)
+            edit_report(first, use_an_unknown_schema_path)
+            edit_report(second, use_an_unknown_schema_path)
+            with self.assertRaises(module.RunError):
+                module.compare(first, second)
+
+    def test_two_load_manifests_for_the_same_engine_and_dataset_raise_run_error(self):  # US2-AS3
+        module = compare_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            first, second = fake_pair(tmp)
+            duplicate_load_manifest(first)
+            duplicate_load_manifest(second)
+            with self.assertRaises(module.RunError):
+                module.compare(first, second)
+
+    def test_a_figure_too_big_for_a_float_raises_run_error(self):  # US2-AS6
+        module = compare_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            first, second = fake_pair(tmp)
+            set_load_figure(second, POSTGRES, P99, HUGE_INTEGER)
+            with self.assertRaises(module.RunError):
+                module.compare(first, second)
+
     def test_a_null_parameters_raises_run_error(self):  # US2-AS3
         module = compare_module()
         with tempfile.TemporaryDirectory() as tmp:
@@ -788,6 +889,19 @@ class CliTests(unittest.TestCase):
             self.assertNotIn(TRACEBACK, result.stderr)
             self.assertFalse(page.exists())
 
+    def test_a_repeat_run_with_a_figure_too_big_for_a_float_is_exit_2_and_writes_nothing(self):  # US1-AS7
+        import shutil
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            results = write_results(root)
+            repeat = root / "perf" / "results" / "2026-11-20-repeat"
+            shutil.copytree(results, repeat)
+            set_load_figure(repeat, POSTGRES, P99, HUGE_INTEGER)
+            result, page, _ = self.run_cli(root, results, REPEAT_FLAG, str(repeat))
+            self.assertEqual(2, result.returncode, result.stderr)
+            self.assertNotIn(TRACEBACK, result.stderr)
+            self.assertFalse(page.exists())
+
     def test_it_writes_the_page_and_registers_it_once(self):  # T4
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -816,7 +930,7 @@ class CliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             results = write_results(root)
-            (results / "manifest-postgres-10k.json").write_text("{ not json", encoding="utf-8")
+            (results / FIRST_LOAD_MANIFEST).write_text("{ not json", encoding="utf-8")
             result, page, _ = self.run_cli(root, results)
             self.assertEqual(2, result.returncode)
             self.assertFalse(page.exists())
