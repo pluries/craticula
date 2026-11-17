@@ -7,11 +7,13 @@ manifest-<engine>-<dataset>.json of each load run. So no number is typed by hand
 file it came from (FR-20). Contract:
   python3 scripts/perf_page.py <results dir> [--page <file>] [--site-json <file>]
   writes the page (default site/pages/performance.md) and registers it in the site config once (slug "performance");
-  exit 0 = written, 2 = no results or a malformed result file (nothing is written).
+  exit 0 = written, 2 = no results, a malformed result file or a bad --repeat run (nothing is written).
+perf/compare.py reports the spread of two runs: exit 0 = any spread (the differences are listed), 2 = a bad input.
 Run: python3 scripts/test_perf_page.py
 """
 import importlib.util
 import json
+import math
 import re
 import subprocess
 import sys
@@ -23,6 +25,35 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 PAGE_SCRIPT = HERE / "perf_page.py"
 COMPILE_JSON = "compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json"
+FIRST_LOAD_MANIFEST = "manifest-postgres-10k.json"
+SECTION = "## Repeatability"
+FORBIDDEN_WORDS = ("target", "goal", "meets", "fails")
+LIMIT = 10.0
+REPEAT_FLAG = "--repeat"
+LIMIT_FLAG = "--limit"
+TRACEBACK = "Traceback"
+PAGE_LARGEST = "Largest difference:"
+COMMAND_LARGEST = "largest difference:"
+STATISTICS = "Statistics"
+MEAN = "Mean"
+BENCHMARKS = "Benchmarks"
+PARAMETERS = "Parameters"
+SUMMARY_KEY = "summary"
+P99 = "p99_ms"
+POSTGRES = "postgres"
+MONGO = "mongo"
+POSTGRES_P99 = "load postgres 10k p99"
+MONGO_P99 = "load mongo 10k p99"
+MONGO_MEAN = "compile mongo/deep-filter mean"
+POSTGRES_MEAN = "compile postgres/plain-page mean"
+FROM_ZERO = "from 0"
+TOTAL = 10   # 2 compile benchmarks + 2 engines x (p50, p95, p99, requests per second)
+CUSTOM_LIMIT = 25
+WIDE_LIMIT = 30
+HUGE_INTEGER = 10**400   # a JSON integer no float can hold
+COMMITTED_RESULTS = "2026-11-16-p"
+COMMITTED_REPEAT = "2026-11-16-p-repeat"
+COMMITTED_SINGLE = "2026-11-16-p-single"
 
 
 def load_module():
@@ -37,14 +68,14 @@ def write_results(root, compile_mean=12345.6, slow=False, both_paths=False):
     results = root / "perf" / "results" / "2026-11-20"
     (results / "compile" / "results").mkdir(parents=True)
     benchmarks = [
-        {"Parameters": "Backend=postgres&Shape=plain-page", "Statistics": {"Mean": compile_mean}, "Memory": {"BytesAllocatedPerOperation": 7000}},
-        {"Parameters": "Backend=mongo&Shape=deep-filter", "Statistics": {"Mean": 90000.0 if slow else 26600.0}, "Memory": {"BytesAllocatedPerOperation": 18000}},
+        {PARAMETERS: "Backend=postgres&Shape=plain-page", STATISTICS: {"Mean": compile_mean}, "Memory": {"BytesAllocatedPerOperation": 7000}},
+        {PARAMETERS: "Backend=mongo&Shape=deep-filter", STATISTICS: {"Mean": 90000.0 if slow else 26600.0}, "Memory": {"BytesAllocatedPerOperation": 18000}},
     ]
     if both_paths:   # the same shapes on the two paths: SchemaPath=full-compile, and prepared-schema at a third of the time
-        benchmarks = [{**b, "Parameters": b["Parameters"] + "&SchemaPath=full-compile"} for b in benchmarks] + [
-            {**b, "Parameters": b["Parameters"] + "&SchemaPath=prepared-schema", "Statistics": {"Mean": b["Statistics"]["Mean"] / 3},
+        benchmarks = [{**b, PARAMETERS: b[PARAMETERS] + "&SchemaPath=full-compile"} for b in benchmarks] + [
+            {**b, PARAMETERS: b[PARAMETERS] + "&SchemaPath=prepared-schema", STATISTICS: {"Mean": b[STATISTICS]["Mean"] / 3},
              "Memory": {"BytesAllocatedPerOperation": b["Memory"]["BytesAllocatedPerOperation"] / 2}} for b in benchmarks]
-    (results / COMPILE_JSON).write_text(json.dumps({"Benchmarks": benchmarks}), encoding="utf-8")
+    (results / COMPILE_JSON).write_text(json.dumps({BENCHMARKS: benchmarks}), encoding="utf-8")
     (results / "compile" / "manifest-compile.json").write_text(json.dumps({
         "machine": "test-box", "date": "2026-11-20", "commit": "abc1234", "dotnet": "10.0.100", "benchmark": "BenchmarkDotNet 0.15.8",
         "command": "bash scripts/perf-compile.sh perf/results/2026-11-20/compile"}), encoding="utf-8")
@@ -54,12 +85,78 @@ def write_results(root, compile_mean=12345.6, slow=False, both_paths=False):
             "engine_version": version, "load": {"concurrency": 8, "duration_seconds": 60, "warmup_seconds": 5}, "shapes": ["number-gt.json"],
             "date": "2026-11-20", "commit": "abc1234",
             "command": f"python3 perf/load.py --engine {engine} --dataset 10k --out perf/results/2026-11-20",
-            "summary": {"count": 5000, "errors": 0, "requests_per_second": 83.33, "p50_ms": 8.5, "p95_ms": 15.6, "p99_ms": 21.2},
+            SUMMARY_KEY: {"count": 5000, "errors": 0, "requests_per_second": 83.33, "p50_ms": 8.5, "p95_ms": 15.6, "p99_ms": 21.2},
             "oversized": {"handled": True, "status": 400, "kind": "resource-limit-exceeded"},
         }
         (results / f"manifest-{engine}-10k.json").write_text(json.dumps(manifest), encoding="utf-8")
         (results / f"load-{engine}-10k.jsonl").write_text('{"shape": "number-gt.json", "status": 200, "ms": 8.5}\n', encoding="utf-8")
     return results
+
+
+def set_load_figure(results, engine, figure, value):
+    path = results / f"manifest-{engine}-10k.json"
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    manifest[SUMMARY_KEY][figure] = value
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+
+
+def edit_report(results, edit):
+    path = results / COMPILE_JSON
+    data = json.loads(path.read_text(encoding="utf-8"))
+    edit(data)
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+
+def set_compile_mean(results, parameters_contains, value):
+    def edit(data):
+        for benchmark in data[BENCHMARKS]:
+            if parameters_contains in benchmark[PARAMETERS]:
+                benchmark[STATISTICS][MEAN] = value
+    edit_report(results, edit)
+
+
+def split_first_benchmark(data):
+    """Two benchmarks that map to the same measurement name: the first one and a copy, told apart only by a third parameter."""
+    first = data[BENCHMARKS][0]
+    copy = json.loads(json.dumps(first))
+    first[PARAMETERS] += "&Rows=1"
+    copy[PARAMETERS] += "&Rows=2"
+    data[BENCHMARKS].append(copy)
+
+
+def use_an_unknown_schema_path(data):
+    data[BENCHMARKS][0][PARAMETERS] += "&SchemaPath=warm-schema"
+
+
+def duplicate_load_manifest(results):
+    """A second manifest file for the same engine and dataset."""
+    source = results / FIRST_LOAD_MANIFEST
+    (results / "manifest-postgres-10k-again.json").write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+
+
+def repeatability_section(page):
+    return page[page.index(SECTION):].split("\n## ")[0]
+
+
+def compare_module():
+    return load_module().load_compare()
+
+
+def fake_pair(tmp):
+    """Two fake runs under separate roots, for the first run and its repeat."""
+    return write_results(Path(tmp) / "one"), write_results(Path(tmp) / "two")
+
+
+def clear_benchmarks(data):
+    data[BENCHMARKS].clear()
+
+
+def null_parameters(data):
+    data[BENCHMARKS][0][PARAMETERS] = None
+
+
+def drop_a_benchmark(data):
+    data[BENCHMARKS].pop()
 
 
 def is_measurement(cell):
@@ -107,10 +204,10 @@ class RenderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             results = write_results(root)
-            manifest = json.loads((results / "manifest-postgres-10k.json").read_text(encoding="utf-8"))
+            manifest = json.loads((results / FIRST_LOAD_MANIFEST).read_text(encoding="utf-8"))
             manifest["engine"] = "ef"
             manifest["engine_version"] = "PostgreSQL 16.4 through Npgsql.EntityFrameworkCore.PostgreSQL 10.0.3"
-            manifest["summary"]["p50_ms"] = 9.9
+            manifest[SUMMARY_KEY]["p50_ms"] = 9.9
             (results / "manifest-ef-10k.json").write_text(json.dumps(manifest), encoding="utf-8")
             (results / "load-ef-10k.jsonl").write_text("{}\n", encoding="utf-8")
             page_dir = root / "site" / "pages"
@@ -183,7 +280,7 @@ class SingleClientTests(unittest.TestCase):
         for path in results.glob("manifest-*-*.json"):
             manifest = json.loads(path.read_text(encoding="utf-8"))
             manifest["load"]["concurrency"] = 1
-            manifest["summary"]["p50_ms"] = 3.3
+            manifest[SUMMARY_KEY]["p50_ms"] = 3.3
             path.write_text(json.dumps(manifest), encoding="utf-8")
         return results
 
@@ -287,7 +384,7 @@ class RepeatabilityTests(unittest.TestCase):
     def scaled(self, results, factor):
         for path in results.glob("manifest-*-*.json"):
             manifest = json.loads(path.read_text(encoding="utf-8"))
-            manifest["summary"]["p99_ms"] *= factor
+            manifest[SUMMARY_KEY]["p99_ms"] *= factor
             path.write_text(json.dumps(manifest), encoding="utf-8")
 
     def render(self, factor):
@@ -300,20 +397,95 @@ class RepeatabilityTests(unittest.TestCase):
             page = module.render(first, page_dir, repeat=second)
             return page
 
-    def test_identical_runs_say_every_measurement_is_within_the_limit(self):
-        page = self.render(1.0)
-        self.assertIn("## Repeatability", page)
-        self.assertIn("within 10%", page)
-        self.assertNotIn("are not", page)
+    def render_with(self, prepare):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            first, second = fake_pair(tmp)
+            prepare(first, second)
+            page_dir = Path(tmp) / "one" / "site" / "pages"
+            page_dir.mkdir(parents=True)
+            return module.render(first, page_dir, repeat=second)
 
-    def test_a_difference_above_the_limit_is_listed_with_both_numbers_linked(self):
-        page = self.render(1.25)
-        self.assertIn("are not", page)
-        bullets = [line for line in page.splitlines() if line.startswith("- ") and "apart" in line]
+    def spread(self, **figures):
+        """prepare() for render_with: both runs start at p99 100 on both engines, the repeat takes `figures` (engine=value)."""
+        def prepare(first, second):
+            for engine in (POSTGRES, MONGO):
+                set_load_figure(first, engine, P99, 100.0)
+                set_load_figure(second, engine, P99, figures.get(engine, 100.0))
+        return prepare
+
+    def bullets(self, section):
+        return [line for line in section.splitlines() if line.startswith("- ")]
+
+    def test_the_section_says_twice_on_the_same_machine_and_has_no_target_wording(self):  # US1-AS1
+        for factor in (1.0, 1.25):
+            with self.subTest(factor=factor):
+                section = repeatability_section(self.render(factor))
+                self.assertIn("Every measurement was taken twice on the same machine, in two runs one after the other.", section)
+                for word in FORBIDDEN_WORDS:
+                    self.assertNotIn(word, section.lower())
+
+    def test_differences_are_counted_the_largest_is_named_and_the_list_has_two_links_per_line(self):  # US1-AS2
+        section = repeatability_section(self.render(1.25))
+        self.assertIn(f"2 of {TOTAL} measurements of the repeat run differ by more than {LIMIT:g}% from this run.", section)
+        largest = next(line for line in section.splitlines() if line.startswith(PAGE_LARGEST))
+        self.assertTrue(largest.startswith(f"{PAGE_LARGEST} {MONGO_P99}: ["), largest)   # a tie keeps name order
+        self.assertEqual(2, largest.count("]("), largest)
+        self.assertTrue(largest.endswith("."), largest)
+        self.assertIn(f"Differences above {LIMIT:g}%, largest first:", section)
+        bullets = self.bullets(section)
         self.assertEqual(2, len(bullets))
         for line in bullets:
-            self.assertIn("25.0% apart", line)
             self.assertEqual(2, line.count("]("), line)
+            self.assertIn("25.0% apart", line)
+
+    def test_the_list_is_largest_first(self):  # US1-AS2
+        section = repeatability_section(self.render_with(self.spread(mongo=120.0, postgres=130.0)))
+        bullets = self.bullets(section)
+        self.assertEqual([POSTGRES_P99, MONGO_P99], [line[2:].split(":")[0] for line in bullets])
+        largest = next(line for line in section.splitlines() if line.startswith(PAGE_LARGEST))
+        self.assertIn(f" {POSTGRES_P99}: [", largest)
+        self.assertIn("30.0% apart", largest)
+
+    def test_when_none_differs_the_section_says_so_and_still_names_the_largest(self):  # US1-AS3
+        section = repeatability_section(self.render(1.0))
+        self.assertIn(f"None of the {TOTAL} measurements of the repeat run differs by more than {LIMIT:g}% from this run.", section)
+        largest = next(line for line in section.splitlines() if line.startswith(PAGE_LARGEST))
+        self.assertEqual(2, largest.count("]("), largest)
+        self.assertEqual([], self.bullets(section))
+        self.assertNotIn("Differences above", section)
+        self.assertNotIn("target", section.lower())
+
+    def test_exactly_the_limit_is_not_listed_and_a_hair_above_is_listed_with_one_decimal(self):  # US1-AS5
+        section = repeatability_section(self.render_with(self.spread(mongo=110.0, postgres=110.04)))
+        bullets = self.bullets(section)
+        self.assertEqual(1, len(bullets), bullets)
+        self.assertTrue(bullets[0].startswith(f"- {POSTGRES_P99}: ["), bullets[0])
+        self.assertIn("10.0% apart", bullets[0])
+        self.assertIn(f"1 of {TOTAL} measurements of the repeat run differ by more than {LIMIT:g}%", section)
+
+    def test_a_zero_baseline_with_a_non_zero_repeat_is_listed_as_from_zero(self):  # US1-AS6
+        def prepare(first, second):
+            set_load_figure(first, POSTGRES, P99, 0)
+            set_load_figure(second, POSTGRES, P99, 5.0)
+        section = repeatability_section(self.render_with(prepare))
+        bullets = self.bullets(section)
+        self.assertEqual(1, len(bullets), bullets)
+        self.assertTrue(bullets[0].startswith(f"- {POSTGRES_P99}: ["), bullets[0])
+        self.assertTrue(bullets[0].endswith(FROM_ZERO), bullets[0])
+        largest = next(line for line in section.splitlines() if line.startswith(PAGE_LARGEST))
+        self.assertIn(FROM_ZERO, largest)
+
+    def test_the_published_page_is_what_the_generator_writes_for_the_committed_runs(self):  # US1-AS4
+        runs = ROOT / "perf" / "results"
+        page_dir = ROOT / "site" / "pages"
+        page = load_module().render(
+            runs / COMMITTED_RESULTS, page_dir, repeat=runs / COMMITTED_REPEAT, single=runs / COMMITTED_SINGLE)
+        self.assertEqual((page_dir / "performance.md").read_text(encoding="utf-8"), page)
+        section = repeatability_section(page)
+        self.assertEqual(21, len(self.bullets(section)))
+        for word in FORBIDDEN_WORDS:
+            self.assertNotIn(word, section.lower())
 
     def test_without_a_repeat_there_is_no_repeatability_section(self):
         module = load_module()
@@ -325,8 +497,8 @@ class RepeatabilityTests(unittest.TestCase):
 
 
 class CompareTests(unittest.TestCase):
-    """T6: perf/compare.py <first run> <second run> [--limit 10]: exit 0 = every metric of the second run is within the limit
-    (percent, default 10, NFR-08) of the first, 1 = at least one is not (each is listed), 2 = a run is missing or unreadable."""
+    """T6: perf/compare.py <first run> <second run> [--limit 10]: exit 0 = the two runs were read and any spread is listed (the
+    differences above the limit, percent, default 10), 2 = a run is missing, unreadable, malformed or does not match the other."""
     SCRIPT = ROOT / "perf" / "compare.py"
 
     def run_compare(self, first, second, *extra):
@@ -338,12 +510,12 @@ class CompareTests(unittest.TestCase):
             if path.name == "manifest-compile.json":
                 continue
             manifest = json.loads(path.read_text(encoding="utf-8"))
-            manifest["summary"]["p50_ms"] *= factor
+            manifest[SUMMARY_KEY]["p50_ms"] *= factor
             path.write_text(json.dumps(manifest), encoding="utf-8")
         report = results / COMPILE_JSON
         data = json.loads(report.read_text(encoding="utf-8"))
-        for benchmark in data["Benchmarks"]:
-            benchmark["Statistics"]["Mean"] *= factor
+        for benchmark in data[BENCHMARKS]:
+            benchmark[STATISTICS]["Mean"] *= factor
         report.write_text(json.dumps(data), encoding="utf-8")
 
     def test_the_two_paths_are_compared_as_separate_measurements(self):
@@ -351,50 +523,147 @@ class CompareTests(unittest.TestCase):
             a, b = write_results(Path(one), both_paths=True), write_results(Path(two), both_paths=True)
             report = b / COMPILE_JSON
             data = json.loads(report.read_text(encoding="utf-8"))
-            for benchmark in data["Benchmarks"]:
-                if "SchemaPath=prepared-schema" in benchmark["Parameters"]:
-                    benchmark["Statistics"]["Mean"] *= 1.5     # only the prepared path moves
+            for benchmark in data[BENCHMARKS]:
+                if "SchemaPath=prepared-schema" in benchmark[PARAMETERS]:
+                    benchmark[STATISTICS]["Mean"] *= 1.5     # only the prepared path moves
             report.write_text(json.dumps(data), encoding="utf-8")
             result = self.run_compare(a, b)
-            self.assertEqual(1, result.returncode, result.stdout)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
             self.assertIn("prepared", result.stdout)
             self.assertNotIn("compile postgres/plain-page mean:", result.stdout)
 
-    def test_two_identical_runs_are_within_the_limit(self):
-        with tempfile.TemporaryDirectory() as one, tempfile.TemporaryDirectory() as two:
-            a, b = write_results(Path(one)), write_results(Path(two))
+    def test_two_identical_runs_say_none_differs(self):  # US2-AS2
+        with tempfile.TemporaryDirectory() as tmp:
+            a, b = fake_pair(tmp)
             result = self.run_compare(a, b)
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
-            self.assertIn("within 10%", result.stdout)
+            self.assertIn(f"none of the {TOTAL} measurements differs by more than {LIMIT:g}%", result.stdout)
+            self.assertIn(COMMAND_LARGEST, result.stdout)
 
     def test_a_change_below_the_limit_passes(self):
         with tempfile.TemporaryDirectory() as one, tempfile.TemporaryDirectory() as two:
             a, b = write_results(Path(one)), write_results(Path(two))
             self.scale(b, 1.09)
-            self.assertEqual(0, self.run_compare(a, b).returncode)
+            result = self.run_compare(a, b)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertIn(f"none of the {TOTAL} measurements differs by more than {LIMIT:g}%", result.stdout)
 
-    def test_a_change_above_the_limit_fails_and_names_the_metric(self):
+    def test_a_change_above_the_limit_is_listed_and_still_exits_0(self):  # US2-AS1
         with tempfile.TemporaryDirectory() as one, tempfile.TemporaryDirectory() as two:
             a, b = write_results(Path(one)), write_results(Path(two))
             self.scale(b, 1.25)
             result = self.run_compare(a, b)
-            self.assertEqual(1, result.returncode)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertIn(f"4 of {TOTAL} measurements differ by more than {LIMIT:g}%:", result.stdout)
+            self.assertIn(COMMAND_LARGEST, result.stdout)
             self.assertIn("p50", result.stdout)
             self.assertIn("compile", result.stdout)
             self.assertIn("25.0%", result.stdout)
+
+    def test_a_zero_baseline_is_printed_as_from_zero(self):  # US2-AS1
+        with tempfile.TemporaryDirectory() as tmp:
+            a, b = fake_pair(tmp)
+            set_load_figure(a, POSTGRES, P99, 0)
+            result = self.run_compare(a, b)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertIn(FROM_ZERO, result.stdout)
+
+    def test_a_custom_limit_lists_only_the_measurements_above_it(self):  # US2-AS4
+        with tempfile.TemporaryDirectory() as tmp:
+            a, b = fake_pair(tmp)
+            set_compile_mean(b, "Backend=postgres", 12345.6 * 1.2)
+            set_compile_mean(b, "Backend=mongo", 26600.0 * 1.3)
+            result = self.run_compare(a, b, LIMIT_FLAG, str(CUSTOM_LIMIT))
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertIn(f"1 of {TOTAL} measurements differ by more than {CUSTOM_LIMIT:g}%:", result.stdout)
+            self.assertIn(MONGO_MEAN, result.stdout)
+            self.assertNotIn(POSTGRES_MEAN, result.stdout)
+
+    def test_a_limit_that_is_not_a_finite_number_above_zero_is_exit_2_and_prints_no_comparison(self):  # US2-AS5
+        with tempfile.TemporaryDirectory() as tmp:
+            a, b = fake_pair(tmp)
+            for bad in ("nan", "inf", "abc", "0", "-1"):   # abc already exits 2 today: a pin
+                with self.subTest(limit=bad):
+                    result = self.run_compare(a, b, LIMIT_FLAG, bad)
+                    self.assertEqual(2, result.returncode, result.stdout + result.stderr)
+                    self.assertEqual("", result.stdout)
+                    self.assertIn(LIMIT_FLAG, result.stderr)
+                    self.assertNotIn(TRACEBACK, result.stderr)
+
+    def assert_bad_input(self, first, second):
+        result = self.run_compare(first, second)
+        self.assertEqual(2, result.returncode, result.stdout + result.stderr)
+        self.assertNotIn(TRACEBACK, result.stderr)
+        self.assertNotIn("none of", result.stdout)
+        self.assertNotEqual("", result.stderr)
+
+    def test_a_value_that_is_not_a_finite_number_is_exit_2(self):  # US2-AS6
+        for bad in (float("nan"), "12", True):
+            with self.subTest(value=bad), tempfile.TemporaryDirectory() as tmp:
+                a, b = fake_pair(tmp)
+                set_load_figure(b, POSTGRES, P99, bad)
+                self.assert_bad_input(a, b)
+
+    def test_a_report_with_a_null_parameters_is_exit_2_without_a_traceback(self):  # US2-AS3
+        with tempfile.TemporaryDirectory() as tmp:
+            a, b = fake_pair(tmp)
+            edit_report(b, null_parameters)
+            self.assert_bad_input(a, b)
+
+    def test_runs_that_hold_no_benchmark_are_exit_2(self):  # US2-AS3
+        with tempfile.TemporaryDirectory() as tmp:
+            a, b = fake_pair(tmp)
+            edit_report(a, clear_benchmarks)
+            edit_report(b, clear_benchmarks)
+            self.assert_bad_input(a, b)
+
+    def test_runs_that_do_not_hold_the_same_measurements_are_exit_2(self):  # US2-AS3
+        with tempfile.TemporaryDirectory() as tmp:
+            a, b = fake_pair(tmp)
+            edit_report(b, drop_a_benchmark)
+            self.assert_bad_input(a, b)
+
+    def test_two_benchmarks_with_the_same_measurement_name_are_exit_2(self):  # US2-AS3
+        with tempfile.TemporaryDirectory() as tmp:
+            a, b = fake_pair(tmp)
+            edit_report(a, split_first_benchmark)
+            edit_report(b, split_first_benchmark)
+            self.assert_bad_input(a, b)
+
+    def test_a_schema_path_that_is_not_known_is_exit_2(self):  # US2-AS3
+        with tempfile.TemporaryDirectory() as tmp:
+            a, b = fake_pair(tmp)
+            edit_report(a, use_an_unknown_schema_path)
+            edit_report(b, use_an_unknown_schema_path)
+            self.assert_bad_input(a, b)
+
+    def test_two_load_manifests_for_the_same_engine_and_dataset_are_exit_2(self):  # US2-AS3
+        with tempfile.TemporaryDirectory() as tmp:
+            a, b = fake_pair(tmp)
+            duplicate_load_manifest(a)
+            duplicate_load_manifest(b)
+            self.assert_bad_input(a, b)
+
+    def test_a_figure_too_big_for_a_float_is_exit_2_without_a_traceback(self):  # US2-AS6
+        with tempfile.TemporaryDirectory() as tmp:
+            a, b = fake_pair(tmp)
+            set_load_figure(b, POSTGRES, P99, HUGE_INTEGER)
+            self.assert_bad_input(a, b)
 
     def test_the_limit_can_be_changed(self):
         with tempfile.TemporaryDirectory() as one, tempfile.TemporaryDirectory() as two:
             a, b = write_results(Path(one)), write_results(Path(two))
             self.scale(b, 1.25)
-            self.assertEqual(0, self.run_compare(a, b, "--limit", "30").returncode)
+            result = self.run_compare(a, b, LIMIT_FLAG, str(WIDE_LIMIT))
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertIn(f"none of the {TOTAL} measurements differs by more than {WIDE_LIMIT:g}%", result.stdout)
 
     def test_a_run_whose_requests_all_failed_is_exit_2_not_exit_1(self):
         with tempfile.TemporaryDirectory() as one, tempfile.TemporaryDirectory() as two:
             a, b = write_results(Path(one)), write_results(Path(two))
-            path = b / "manifest-postgres-10k.json"
+            path = b / FIRST_LOAD_MANIFEST
             manifest = json.loads(path.read_text(encoding="utf-8"))
-            manifest["summary"]["p50_ms"] = None
+            manifest[SUMMARY_KEY]["p50_ms"] = None
             path.write_text(json.dumps(manifest), encoding="utf-8")
             result = self.run_compare(a, b)
             self.assertEqual(2, result.returncode, result.stdout + result.stderr)
@@ -404,6 +673,153 @@ class CompareTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as one:
             a = write_results(Path(one))
             self.assertEqual(2, self.run_compare(a, Path(one) / "nowhere").returncode)
+
+
+class CompareCoreTests(unittest.TestCase):
+    """perf/compare.py compare(): (total, outside, largest), the spread of every measurement."""
+
+    def pair(self, tmp, first_p99=100.0, **repeat_p99):
+        """Two fake runs: every p99 of the first is `first_p99`, the repeat's per engine (engine=value, default unchanged)."""
+        first, second = fake_pair(tmp)
+        for engine in (POSTGRES, MONGO):
+            set_load_figure(first, engine, P99, first_p99)
+            set_load_figure(second, engine, P99, repeat_p99.get(engine, first_p99))
+        return first, second
+
+    def test_it_returns_the_total_the_outside_list_and_the_largest(self):  # US1-AS2
+        module = compare_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            first, second = self.pair(tmp, mongo=120.0, postgres=130.0)
+            total, outside, largest = module.compare(first, second)
+            self.assertEqual(TOTAL, total)
+            self.assertEqual([POSTGRES_P99, MONGO_P99], [item.name for item in outside])
+            self.assertEqual(POSTGRES_P99, largest.name)
+            self.assertAlmostEqual(30.0, largest.change)
+            self.assertEqual((100.0, 130.0), (largest.first, largest.second))
+            self.assertTrue(largest.first_path.is_relative_to(first))
+            self.assertTrue(largest.second_path.is_relative_to(second))
+
+    def test_ties_keep_name_order(self):  # US1-AS2
+        module = compare_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            _, outside, largest = module.compare(*self.pair(tmp, mongo=125.0, postgres=125.0))
+            self.assertEqual([MONGO_P99, POSTGRES_P99], [item.name for item in outside])
+            self.assertEqual(MONGO_P99, largest.name)
+
+    def test_the_largest_is_named_when_none_exceeds_the_limit(self):  # US1-AS3
+        module = compare_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            _, outside, largest = module.compare(*self.pair(tmp, postgres=105.0))
+            self.assertEqual([], outside)
+            self.assertEqual(POSTGRES_P99, largest.name)
+            self.assertAlmostEqual(5.0, largest.change)
+
+    def test_the_largest_is_the_first_by_name_when_every_change_is_zero(self):  # US1-AS3
+        module = compare_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            first, second = fake_pair(tmp)
+            _, outside, largest = module.compare(first, second)
+            self.assertEqual([], outside)
+            self.assertEqual(MONGO_MEAN, largest.name)
+            self.assertEqual(0.0, largest.change)
+
+    def test_exactly_the_limit_is_not_listed_and_a_hair_above_is(self):  # US1-AS5
+        module = compare_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            _, outside, _ = module.compare(*self.pair(tmp, mongo=110.0, postgres=110.04))
+            self.assertEqual([POSTGRES_P99], [item.name for item in outside])
+
+    def test_a_zero_baseline_with_a_non_zero_repeat_is_listed_as_infinite_and_described_from_zero(self):  # US1-AS6, FR-004
+        module = compare_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            first, second = self.pair(tmp, first_p99=0.0, postgres=5.0)
+            _, outside, largest = module.compare(first, second)
+            self.assertEqual([POSTGRES_P99], [item.name for item in outside])
+            self.assertEqual(math.inf, largest.change)
+            self.assertEqual(FROM_ZERO, module.describe(largest.change))
+
+    def test_zero_to_zero_is_no_difference(self):  # US1-AS6
+        module = compare_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            _, outside, largest = module.compare(*self.pair(tmp, first_p99=0.0))
+            self.assertEqual([], outside)
+            self.assertEqual(0.0, largest.change)
+
+    def test_describe_gives_one_decimal(self):  # US1-AS5
+        self.assertEqual("25.0% apart", compare_module().describe(25.0))
+        self.assertEqual("10.0% apart", compare_module().describe(10.04))
+
+    def test_a_negative_baseline_uses_its_absolute_value(self):  # US2-AS6
+        module = compare_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            first, second = fake_pair(tmp)
+            set_load_figure(first, POSTGRES, P99, -100.0)
+            set_load_figure(second, POSTGRES, P99, -110.0)
+            _, outside, largest = module.compare(first, second)
+            self.assertEqual([], outside)
+            self.assertEqual(POSTGRES_P99, largest.name)
+            self.assertAlmostEqual(10.0, largest.change)
+
+    def test_a_value_that_is_not_a_finite_number_raises_run_error(self):  # US2-AS6
+        module = compare_module()
+        for bad in (float("nan"), "12", True):
+            with self.subTest(value=bad), tempfile.TemporaryDirectory() as tmp:
+                first, second = fake_pair(tmp)
+                set_load_figure(second, POSTGRES, P99, bad)
+                with self.assertRaises(module.RunError):
+                    module.compare(first, second)
+
+    def test_two_benchmarks_with_the_same_measurement_name_raise_run_error(self):  # US2-AS3
+        module = compare_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            first, second = fake_pair(tmp)
+            edit_report(first, split_first_benchmark)
+            edit_report(second, split_first_benchmark)
+            with self.assertRaises(module.RunError):
+                module.compare(first, second)
+
+    def test_a_schema_path_that_is_not_known_raises_run_error(self):  # US2-AS3
+        module = compare_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            first, second = fake_pair(tmp)
+            edit_report(first, use_an_unknown_schema_path)
+            edit_report(second, use_an_unknown_schema_path)
+            with self.assertRaises(module.RunError):
+                module.compare(first, second)
+
+    def test_two_load_manifests_for_the_same_engine_and_dataset_raise_run_error(self):  # US2-AS3
+        module = compare_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            first, second = fake_pair(tmp)
+            duplicate_load_manifest(first)
+            duplicate_load_manifest(second)
+            with self.assertRaises(module.RunError):
+                module.compare(first, second)
+
+    def test_a_figure_too_big_for_a_float_raises_run_error(self):  # US2-AS6
+        module = compare_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            first, second = fake_pair(tmp)
+            set_load_figure(second, POSTGRES, P99, HUGE_INTEGER)
+            with self.assertRaises(module.RunError):
+                module.compare(first, second)
+
+    def test_a_null_parameters_raises_run_error(self):  # US2-AS3
+        module = compare_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            first, second = fake_pair(tmp)
+            edit_report(second, null_parameters)
+            with self.assertRaises(module.RunError):
+                module.compare(first, second)
+
+    def test_an_empty_benchmarks_list_raises_run_error(self):  # US2-AS3
+        module = compare_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            first, second = fake_pair(tmp)
+            edit_report(first, clear_benchmarks)
+            edit_report(second, clear_benchmarks)
+            with self.assertRaises(module.RunError):
+                module.compare(first, second)
 
 
 class CompileManifestTests(unittest.TestCase):
@@ -449,6 +865,43 @@ class CliTests(unittest.TestCase):
             self.assertEqual(0, result.returncode, result.stderr)
             self.assertIn("## Repeatability", page.read_text(encoding="utf-8"))
 
+    def test_a_missing_repeat_folder_is_exit_2_with_the_reason_and_writes_nothing(self):  # US1-AS7
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            results = write_results(root)
+            result, page, _ = self.run_cli(root, results, REPEAT_FLAG, str(root / "nowhere"))
+            self.assertEqual(2, result.returncode, result.stderr)
+            self.assertIn("nowhere", result.stderr)
+            self.assertNotIn(TRACEBACK, result.stderr)
+            self.assertFalse(page.exists())
+
+    def test_a_repeat_folder_with_other_measurements_is_exit_2_with_the_reason_and_writes_nothing(self):  # US1-AS7
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            results = write_results(root)
+            repeat = root / "perf" / "results" / "2026-11-20-repeat"
+            import shutil
+            shutil.copytree(results, repeat)
+            edit_report(repeat, drop_a_benchmark)
+            result, page, _ = self.run_cli(root, results, REPEAT_FLAG, str(repeat))
+            self.assertEqual(2, result.returncode, result.stderr)
+            self.assertIn("same measurements", result.stderr)
+            self.assertNotIn(TRACEBACK, result.stderr)
+            self.assertFalse(page.exists())
+
+    def test_a_repeat_run_with_a_figure_too_big_for_a_float_is_exit_2_and_writes_nothing(self):  # US1-AS7
+        import shutil
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            results = write_results(root)
+            repeat = root / "perf" / "results" / "2026-11-20-repeat"
+            shutil.copytree(results, repeat)
+            set_load_figure(repeat, POSTGRES, P99, HUGE_INTEGER)
+            result, page, _ = self.run_cli(root, results, REPEAT_FLAG, str(repeat))
+            self.assertEqual(2, result.returncode, result.stderr)
+            self.assertNotIn(TRACEBACK, result.stderr)
+            self.assertFalse(page.exists())
+
     def test_it_writes_the_page_and_registers_it_once(self):  # T4
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -477,7 +930,7 @@ class CliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             results = write_results(root)
-            (results / "manifest-postgres-10k.json").write_text("{ not json", encoding="utf-8")
+            (results / FIRST_LOAD_MANIFEST).write_text("{ not json", encoding="utf-8")
             result, page, _ = self.run_cli(root, results)
             self.assertEqual(2, result.returncode)
             self.assertFalse(page.exists())
