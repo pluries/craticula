@@ -4,7 +4,7 @@
 Usage: python3 scripts/perf_page.py <results dir> [--repeat <repeat run dir>] [--single <one-client run dir>] [--page site/pages/performance.md] [--site-json site/site.json]
 Reads <results dir>/compile/results/*-report-full.json (the BenchmarkDotNet output), compile/manifest-compile.json and every
 manifest-<engine>-<dataset>.json; writes the page, then registers it once in the site config. Every number in a table is a link to the
-raw file it came from, so none is typed by hand. Exit 0 = written, 2 = no results or an unreadable result file (nothing is written).
+raw file it came from, so none is typed by hand. Exit 0 = written, 2 = no results, an unreadable result file or a bad --repeat run (nothing is written).
 Tests: scripts/test_perf_page.py.
 """
 import argparse
@@ -101,22 +101,33 @@ def show(name, value):
     return f"{value:.1f} ms"
 
 
+def difference_text(compare, item, page_dir):
+    first = link(show(item.name, item.first), item.first_path, page_dir)
+    second = link(show(item.name, item.second), item.second_path, page_dir)
+    return f"{item.name}: {first} then {second}, {compare.describe(item.change)}"
+
+
+def repeatability_lines(compare, total, outside, largest, page_dir, limit):
+    lines = ["## Repeatability", "",
+             "Every measurement was taken twice on the same machine, in two runs one after the other.", ""]
+    if outside:
+        lines.append(f"{len(outside)} of {total} measurements of the repeat run differ by more than {limit:g}% from this run.")
+    else:
+        lines.append(f"None of the {total} measurements of the repeat run differs by more than {limit:g}% from this run.")
+    lines += ["", "Largest difference: " + difference_text(compare, largest, page_dir) + "."]
+    if outside:
+        lines += ["", f"Differences above {limit:g}%, largest first:", ""]
+        lines += ["- " + difference_text(compare, item, page_dir) for item in outside]
+    return lines + [""]
+
+
 def repeatability(results, repeat, page_dir, limit=10.0):
     compare = load_compare()
-    total, outside = compare.compare(results, repeat, limit)
-    lines = ["## Repeatability", "",
-             f"Every measurement was taken twice on the same machine, in two runs one after the other. The target is that the second "
-             f"run lands within {limit:g}% of the first."]
-    if not outside:
-        lines += ["", f"All {total} measurements of the repeat run are within {limit:g}% of this run."]
-        return lines + [""]
-    lines += ["", f"{total - len(outside)} of {total} measurements of the repeat run are within {limit:g}% of this run. "
-              f"These {len(outside)} are not, so read them with that spread in mind:", ""]
-    for item in outside:
-        first = link(show(item["name"], item["first"]), item["first_path"], page_dir)
-        second = link(show(item["name"], item["second"]), item["second_path"], page_dir)
-        lines.append(f"- {item['name']}: {first} then {second}, {item['change']:.1f}% apart")
-    return lines + [""]
+    try:
+        total, outside, largest = compare.compare(results, repeat, limit)
+    except compare.RunError as error:
+        raise ResultsError(str(error)) from error
+    return repeatability_lines(compare, total, outside, largest, page_dir, limit)
 
 
 def machine_state(manifest):
