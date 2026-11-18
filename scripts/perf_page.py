@@ -177,6 +177,7 @@ def render(results, page_dir, repeat=None, single=None):
     manifest_files = sorted(results.glob("manifest-*.json"))
     if len(report_files) != 1 or not manifest_files:
         raise ResultsError(f"{results}: expected one compile report and at least one load manifest")
+    repeat_lines = repeatability(results, Path(repeat), page_dir) if repeat is not None else []
     compile_manifest = read_json(results / "compile" / "manifest-compile.json")
     report = read_json(report_files[0])
     manifests = [(path, read_json(path)) for path in manifest_files]
@@ -216,8 +217,7 @@ def render(results, page_dir, repeat=None, single=None):
     out += [""]
     if single is not None:
         out += single_client(single, page_dir)
-    if repeat is not None:
-        out += repeatability(results, Path(repeat), page_dir)
+    out += repeat_lines
     out += ["## How each result was produced", "", "### Compile benchmark", "",
             f"- Machine: {compile_manifest['machine']}",
             f"- Tool: {compile_manifest['benchmark']} on .NET {compile_manifest['dotnet']}",
