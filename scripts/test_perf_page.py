@@ -359,6 +359,7 @@ BREAKERS = [
     (MACHINE, "another label in every manifest of the repeat", applied_to(1, every_manifest(MACHINE_KEY, OTHER_MACHINE))),
     (MACHINE, "two labels in the repeat", applied_to(1, setting(FIRST_LOAD_MANIFEST, MACHINE_KEY, OTHER_MACHINE))),
     (MACHINE, "two labels in the first run", applied_to(0, setting(FIRST_LOAD_MANIFEST, MACHINE_KEY, OTHER_MACHINE))),
+    # US1-AS8: two different commits are refused and both are named
     (COMMIT, "another commit in every manifest of the repeat", applied_to(1, every_manifest(COMMIT_KEY, OTHER_COMMIT))),
     (COMMIT, "two commits in the repeat", applied_to(1, setting(FIRST_LOAD_MANIFEST, COMMIT_KEY, OTHER_COMMIT))),
     (COMMIT, "two commits in the first run", applied_to(0, setting(FIRST_LOAD_MANIFEST, COMMIT_KEY, OTHER_COMMIT))),
@@ -751,7 +752,7 @@ class RepeatabilityTests(unittest.TestCase):
         largest = next(line for line in section.splitlines() if line.startswith(PAGE_LARGEST))
         self.assertIn(FROM_ZERO, largest)
 
-    def test_the_published_page_is_what_the_generator_writes_for_the_committed_runs(self):  # US1-AS4
+    def test_the_published_page_is_what_the_generator_writes_for_the_committed_runs(self):  # US1-AS4 (spec 001) and US1-AS12 (spec 002: the published page does not change)
         runs = ROOT / "perf" / "results"
         page_dir = ROOT / "site" / "pages"
         page = load_module().render(
@@ -1229,7 +1230,7 @@ class CliTests(unittest.TestCase):
         site_json.write_text(OLD_SITE, encoding="utf-8")
         return page, site_json
 
-    def test_every_broken_pair_is_refused_by_the_page_generator_and_the_existing_page_is_left_alone(self):  # US1-AS1 to AS4, AS6 to AS8, AS10, AS13
+    def test_every_broken_pair_is_refused_by_the_page_generator_and_the_existing_page_is_left_alone(self):  # US1-AS1 US1-AS2 US1-AS3 US1-AS4 US1-AS6 US1-AS7 US1-AS8 US1-AS10 US1-AS13
         for check, label, breaker in BREAKERS:
             with self.subTest(check=check, label=label), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
