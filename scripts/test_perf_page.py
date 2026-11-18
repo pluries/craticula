@@ -342,6 +342,7 @@ MISSING_CASES = [
     ("compile manifest without machine", (COMPILE_MANIFEST_FILE, MACHINE_KEY), removing(COMPILE_MANIFEST_PATH, MACHINE_KEY)),
     ("unknown commit", (FIRST_LOAD_MANIFEST, COMMIT_KEY), setting(FIRST_LOAD_MANIFEST, COMMIT_KEY, UNKNOWN_COMMIT)),
     ("empty commit", (COMPILE_MANIFEST_FILE, COMMIT_KEY), setting(COMPILE_MANIFEST_PATH, COMMIT_KEY, "")),
+    ("whitespace-only machine", (FIRST_LOAD_MANIFEST, MACHINE_KEY), setting(FIRST_LOAD_MANIFEST, MACHINE_KEY, " ")),
     ("no compile manifest", ("compile manifest",), removing_file(COMPILE_MANIFEST_PATH)),
     ("compile manifest that is a list", (COMPILE_MANIFEST_FILE,), replacing_with_a_list(COMPILE_MANIFEST_PATH)),
 ]

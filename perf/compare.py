@@ -158,7 +158,7 @@ def check_fields(manifests):
     for path, manifest in manifests:
         for field in REQUIRED_FIELDS:
             value = manifest.get(field)
-            if not isinstance(value, str) or not value:
+            if not isinstance(value, str) or not value.strip():
                 refuse(MISSING_FIELD, f"{path}: {field}")
         if manifest[COMMIT_FIELD] == UNKNOWN_COMMIT:
             refuse(MISSING_FIELD, f"{path}: {COMMIT_FIELD} is {UNKNOWN_COMMIT}")
