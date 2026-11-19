@@ -57,3 +57,15 @@ The glossary's `verbatim` list names the terms that must appear unchanged wherev
 (product, package and engine names). Its `forbidden` object has one entry per language (an empty object for none) with
 the renderings a machine translation tends to produce for a term, such as a translated `GridSchema`. Matching
 is by whole word and ignores case.
+
+## Drafting notes (from the first language set)
+
+- A new translation header must hold all seven keys before the first `stamp`: `translates`, `title`, `description`, `source_fingerprint`, `drafter`, `drafted_on` and `status`. Write `pending` for the first three and `status: machine-drafted`; `stamp` fills them in.
+- `home.html` has its own header, an HTML comment holding the same keys, and `index.md` has one too. `stamp <lang> index` updates both. The translated title and description live in the header, not the body.
+- `ui.json` has no header and is not stamped. Its approval is its own document, `ui.json`.
+- Do not translate the text inside a code block, even a layout tree with English comments. Keep badge image lines as they are.
+- Link targets stay as written in the English source, relative to the English source file. The checks resolve them for you.
+- Digits are compared as a set: keep `Step 1` and `v1` as numbers, and do not reformat `0.3.0`.
+- The glossary check reads the `.md` body only, not `home.html`; keep verbatim terms verbatim there too.
+- Every translated heading ends with its English anchor, `{#english-anchor}`. Compute the anchors from the English source with `build_site.render_markdown(text).headings`.
+- Check a page with `python3 -c "import sys; sys.path.insert(0,'scripts'); import site_i18n as s; from pathlib import Path; print(s.check_page(Path('.'), '<lang>', '<slug>'))"`; an empty list means the machine checks pass. Meaning, tone and a missing "not" are the approver's to judge.
