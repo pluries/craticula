@@ -1,16 +1,16 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{lang}}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{page_title}} · {{site_title}}</title>
 <meta name="description" content="{{description}}">
-{{head_links}}
+{{head_links}}{{alternates}}
 {{scripts}}
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="{{assets}}style.css">
 </head>
-<body>
-<a class="skip" href="#main">Skip to content</a>
+<body{{data_ui}}>
+<a class="skip" href="#main">{{ui_skip}}</a>
 {{topbar}}
 <div class="layout wrap-wide">
 {{menu_button}}
@@ -19,7 +19,7 @@
 {{content}}
 {{prev_next}}
 </main>
-<nav class="toc" aria-label="On this page">{{toc}}</nav>
+<nav class="toc" aria-label="{{ui_on_this_page}}">{{toc}}</nav>
 </div>
 <footer class="foot"><div class="wrap-wide"><span>Craticula · Apache-2.0 · spec {{spec_version}}</span><a href="https://github.com/pluries/craticula">github.com/pluries/craticula</a></div></footer>
 </body>

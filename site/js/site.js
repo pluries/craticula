@@ -5,6 +5,34 @@
   const THEMES = ["auto", "light", "dark"];
   const MAX_HITS = 8;
 
+  const ENGLISH = {
+    copy: "Copy",
+    copied: "Copied",
+    copy_failed: "Copy failed",
+    copy_aria: "Copy this code",
+    search_label: "Search the documentation",
+    search_placeholder: "Search",
+    search_empty: "Type to search the documentation.",
+    search_none: "Nothing matches that search.",
+    search_loading: "Loading the search index...",
+    search_unavailable: "Search is not available right now. Use the sidebar to browse the pages.",
+    result_one: "result",
+    result_other: "results",
+    theme_aria: "Theme: {name}. Change theme",
+    theme_title: "Theme: {name}",
+    theme_names: { auto: "Auto", light: "Light", dark: "Dark" },
+  };
+
+  const readStrings = () => {
+    try {
+      return JSON.parse(document.body.dataset.ui || "{}");
+    } catch {
+      return {};
+    }
+  };
+
+  const T = { ...ENGLISH, ...readStrings() };
+
   const currentTheme = () => {
     const set = root.dataset.theme;
     return set === "light" || set === "dark" ? set : "auto";
@@ -12,8 +40,9 @@
 
   const showTheme = (button) => {
     const name = currentTheme();
-    button.setAttribute("aria-label", `Theme: ${name.charAt(0).toUpperCase()}${name.slice(1)}. Change theme`);
-    button.setAttribute("title", `Theme: ${name}`);
+    const shown = T.theme_names[name];
+    button.setAttribute("aria-label", T.theme_aria.replace("{name}", shown));
+    button.setAttribute("title", T.theme_title.replace("{name}", shown.toLocaleLowerCase()));
   };
 
   const storeTheme = (next, button) => {
@@ -70,7 +99,7 @@
     button.textContent = label;
     button.dataset.state = state;
     globalThis.setTimeout(() => {
-      button.textContent = "Copy";
+      button.textContent = T.copy;
       delete button.dataset.state;
     }, 1800);
   };
@@ -79,17 +108,17 @@
     const button = document.createElement("button");
     button.type = "button";
     button.className = "copy-button";
-    button.textContent = "Copy";
-    button.setAttribute("aria-label", "Copy this code");
+    button.textContent = T.copy;
+    button.setAttribute("aria-label", T.copy_aria);
     button.addEventListener("click", () => {
       if (!navigator.clipboard) {
-        flash(button, "Copy failed", "failed");
+        flash(button, T.copy_failed, "failed");
         return;
       }
       const text = (block.querySelector("code") || block).textContent;
       navigator.clipboard.writeText(text).then(
-        () => flash(button, "Copied", "copied"),
-        () => flash(button, "Copy failed", "failed"));
+        () => flash(button, T.copied, "copied"),
+        () => flash(button, T.copy_failed, "failed"));
     });
     block.appendChild(button);
   };
@@ -222,15 +251,15 @@
     return item;
   };
 
-  const emptyMessage = () => (terms(search.input.value).length === 0 ? "Type to search the documentation." : "Nothing matches that search.");
+  const emptyMessage = () => (terms(search.input.value).length === 0 ? T.search_empty : T.search_none);
 
   const render = () => {
     if (search.failed) {
-      note("Search is not available right now. Use the sidebar to browse the pages.");
+      note(T.search_unavailable);
       return;
     }
     if (!search.index) {
-      note("Loading the search index...");
+      note(T.search_loading);
       return;
     }
     const found = find(search.input.value);
@@ -243,7 +272,7 @@
     search.list.append(...items);
     search.hits = items.map((item) => item.firstChild);
     search.selected = 0;
-    search.status.textContent = `${found.length} ${found.length === 1 ? "result" : "results"}`;
+    search.status.textContent = `${found.length} ${found.length === 1 ? T.result_one : T.result_other}`;
     mark();
   };
 
@@ -261,7 +290,7 @@
     search.opener = from || document.activeElement;
     search.overlay.hidden = false;
     search.input.value = "";
-    note("Loading the search index...");
+    note(T.search_loading);
     search.input.focus();
     loadIndex().then(render);
   };
@@ -301,11 +330,11 @@
     box.className = "search-box";
     box.setAttribute("role", "dialog");
     box.setAttribute("aria-modal", "true");
-    box.setAttribute("aria-label", "Search the documentation");
+    box.setAttribute("aria-label", T.search_label);
     input.type = "search";
     input.className = "search-input";
-    input.setAttribute("aria-label", "Search");
-    input.setAttribute("placeholder", "Search the documentation");
+    input.setAttribute("aria-label", T.search_placeholder);
+    input.setAttribute("placeholder", T.search_label);
     input.setAttribute("role", "combobox");
     input.setAttribute("aria-expanded", "true");
     input.setAttribute("aria-controls", "search-results");

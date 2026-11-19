@@ -45,7 +45,7 @@ STATUSES = ("machine-drafted", "approved")
 REQUIRED_KEYS = (TRANSLATES, "title", "description", FINGERPRINT, "drafter", "drafted_on", STATUS)
 UI_MAPS = (GROUPS, "group_names", "subgroups", "theme_names")
 SCRIPT_KEYS = ("copy", "copied", "copy_failed", "copy_aria", "search_aria", "search_label", "search_placeholder", "search_empty",
-               "search_none", "search_loading", "search_unavailable", "result_one", "result_other", "theme_aria", "theme_title", "theme_names")
+               "search_none", "search_loading", "search_unavailable", "search_english", "search_english_url", "result_one", "result_other", "theme_aria", "theme_title", "theme_names")
 _HEADER_LINE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*):[ \t]*(.*)$")
 _COMMENT = re.compile(r"<!--.*?-->", re.S)
 _BADGE_ITEM = r"(?:\[!\[[^\]]*\]\([^)]*\)\]\([^)]*\)|!\[[^\]]*\]\([^)]*\))"

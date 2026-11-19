@@ -85,6 +85,7 @@ ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 MAX_TOC_LABEL = 60  # DS-9
 ADDENDUM = "Addendum — "
 SPLIT_SUBGROUP = "Semantics"
+GROUP_NAMES, SUBGROUPS = "group_names", "subgroups"  # the tables of the interface text that name the groups and the subgroups
 
 
 class BuildError(Exception):
@@ -431,12 +432,22 @@ def ordered_pages(pages: list["Page"]) -> list["Page"]:
     return flat
 
 
+def _ui(ui: dict | None) -> dict:
+    """The interface text a render function uses: the one it is given, else the English one (spec 004-site-languages, FR-003)."""
+    return ui if ui is not None else site_i18n.default_ui()
+
+
+def _label(ui: dict | None, table: str, name: str) -> str:
+    """The shown name of a group or subgroup; the key itself when the interface text has no entry for it."""
+    return _ui(ui)[table].get(name, name)
+
+
 def _side_link(page: "Page", current_slug: str) -> str:
     current = ' aria-current="page"' if page.slug == current_slug else ""
     return f'<li><a href="{html.escape(page.slug)}.html"{current}>{html.escape(page.title)}</a></li>'
 
 
-def _sidebar_item(entry, current_slug: str) -> tuple[str, bool]:
+def _sidebar_item(entry, current_slug: str, ui: dict | None) -> tuple[str, bool]:
     """The list item of one entry of a group (a page, or a subgroup and its pages) and whether it holds the current page."""
     if not isinstance(entry, tuple):
         return _side_link(entry, current_slug), entry.slug == current_slug
@@ -444,10 +455,11 @@ def _sidebar_item(entry, current_slug: str) -> tuple[str, bool]:
     sub_open = any(member.slug == current_slug for member in members)
     open_attribute = " open" if sub_open else ""
     links = "".join(_side_link(member, current_slug) for member in members)
-    return f'<li class="side-sub"><details{open_attribute}><summary>{html.escape(sub_name)}</summary><ul>{links}</ul></details></li>', sub_open
+    return (f'<li class="side-sub"><details{open_attribute}><summary>{html.escape(_label(ui, SUBGROUPS, sub_name))}</summary>'
+            f'<ul>{links}</ul></details></li>'), sub_open
 
 
-def render_sidebar(pages: list["Page"], current_slug: str) -> str:
+def render_sidebar(pages: list["Page"], current_slug: str, ui: dict | None = None) -> str:
     """DS-2: the groups in their fixed order (empty ones left out) as native collapsible blocks; a subgroup nests one level
     deeper; the group and subgroup that hold the current page are open, and the current page is marked aria-current."""
     layout = _layout(pages)
@@ -455,37 +467,38 @@ def render_sidebar(pages: list["Page"], current_slug: str) -> str:
     for name in GROUPS:
         if not layout[name]:
             continue
-        rendered = [_sidebar_item(entry, current_slug) for entry in layout[name]]
+        rendered = [_sidebar_item(entry, current_slug, ui) for entry in layout[name]]
         open_attribute = " open" if any(holds for _, holds in rendered) else ""
         items = "".join(item for item, _ in rendered)
-        blocks.append(f'<div class="side-group"><details{open_attribute}><summary>{html.escape(name)}</summary><ul>{items}</ul></details></div>')
+        blocks.append(f'<div class="side-group"><details{open_attribute}><summary>{html.escape(_label(ui, GROUP_NAMES, name))}</summary><ul>{items}</ul></details></div>')
     return "".join(blocks)
 
 
-def render_pager(pages: list["Page"], current_slug: str) -> str:
+def render_pager(pages: list["Page"], current_slug: str, ui: dict | None = None) -> str:
     """DS-8: links to the previous and the next page in sidebar order; empty for a page that is not in the sidebar (the home page)."""
     order = ordered_pages(pages)
     slugs = [page.slug for page in order]
     if current_slug not in slugs:
         return ""
+    words = _ui(ui)
     position = slugs.index(current_slug)
     links = []
     if position > 0:
         before = order[position - 1]
-        links.append(f'<a class="pager-prev" rel="prev" href="{html.escape(before.slug)}.html"><span>Previous</span><strong>{html.escape(before.title)}</strong></a>')
+        links.append(f'<a class="pager-prev" rel="prev" href="{html.escape(before.slug)}.html"><span>{html.escape(words["previous"])}</span><strong>{html.escape(before.title)}</strong></a>')
     if position + 1 < len(order):
         after = order[position + 1]
-        links.append(f'<a class="pager-next" rel="next" href="{html.escape(after.slug)}.html"><span>Next</span><strong>{html.escape(after.title)}</strong></a>')
-    return f'<nav class="pager" aria-label="Previous and next">{"".join(links)}</nav>'
+        links.append(f'<a class="pager-next" rel="next" href="{html.escape(after.slug)}.html"><span>{html.escape(words["next"])}</span><strong>{html.escape(after.title)}</strong></a>')
+    return f'<nav class="pager" aria-label="{html.escape(words["pager_label"])}">{"".join(links)}</nav>'
 
 
-def render_toc(rendered: Rendered) -> str:
+def render_toc(rendered: Rendered, ui: dict | None = None) -> str:
     """FR-32, task #3474: the 'On this page' block of the level-2 headings, or '' when there are none."""
     links = "".join(f'<li><a href="#{html.escape(anchor)}">{html.escape(text)}</a></li>' for level, text, anchor in rendered.headings if level == 2)
-    return f'<p class="side-title">On this page</p><ul>{links}</ul>' if links else ""
+    return f'<p class="side-title">{html.escape(_ui(ui)["on_this_page"])}</p><ul>{links}</ul>' if links else ""
 
 
-GROUPS = ("Concepts", "Guides", "Configuration", "Reference")  # #3555, DS-2: the sidebar's fixed order
+GROUPS = tuple(site_i18n.default_ui()[GROUP_NAMES])  # #3555, DS-2: the sidebar's fixed order, the order of `group_names` in site/i18n/en/ui.json
 GENERATORS = ("schema-reference", "semantics-split")
 
 
@@ -700,14 +713,22 @@ def favicon_ico() -> bytes:
     return struct.pack("<HHH", 0, 1, 1) + struct.pack("<BBBBHHII", 32, 32, 0, 0, 1, 32, len(image), 22) + image
 
 
-HEAD_LINKS = ('<link rel="icon" type="image/svg+xml" href="favicon.svg"><link rel="icon" href="favicon.ico" sizes="32x32">'
-              '<link rel="apple-touch-icon" href="apple-touch-icon.png">')
+def head_links(assets: str = "") -> str:
+    """The icon links of the page head; `assets` is the prefix that reaches the shared files from the page (empty, or `../` in a language folder)."""
+    return (f'<link rel="icon" type="image/svg+xml" href="{assets}favicon.svg"><link rel="icon" href="{assets}favicon.ico" sizes="32x32">'
+            f'<link rel="apple-touch-icon" href="{assets}apple-touch-icon.png">')
 
 
 # ---------------------------------------------------------------- page features (#3556)
 
 SCRIPTS = ("theme.js", "site.js")
-SCRIPT_TAGS = '<script src="theme.js"></script><script src="site.js" defer></script>'
+TEMPLATE_UI_KEYS = ("skip", "on_this_page")  # the `{{ui_<key>}}` values of the page templates
+
+
+def script_tags(assets: str = "") -> str:
+    return f'<script src="{assets}theme.js"></script><script src="{assets}site.js" defer></script>'
+
+
 REGISTRY_NAMES = {"nuget": "NuGet", "npm": "npm", "pypi": "PyPI", "go": "Go"}
 _ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{}</svg>'
 ICON_GITHUB = ('<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7'
@@ -731,8 +752,9 @@ _HEADING_OPEN = re.compile(r'<h([234]) id="([^"]+)">(.*?)</h\1>', re.S)
 _TAG = re.compile(r"</?[A-Za-z][^>]*>")
 
 
-def render_topbar(config: dict, pages: list["Page"]) -> str:
+def render_topbar(config: dict, pages: list["Page"], ui: dict | None = None) -> str:
     """DS-1: the top bar of every page: logo, Docs and Reference, the repository and the published registries, search and theme."""
+    words = _ui(ui)
     order = ordered_pages(pages)
     docs = order[0].slug if order else "index"
     reference = next((p.slug for p in order if p.group == "Reference"), docs)
@@ -740,16 +762,16 @@ def render_topbar(config: dict, pages: list["Page"]) -> str:
         f'<a class="icon-btn" href="{html.escape(url, quote=True)}" aria-label="{html.escape(REGISTRY_NAMES.get(key, key))} package">{REGISTRY_ICONS.get(key, ICON_PACKAGE)}</a>'
         for key, url in config.get("packages", {}).items())
     return (f'<header class="top"><div class="wrap-wide"><a class="brand" href="index.html">{LOGO}{html.escape(config["title"])}</a>'
-            f'<nav class="top-nav" aria-label="Main"><a href="{html.escape(docs)}.html">Docs</a><a href="{html.escape(reference)}.html">Reference</a></nav>'
-            f'<div class="top-actions"><a class="icon-btn" href="{html.escape(config["repo"], quote=True)}" aria-label="GitHub repository">{ICON_GITHUB}</a>{registries}'
-            f'<button type="button" class="icon-btn search-button" aria-label="Search the documentation (Ctrl+K)">{ICON_SEARCH}</button>'
-            f'<button type="button" class="icon-btn theme-button" aria-label="Theme: Auto. Change theme">{ICON_THEME}</button></div></div></header>')
+            f'<nav class="top-nav" aria-label="Main"><a href="{html.escape(docs)}.html">{html.escape(words["nav_docs"])}</a><a href="{html.escape(reference)}.html">{html.escape(words["nav_reference"])}</a></nav>'
+            f'<div class="top-actions"><a class="icon-btn" href="{html.escape(config["repo"], quote=True)}" aria-label="{html.escape(words["github_aria"])}">{ICON_GITHUB}</a>{registries}'
+            f'<button type="button" class="icon-btn search-button" aria-label="{html.escape(words["search_aria"])}">{ICON_SEARCH}</button>'
+            f'<button type="button" class="icon-btn theme-button" aria-label="{html.escape(words["theme_aria"].format(name=words["theme_names"]["auto"]))}">{ICON_THEME}</button></div></div></header>')
 
 
-def render_group_cards(config: dict, pages: list["Page"]) -> str:
+def render_group_cards(config: dict, pages: list["Page"], ui: dict | None = None) -> str:
     """DS-3: one card per group that has pages, linking its first page; empty without a `groups` key in site.json. A group that has pages
     and no description fails the build."""
-    groups = config.get("groups")
+    groups = config.get("groups") if ui is None else ui.get("groups")
     if groups is None:
         return ""
     order = ordered_pages(pages)
@@ -761,15 +783,17 @@ def render_group_cards(config: dict, pages: list["Page"]) -> str:
         description = groups.get(name)
         if not isinstance(description, str) or not description.strip():
             raise BuildError(f"site/site.json: the group '{name}' has pages and needs a one-sentence description under 'groups'")
-        cards.append(f'<a class="card" href="{html.escape(first.slug)}.html"><h3>{html.escape(name)}</h3><p>{html.escape(description)}</p></a>')
+        cards.append(f'<a class="card" href="{html.escape(first.slug)}.html"><h3>{html.escape(_label(ui, GROUP_NAMES, name))}</h3><p>{html.escape(description)}</p></a>')
     return f'<div class="cards group-cards">{"".join(cards)}</div>'
 
 
-def render_menu_button(slug: str) -> str:
+def render_menu_button(slug: str, ui: dict | None = None) -> str:
     """DS-15: the button that opens the sidebar on a phone; the home page has no sidebar."""
     if slug == "index":
         return ""
-    return f'<button type="button" class="menu-toggle" aria-controls="sidebar" aria-expanded="false" aria-label="Open the page menu">{ICON_MENU}<span>Menu</span></button>'
+    words = _ui(ui)
+    return (f'<button type="button" class="menu-toggle" aria-controls="sidebar" aria-expanded="false" aria-label="{html.escape(words["menu_aria"])}">'
+            f'{ICON_MENU}<span>{html.escape(words["menu_button"])}</span></button>')
 
 
 def add_anchors(page_html: str) -> str:
@@ -784,11 +808,11 @@ def plain_text(page_html: str) -> str:
     return " ".join(CODED_REFERENCE.sub("", text).split())
 
 
-def search_entry(page: "Page") -> dict:
+def search_entry(page: "Page", ui: dict | None = None) -> dict:
     """DS-4, DS-12: the search index entry of a page (the headings keep their text; coded references never reach the index)."""
     rendered = page.rendered
     headings = [{"text": " ".join(CODED_REFERENCE.sub("", text).split()), "anchor": anchor} for level, text, anchor in rendered.headings if 2 <= level <= 4]
-    return {"slug": page.slug, "title": page.title, "description": page.description, "group": "" if page.slug == "index" else (page.group or ""), "headings": headings,
+    return {"slug": page.slug, "title": page.title, "description": page.description, "group": "" if page.slug == "index" or not page.group else _label(ui, GROUP_NAMES, page.group), "headings": headings,
             "text": plain_text(rendered.html)}
 
 
@@ -1206,8 +1230,9 @@ class SiteBuild:
     """One build of the site: the pages (with the split ones), what each links to, and the files written. Kept as methods so that no single
     function carries the whole build."""
 
-    def __init__(self, root: Path, config: dict, base: str) -> None:
+    def __init__(self, root: Path, config: dict, base: str, ui: dict | None = None) -> None:
         self.root, self.config, self.base = root, config, base
+        self.ui = ui
         self.pages: list[Page] = []
         self.errors: list[str] = []
         self.text_cache: dict[str, str] = {}
@@ -1433,12 +1458,17 @@ class SiteBuild:
         versions = asset_versions(out_dir)
         shared = {
             "site_title": html.escape(self.config["title"]),
-            "head_links": HEAD_LINKS,
+            "head_links": head_links(),
+            "lang": "en",
+            "alternates": "",
+            "assets": "",
+            "data_ui": self.data_ui(),
             "spec_version": html.escape(spec_version),
             "nav": "".join(f'<li><a href="{html.escape(p.slug)}.html">{html.escape(p.title)}</a></li>' for p in self.pages if p.generator != "semantics-part"),
-            "topbar": render_topbar(self.config, self.pages),
-            "group_cards": render_group_cards(self.config, self.pages),
-            "scripts": SCRIPT_TAGS if scripts_ready else "",
+            "topbar": render_topbar(self.config, self.pages, self.ui),
+            "group_cards": render_group_cards(self.config, self.pages, self.ui),
+            "scripts": script_tags() if scripts_ready else "",
+            **{f"ui_{key}": html.escape(_ui(self.ui)[key]) for key in TEMPLATE_UI_KEYS},
         }
         texts: dict[str, str] = {}
         page_texts: dict[str, str] = {}
@@ -1452,7 +1482,7 @@ class SiteBuild:
             texts[f"{page.source} (page '{page.slug}')" if page.generator is not None else page.source] = text
             self.check_markup(page, text)
             rendered = self.render(page, text)
-            index_entries.append(search_entry(page))
+            index_entries.append(search_entry(page, self.ui))
             rendered.html = add_anchors(rendered.html)
             self.check_headings(page, rendered)
             values = {**shared, **self.page_values(page, rendered)}
@@ -1463,14 +1493,18 @@ class SiteBuild:
         self.check_rule_source(texts)
         return self.errors
 
+    def data_ui(self) -> str:
+        """The `data-ui` attribute of `<body>` with the messages of `site.js`; empty for English, where the script's own strings stand."""
+        return f' data-ui="{html.escape(site_i18n.script_ui(self.ui), quote=True)}"' if self.ui is not None else ""
+
     def page_values(self, page: Page, rendered: Rendered) -> dict[str, str]:
         return {
             "page_title": html.escape(page.title),
             "description": html.escape(page.description, quote=True),
-            "sidebar": render_sidebar(self.pages, page.slug),
-            "toc": render_toc(rendered),
-            "prev_next": render_pager(self.pages, page.slug),
-            "menu_button": render_menu_button(page.slug),
+            "sidebar": render_sidebar(self.pages, page.slug, self.ui),
+            "toc": render_toc(rendered, self.ui),
+            "prev_next": render_pager(self.pages, page.slug, self.ui),
+            "menu_button": render_menu_button(page.slug, self.ui),
             "content": rendered.html,
             "source": html.escape(page.source),
             "source_url": html.escape(f"{self.config['repo'].rstrip('/')}/blob/{self.config['branch']}/{page.source}"),
