@@ -1,0 +1,55 @@
+{
+  "skip": "Vai al contenuto",
+  "nav_docs": "Documentazione",
+  "nav_reference": "Riferimento",
+  "menu_button": "Menu",
+  "menu_aria": "Apri il menu della pagina",
+  "pager_label": "Pagina precedente e successiva",
+  "previous": "Precedente",
+  "next": "Successiva",
+  "on_this_page": "In questa pagina",
+  "github_aria": "Repository GitHub",
+  "language_label": "Lingua",
+  "english_mark": "(inglese)",
+  "english_only": "Questa pagina è disponibile solo in inglese",
+  "llms_home": "Home",
+  "llms_english_source": "Sorgente in inglese",
+  "search_english": "Cerca nel sito in inglese",
+  "search_english_url": "index.html",
+  "copy": "Copia",
+  "copied": "Copiato",
+  "copy_failed": "Copia non riuscita",
+  "copy_aria": "Copia questo codice",
+  "search_aria": "Cerca nella documentazione (Ctrl+K)",
+  "search_label": "Cerca nella documentazione",
+  "search_placeholder": "Cerca",
+  "search_empty": "Digitare un termine per cercare nella documentazione.",
+  "search_none": "Nessun risultato per questa ricerca.",
+  "search_loading": "Caricamento dell'indice di ricerca...",
+  "search_unavailable": "La ricerca non è al momento disponibile. Usare la barra laterale per sfogliare le pagine.",
+  "result_one": "risultato",
+  "result_other": "risultati",
+  "theme_aria": "Tema: {name}. Cambia tema",
+  "theme_title": "Tema: {name}",
+  "theme_names": {
+    "auto": "Auto",
+    "light": "Chiaro",
+    "dark": "Scuro"
+  },
+  "group_names": {
+    "Concepts": "Concetti",
+    "Guides": "Guide",
+    "Configuration": "Configurazione",
+    "Reference": "Riferimento"
+  },
+  "subgroups": {
+    "Semantics": "Semantica",
+    "Quickstarts": "Guide introduttive"
+  },
+  "groups": {
+    "Concepts": "Che cos'è Craticula, come una richiesta diventa una query di database, le modalità Strict e Lenient e il modello di sicurezza.",
+    "Guides": "Guide introduttive, indicazioni sugli indici e migrazione da OData.",
+    "Configuration": "Il GridSchema, i limiti, i dialetti e i provider.",
+    "Reference": "La specifica, una pagina per ogni regola di comportamento delle query e i due schemi."
+  }
+}

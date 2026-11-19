@@ -1,0 +1,87 @@
+<!--
+translates: index
+title: Startseite
+description: Craticula übersetzt serverseitige Anfragen von AG Grid in sichere, native Abfragen.
+source_fingerprint: f272b4e25325a7883ba81c3752956f48f267c02f44dc873e6ec19779ef6f5638
+drafter: claude
+drafted_on: 2026-11-19
+status: machine-drafted
+-->
+<!doctype html>
+<html lang="{{lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{site_title}} : Anfragen von AG Grid hinein, sichere Abfragen heraus</title>
+<meta name="description" content="{{description}}">
+{{head_links}}{{alternates}}
+{{scripts}}
+<link rel="stylesheet" href="{{assets}}style.css">
+</head>
+<body class="home"{{data_ui}}>
+<a class="skip" href="#main">{{ui_skip}}</a>
+{{topbar}}
+
+<main id="main">
+<section class="hero"><div class="wrap-wide hero-inner">
+<p class="eyebrow">AG Grid Server-Side Row Model, kompiliert</p>
+<h1>Anfragen von AG Grid hinein.<br><span class="accent">Sichere Abfragen heraus.</span></h1>
+<p class="lead">Craticula kompiliert Anfragen von AG Grid zu nativen Abfragen für SQL, MongoDB und OpenSearch. Es führt sie nie aus, und jeder Wert ist ein gebundener Parameter.</p>
+<div class="cta">
+<a class="btn" href="quickstart-csharp.html">Mit dem Schnellstart beginnen</a>
+<a class="btn-ghost" href="overview.html">Die Übersicht lesen</a>
+</div>
+<ul class="get">
+<li><span class="get-label">Installieren</span><code>dotnet add package Craticula.Core</code><a class="chip" href="https://www.nuget.org/packages/Craticula.Core">nuget.org</a></li>
+<li><span class="get-label">Online ausprobieren</span><a class="chip" href="https://craticula-pg.pluries.dev">PostgreSQL</a><a class="chip" href="https://craticula-mongo.pluries.dev">MongoDB</a></li>
+</ul>
+<p class="fine">Apache-2.0 · .NET 10</p>
+<div class="demo">
+<div class="panel"><div class="panel-title">Anfrage von AG Grid</div>
+<pre><code><span class="p">{</span>
+  "startRow": <span class="n">0</span>, "endRow": <span class="n">50</span>,
+  "filterModel": <span class="p">{</span>
+    "customer": <span class="p">{</span> "type": <span class="s">"contains"</span>, "filter": <span class="s">"acme"</span> <span class="p">}</span>,
+    "amount": <span class="p">{</span> "type": <span class="s">"greaterThan"</span>, "filter": <span class="n">100</span> <span class="p">}</span>
+  <span class="p">}</span>,
+  "sortModel": [ <span class="p">{</span> "colId": <span class="s">"amount"</span>, "sort": <span class="s">"desc"</span> <span class="p">}</span> ]
+<span class="p">}</span></code></pre></div>
+<div class="panel"><div class="panel-title">Kompilierte Anweisung und Parameter</div>
+<pre><code><span class="k">SELECT</span> * <span class="k">FROM</span> "orders"
+<span class="k">WHERE</span> ("customer" <span class="k">ILIKE</span> <span class="s">'%'</span> || <span class="n">$1</span> || <span class="s">'%'</span> <span class="k">ESCAPE</span> <span class="s">'\'</span>
+   <span class="k">AND</span> "amount" &gt; <span class="n">$2</span>::numeric)
+<span class="k">ORDER BY</span> "amount" <span class="k">DESC NULLS FIRST</span>, "id" <span class="k">ASC NULLS LAST</span>
+<span class="k">LIMIT</span> <span class="n">$3</span> <span class="k">OFFSET</span> <span class="n">$4</span>
+
+<span class="c">-- parameters:</span> <span class="s">'acme'</span>, <span class="s">'100'</span>, <span class="n">50</span>, <span class="n">0</span></code></pre></div>
+</div>
+</div></section>
+
+<section class="band wrap-wide">
+<h2>Finden Sie Ihren Weg</h2>
+{{group_cards}}
+</section>
+
+<section class="band wrap-wide">
+<h2>Von der Installation zur ersten Abfrage</h2>
+<ol class="path">
+<li><span class="step">Schritt 1</span><h3><a href="quickstart-csharp.html">Installieren</a></h3><p>Kompilieren Sie die Bibliothek aus dem Quellcode und referenzieren Sie das Projekt für Ihre Engine.</p></li>
+<li><span class="step">Schritt 2</span><h3><a href="grid-schema.html">Ein GridSchema deklarieren</a></h3><p>Listen Sie die Felder auf, die ein Grid berühren darf, denn alles andere wird abgelehnt.</p></li>
+<li><span class="step">Schritt 3</span><h3><a href="quickstart-csharp.html">Eine Anfrage kompilieren</a></h3><p>Übergeben Sie die Anfrage von AG Grid und erhalten Sie eine Anweisung samt Parametern zurück.</p></li>
+<li><span class="step">Schritt 4</span><h3><a href="index-guidance.html">Ausführen</a></h3><p>Führen Sie sie mit Ihrer eigenen Verbindung aus oder überlassen Sie das einem Adapter.</p></li>
+</ol>
+</section>
+
+<section class="band wrap-wide home-about" id="about">
+<h2>Wer es pflegt</h2>
+<p>Craticula ist Open Source unter Apache-2.0 und wird von Christian Stephan gepflegt (<a href="https://cstephan.dev">cstephan.dev</a>, <a href="https://www.linkedin.com/in/christian-stephan">LinkedIn</a>, <a href="https://github.com/cstephan-dev">GitHub</a>). Der Quellcode liegt unter <a href="https://github.com/pluries/craticula">github.com/pluries/craticula</a>.</p>
+</section>
+
+<section class="band wrap-wide home-docs">
+{{content}}
+</section>
+</main>
+
+<footer class="foot"><div class="wrap-wide"><span>Craticula · Apache-2.0 · Spezifikation {{spec_version}}</span><a href="https://github.com/pluries/craticula">github.com/pluries/craticula</a></div></footer>
+</body>
+</html>

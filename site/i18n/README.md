@@ -60,7 +60,7 @@ is by whole word and ignores case.
 
 ## Drafting notes (from the first language set)
 
-- A new translation header must hold all seven keys before the first `stamp`: `translates`, `title`, `description`, `source_fingerprint`, `drafter`, `drafted_on` and `status`. Write `pending` for the first three and `status: machine-drafted`; `stamp` fills them in.
+- A new translation header must hold all seven keys before the first `stamp`: `translates`, `title`, `description`, `source_fingerprint`, `drafter`, `drafted_on` and `status`. Write `pending` for the first three and `status: machine-drafted`. `stamp` fills in `source_fingerprint`, `drafter` and `drafted_on`; the `title` and `description` stay as you wrote them, so write them yourself before stamping.
 - `home.html` has its own header, an HTML comment holding the same keys, and `index.md` has one too. `stamp <lang> index` updates both. The translated title and description live in the header, not the body.
 - `ui.json` has no header and is not stamped. Its approval is its own document, `ui.json`.
 - Do not translate the text inside a code block, even a layout tree with English comments. Keep badge image lines as they are.
@@ -69,3 +69,6 @@ is by whole word and ignores case.
 - The glossary check reads the `.md` body only, not `home.html`; keep verbatim terms verbatim there too.
 - Every translated heading ends with its English anchor, `{#english-anchor}`. Compute the anchors from the English source with `build_site.render_markdown(text).headings`.
 - Check a page with `python3 -c "import sys; sys.path.insert(0,'scripts'); import site_i18n as s; from pathlib import Path; print(s.check_page(Path('.'), '<lang>', '<slug>'))"`; an empty list means the machine checks pass. Meaning, tone and a missing "not" are the approver's to judge.
+- A page that uses `{{include path language}}` lines: the fingerprint covers the text after the includes are expanded, so the translation file holds the included code inline (expand it with `build_site.expand_includes`). Code stays byte for byte English.
+- Digits are compared as a set, so a thousands separator must stay as in the English (`5,000`, not `5 000`). This is a known typographic compromise in French and German.
+- A declared heading anchor (`{#...}`) is an identifier and is ignored by the glossary check; a code span that wraps over two lines counts as one span.
