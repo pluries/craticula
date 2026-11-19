@@ -176,10 +176,15 @@ internal static class SearchEngine
     }
 
     /// <summary>Compiles the fixture's request against <paramref name="index"/>, runs it and maps the hits or buckets onto the logical columns.</summary>
-    public static async Task<EngineRows> QueryAsync(HttpClient http, string index, ExecutionFixture fixture)
+    public static Task<EngineRows> QueryAsync(HttpClient http, string index, ExecutionFixture fixture) =>
+        QueryAsync(http, index, fixture, PreparedRequest.For(fixture, fixture.Schema with { Source = index }));
+
+    /// <summary>The page path over an already prepared request; <paramref name="inspect"/> sees the raw response before it is mapped.</summary>
+    public static async Task<EngineRows> QueryAsync(
+        HttpClient http, string index, ExecutionFixture fixture, PreparedRequest request, Action<JsonElement>? inspect = null)
     {
-        var schema = fixture.Schema with { Source = index };
-        var request = PreparedRequest.For(fixture, schema);
+        ArgumentNullException.ThrowIfNull(fixture);
+        ArgumentNullException.ThrowIfNull(request);
         var compiled = Compile(request);
         var body = compiled.ToArtifact();
 
@@ -193,7 +198,7 @@ internal static class SearchEngine
             body["track_total_hits"] = true;
         }
 
-        var response = await Send(http, HttpMethod.Post, $"{index}/_search", body.ToJsonString(), "application/json", "search", refuse: true).ConfigureAwait(false);
+        var response = await SearchAsync(http, index, body).ConfigureAwait(false);
         using var document = JsonDocument.Parse(response);
         if (unpaged)
         {
@@ -201,17 +206,16 @@ internal static class SearchEngine
             Assert.True(total <= ExportWindow, $"the unpaginated result has {total} hits, more than the harness's single-request window of {ExportWindow}");
         }
 
+        inspect?.Invoke(document.RootElement);
         return Map(document.RootElement, request, compiled);
     }
 
-    /// <summary>Skeleton (T016): the page path over an already prepared request; <paramref name="inspect"/> sees the raw response before it is mapped.</summary>
-    public static Task<EngineRows> QueryAsync(
-        HttpClient http, string index, ExecutionFixture fixture, PreparedRequest request, Action<JsonElement>? inspect = null) =>
-        throw new NotImplementedException();
-
-    /// <summary>Skeleton (T016): posts <paramref name="body"/> to the index's <c>_search</c> and returns the response text.</summary>
-    internal static Task<string> SearchAsync(HttpClient http, string index, JsonObject body) =>
-        throw new NotImplementedException();
+    /// <summary>Posts <paramref name="body"/> to the index's <c>_search</c> and returns the response text.</summary>
+    internal static Task<string> SearchAsync(HttpClient http, string index, JsonObject body)
+    {
+        ArgumentNullException.ThrowIfNull(body);
+        return Send(http, HttpMethod.Post, $"{index}/_search", body.ToJsonString(), "application/json", "search", refuse: true);
+    }
 
     private static SearchQuery Compile(PreparedRequest request)
     {
