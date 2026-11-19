@@ -1490,8 +1490,11 @@ class SiteBuild:
             self.errors.append(f"site/site.json: cannot read the rule source {self.config['ruleSource']}: {error}")
 
 
-def build(root: Path, out_dir: Path, base_url: str | None = None) -> list[str]:
-    """Build the site; returns the list of errors (empty when every link resolves and every rule id exists)."""
+def build(root: Path, out_dir: Path, base_url: str | None = None, preview: tuple[str, ...] = ()) -> list[str]:
+    """Build the site; returns the list of errors (empty when every link resolves and every rule id exists). `preview` names the disabled
+    languages a test build writes as well (spec 004-site-languages, FR-024)."""
+    if preview:
+        raise NotImplementedError("the language build is T010a")
     config = load_config(root)
     base = normalise_base_url(base_url, "--base-url") if base_url is not None else config.get("baseUrl", "")
     return SiteBuild(root, config, base).run(out_dir)

@@ -1,0 +1,699 @@
+#!/usr/bin/env python3
+"""Tests of the language build of the docs site (spec 004-site-languages, tasks T005 to T007b). Each test names the scenario it proves
+(US1-AS1 to AS17) or the requirement it pins (FR-006, FR-016). T005 is a pin and is green from the start; the rest specify behaviour the
+generator does not have yet. The language fixture (a copy of this repository's sources with six interface files and a stub translation of each
+of the 20 documents, two of them hand-written) is built by `site_test_support.language_build`. Offline, standard library only.
+Run: python3 scripts/test_site_languages.py
+"""
+import hashlib
+import html
+import json
+import re
+import shutil
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import build_site as bs  # noqa: E402
+import site_i18n as si  # noqa: E402
+from site_test_support import (  # noqa: E402
+    BASE_URL, CHROME_ATTRIBUTE_KEYS, ENCODING, TITLE_KEY, CHROME_TEXT_KEYS, CODE_SNIPPET, DATA_UI_ATTRIBUTE, ENGLISH_UI, FULL, HANDWRITTEN, HANDWRITTEN_OVERVIEW,
+    LANG_ATTRIBUTES, LANG_MENU, LANGUAGE_CODES, LANGUAGE_NAMES, LEFTOVER, LINKED_PAGE, MARKS, OUTSIDE_LINK, PARTIAL, PIN_FILE, README_PAGE,
+    ROOT, SCHEME, SEMANTICS_TARGET, SIBLING_PAGE, build_english_fixture, html_digests, language_build, make_repo, normalise_versions, site_pages,
+    strip_added_fragments, ui_strings)
+
+ENGLISH = "en"
+STYLE_NAME = "style.css"
+LLMS_NAME = "llms.txt"
+GROUP_NAMES = "group_names"
+SPEC_HREF = "../spec.html"
+JS_DIR = ROOT / "site" / "js"
+ALL_CODES = (ENGLISH, *LANGUAGE_CODES)
+INDEX_SLUG = "index"
+SOME_TRANSLATED_PAGE = "quickstart-csharp"
+ENGLISH_ONLY_PAGES = ("spec", "case-sensitivity", "grid-schema", "performance")
+SIDEBAR = re.compile(r'<aside[^>]*id="sidebar".*?</aside>', re.S)
+PAGER = re.compile(r'<nav class="pager".*?</nav>', re.S)
+ANCHOR = re.compile(r"<a\b([^>]*)>(.*?)</a>", re.S)
+HREF = re.compile(r'href="([^"]*)"')
+REFERENCE = re.compile(r'\b(?:href|src)="([^"]*)"')
+ALTERNATE = re.compile(r'<link rel="alternate" hreflang="([^"]*)" href="([^"]*)">')
+CANONICAL = re.compile(r'<link rel="canonical" href="([^"]*)">')
+LEAF_ITEM = re.compile(r"<li>.*?</li>", re.S)
+PRE_BLOCK = re.compile(r"<pre>.*?</pre>", re.S)
+HTML_LANG = re.compile(r'<html lang="([^"]*)"')
+LLMS_LINK = re.compile(r"\]\(([^)]*)\)")
+SITE_JS = JS_DIR / "site.js"
+STYLE_CSS = ROOT / "site" / STYLE_NAME
+SEMANTICS_ONLY_TERM = "diacritics"
+THEME_STORAGE_KEYS = {"THEME_KEY", '"craticula-theme"'}
+STORAGE_CALL = re.compile(r"(?:local|session)Storage\.\w+\(\s*([^,)\s]+)")
+CHINESE_FONTS = ("PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Noto Sans SC", "Source Han Sans SC", "Hiragino Sans GB", "WenQuanYi Micro Hei", "SimHei")
+CHINESE_FONT_FILE = re.compile(r"(?i)cjk|hans|chinese|[-_]sc[-_.]|han[-_]")
+FONT_LIMIT = 100_000
+NARROW_PIXELS = 320
+SCROLLING_RULES = (".diagram svg",)
+CSS_BLOCK = re.compile(r"([^{}]+)\{([^{}]*)\}")
+FIXED_WIDTH = re.compile(r"(?<![\w-])(?:min-)?width\s*:\s*(\d+(?:\.\d+)?)px")
+STRIP_SAMPLE = ('<head><link rel="alternate" hreflang="fr" href="https://x/fr/a.html"><link rel="canonical" href="https://x/a.html">'
+                '<link rel="alternate" type="application/rss+xml" href="feed.xml"><link rel="icon" href="favicon.ico"></head>'
+                '<body class="home" data-ui="{&quot;a&quot;:1}"><nav class="lang-menu" aria-label="Language"><details><a href="a.html">English</a></details></nav>'
+                '<nav class="pager"></nav></body>')
+STRIP_EXPECTED = ('<head><link rel="alternate" type="application/rss+xml" href="feed.xml"><link rel="icon" href="favicon.ico"></head>'
+                  '<body class="home"><nav class="pager"></nav></body>')
+SEARCH_ENGLISH_KEYS = ("search_english", "search_english_url")
+
+
+# ---------------------------------------------------------------- helpers
+
+def language_dir(out: Path, code: str) -> Path:
+    return out if code == ENGLISH else out / code
+
+
+def read_page(build, code: str, slug: str) -> str:
+    return (language_dir(build.out, code) / f"{slug}.html").read_text(encoding=ENCODING)
+
+
+def region(markup: str, pattern: re.Pattern) -> str:
+    found = pattern.search(markup)
+    assert found, f"no {pattern.pattern[:30]} in the page"
+    return found.group(0)
+
+
+def english_slugs(build) -> list[str]:
+    return [page.slug for page in site_pages(build.root) if page.scope == "english"]
+
+
+def translated_slugs(build) -> list[str]:
+    return [page.slug for page in site_pages(build.root) if page.scope == "translated"]
+
+
+def menu_entries(markup: str) -> list[tuple[str, str, bool]]:
+    """(name, href, current) of each link of the language control."""
+    entries = []
+    for attributes, label in ANCHOR.findall(region(markup, LANG_MENU)):
+        entries.append((re.sub(r"<[^>]+>", "", label).strip(), HREF.search(attributes).group(1), "aria-current" in attributes))
+    return entries
+
+
+def control_href(current: str, target: str, slug: str) -> str:
+    if current == target:
+        return f"{slug}.html"
+    up = "" if current == ENGLISH else "../"
+    path = "" if target == ENGLISH else f"{target}/"
+    return f"{up}{path}{slug}.html"
+
+
+def marked_after(markup: str, href: str, mark: str, window: int = 250) -> bool:
+    """Whether every link to `href` is followed by `mark` before the next link."""
+    ends = [found.end() for found in re.finditer(re.escape(f'href="{href}"'), markup)]
+    return bool(ends) and all(mark in markup[end:end + window].split("<a ")[0] for end in ends)
+
+
+def page_ui(markup: str) -> dict:
+    attribute = region(markup, DATA_UI_ATTRIBUTE)
+    return json.loads(html.unescape(attribute.split('="', 1)[1][:-1]))
+
+
+def english_chrome_left(markup: str) -> list[str]:
+    needles = [f">{ENGLISH_UI[key]}<" for key in CHROME_TEXT_KEYS] + [f'"{ENGLISH_UI[key]}"' for key in CHROME_ATTRIBUTE_KEYS]
+    needles += [f"<summary>{name}</summary>" for name in (*ENGLISH_UI[GROUP_NAMES].values(), *ENGLISH_UI["subgroups"].values())]
+    return [needle for needle in needles if needle in markup]
+
+
+def dangling_references(page: Path, out: Path) -> list[str]:
+    missing = []
+    for reference in REFERENCE.findall(page.read_text(encoding=ENCODING)):
+        target = reference.partition("#")[0].partition("?")[0]
+        if target and not SCHEME.match(reference) and not (page.parent / target).resolve().is_relative_to(out.resolve()):
+            missing.append(f"{page.name}: {reference} leaves the build")
+        elif target and not SCHEME.match(reference) and not (page.parent / target).resolve().exists():
+            missing.append(f"{page.relative_to(out)}: {reference}")
+    return missing
+
+
+def tree_texts(out: Path) -> list[tuple[str, str]]:
+    return [(path.relative_to(out).as_posix(), path.read_text(encoding=ENCODING)) for path in sorted(out.rglob("*"))
+            if path.suffix in (".html", ".js", ".json", ".txt")]
+
+
+_ENGLISH_BUILD: list = []
+
+
+def english_build():
+    """The real English site, built once, with a base address (no language previewed)."""
+    if not _ENGLISH_BUILD:
+        tmp = Path(tempfile.mkdtemp())
+        errors = bs.build(ROOT, tmp / "out", BASE_URL)
+        assert errors == [], errors
+        _ENGLISH_BUILD.append(tmp)
+    return _ENGLISH_BUILD[0] / "out"
+
+
+def tearDownModule():
+    for tmp in _ENGLISH_BUILD:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+# ---------------------------------------------------------------- T005: the English pin (green from the start)
+
+class EnglishPin(unittest.TestCase):
+    """FR-006, US1-AS10: the English output of the fixture does not change, whatever the language build adds."""
+
+    def test_US1_AS10_the_english_fixture_output_equals_the_recorded_hashes_once_the_added_fragments_are_stripped(self):
+        out = build_english_fixture()
+        self.addCleanup(shutil.rmtree, out.parent, True)
+        self.assertEqual(json.loads(PIN_FILE.read_text(encoding=ENCODING)), html_digests(out))
+
+    def test_US1_AS10_the_pin_holds_the_home_page_and_one_other_page(self):
+        self.assertEqual({"index.html", "guide.html"}, set(json.loads(PIN_FILE.read_text(encoding=ENCODING))))
+
+    def test_US1_AS10_the_fixture_is_deterministic(self):
+        first, second = build_english_fixture(), build_english_fixture()
+        self.addCleanup(shutil.rmtree, first.parent, True)
+        self.addCleanup(shutil.rmtree, second.parent, True)
+        self.assertEqual(html_digests(first), html_digests(second))
+
+
+class StripFunction(unittest.TestCase):
+    """The strip function of the pin, on sample markup: it removes the four fragments this feature adds and nothing else."""
+
+    def test_the_control_the_hreflang_and_canonical_links_and_data_ui_are_removed(self):
+        self.assertEqual(STRIP_EXPECTED, strip_added_fragments(STRIP_SAMPLE))
+
+    def test_markup_without_added_fragments_is_unchanged(self):
+        self.assertEqual(STRIP_EXPECTED, strip_added_fragments(STRIP_EXPECTED))
+
+    def test_the_asset_version_is_normalised_in_style_and_scripts_alike(self):
+        markup = '<link rel="stylesheet" href="style.css?v=0123456789"><script src="site.js?v=abcdef0123" defer></script>'
+        self.assertEqual('<link rel="stylesheet" href="style.css?v=HASH"><script src="site.js?v=HASH" defer></script>', normalise_versions(markup))
+
+
+# ---------------------------------------------------------------- T006a: the control, the head and the structure of the build
+
+class LanguageControl(unittest.TestCase):
+    def test_US1_AS1_the_control_lists_every_enabled_language_by_its_own_name_with_the_current_one_marked(self):
+        full = language_build(FULL)
+        for code in ALL_CODES:
+            with self.subTest(language=code):
+                entries = menu_entries(read_page(full, code, SOME_TRANSLATED_PAGE))
+                self.assertEqual([LANGUAGE_NAMES[c] for c in ALL_CODES], [name for name, _, _ in entries])
+                self.assertEqual([LANGUAGE_NAMES[code]], [name for name, _, current in entries if current])
+
+    def test_US1_AS1_a_build_that_enables_one_language_lists_english_and_that_language_only(self):
+        partial = language_build(PARTIAL)
+        names = [name for name, _, _ in menu_entries(read_page(partial, LANGUAGE_CODES[0], SOME_TRANSLATED_PAGE))]
+        self.assertEqual([LANGUAGE_NAMES[ENGLISH], LANGUAGE_NAMES[LANGUAGE_CODES[0]]], names)
+
+    def test_US1_AS2_the_control_of_a_translated_page_leads_to_the_same_page_in_each_language(self):
+        full = language_build(FULL)
+        for code in ALL_CODES:
+            with self.subTest(language=code):
+                hrefs = [href for _, href, _ in menu_entries(read_page(full, code, SOME_TRANSLATED_PAGE))]
+                self.assertEqual([control_href(code, target, SOME_TRANSLATED_PAGE) for target in ALL_CODES], hrefs)
+
+    def test_US1_AS3_the_control_of_an_english_only_page_leads_to_each_home_page_and_says_the_page_is_english_only(self):
+        full = language_build(FULL)
+        for slug in ENGLISH_ONLY_PAGES:
+            with self.subTest(page=slug):
+                markup = read_page(full, ENGLISH, slug)
+                hrefs = [href for _, href, _ in menu_entries(markup)]
+                self.assertEqual([f"{slug}.html"] + [f"{code}/{INDEX_SLUG}.html" for code in LANGUAGE_CODES], hrefs)
+                menu = region(markup, LANG_MENU)
+                self.assertEqual([], [code for code in LANGUAGE_CODES if ui_strings(code)["english_only"] not in menu])
+
+    def test_US1_AS12_the_control_is_made_of_plain_links(self):
+        full = language_build(FULL)
+        for code in ALL_CODES:
+            with self.subTest(language=code):
+                menu = region(read_page(full, code, SOME_TRANSLATED_PAGE), LANG_MENU)
+                self.assertEqual([], [tag for tag in ("<button", "<script", "onclick", "<form") if tag in menu])
+                self.assertEqual(len(ALL_CODES), len(ANCHOR.findall(menu)))
+
+
+class InterfaceLanguage(unittest.TestCase):
+    def test_US1_AS4_a_language_page_declares_its_language(self):
+        full = language_build(FULL)
+        for code in LANGUAGE_CODES:
+            with self.subTest(language=code):
+                self.assertEqual(LANG_ATTRIBUTES[code], HTML_LANG.search(read_page(full, code, SOME_TRANSLATED_PAGE)).group(1))
+        self.assertEqual("zh-Hans", HTML_LANG.search(read_page(full, "zh", INDEX_SLUG)).group(1))
+
+    def test_US1_AS4_no_english_interface_text_is_left_on_a_language_page(self):
+        full = language_build(FULL)
+        for code in LANGUAGE_CODES:
+            for slug in (SOME_TRANSLATED_PAGE, INDEX_SLUG):
+                with self.subTest(language=code, page=slug):
+                    self.assertEqual([], english_chrome_left(read_page(full, code, slug)))
+
+    def test_US1_AS4_the_interface_strings_are_those_of_the_language(self):
+        full = language_build(FULL)
+        for code in LANGUAGE_CODES:
+            with self.subTest(language=code):
+                markup = read_page(full, code, SOME_TRANSLATED_PAGE)
+                ui = ui_strings(code)
+                for expected in (ui["skip"], ui["on_this_page"], ui["menu_button"], ui["nav_docs"], html.escape(ui["search_aria"])):
+                    self.assertIn(expected, markup)
+
+    def test_US1_AS4_the_page_hands_the_messages_of_the_script_to_the_script(self):
+        full = language_build(FULL)
+        for code in LANGUAGE_CODES:
+            with self.subTest(language=code):
+                self.assertEqual(json.loads(si.script_ui(ui_strings(code))), page_ui(read_page(full, code, SOME_TRANSLATED_PAGE)))
+
+    def test_US1_AS4_the_script_reads_its_messages_from_the_page(self):
+        self.assertIn("dataset.ui", SITE_JS.read_text(encoding=ENCODING))
+
+
+class Alternates(unittest.TestCase):
+    def alternates_of(self, markup: str) -> dict[str, str]:
+        return dict(ALTERNATE.findall(markup))
+
+    def test_US1_AS5_a_translated_page_names_its_canonical_address_and_every_language_version(self):
+        full = language_build(FULL)
+        for code in ALL_CODES:
+            with self.subTest(language=code):
+                markup = read_page(full, code, SOME_TRANSLATED_PAGE)
+                own = f"{BASE_URL}/" + ("" if code == ENGLISH else f"{code}/") + f"{SOME_TRANSLATED_PAGE}.html"
+                self.assertEqual([own], CANONICAL.findall(markup))
+                expected = {LANG_ATTRIBUTES[c]: f"{BASE_URL}/" + ("" if c == ENGLISH else f"{c}/") + f"{SOME_TRANSLATED_PAGE}.html" for c in ALL_CODES}
+                expected["x-default"] = f"{BASE_URL}/{SOME_TRANSLATED_PAGE}.html"
+                self.assertEqual(expected, self.alternates_of(markup))
+
+    def test_US1_AS5_an_english_only_page_carries_its_english_canonical_address_and_x_default_only(self):
+        full = language_build(FULL)
+        for slug in ENGLISH_ONLY_PAGES:
+            with self.subTest(page=slug):
+                markup = read_page(full, ENGLISH, slug)
+                english = f"{BASE_URL}/{slug}.html"
+                self.assertEqual([english], CANONICAL.findall(markup))
+                alternates = self.alternates_of(markup)
+                self.assertIn("x-default", alternates)
+                self.assertEqual({english}, set(alternates.values()))
+                self.assertEqual(set(), set(alternates) & {LANG_ATTRIBUTES[code] for code in LANGUAGE_CODES})
+
+    def test_US1_AS16_a_build_with_no_base_address_omits_canonical_and_hreflang_links(self):
+        partial = language_build(PARTIAL)
+        for code in (ENGLISH, LANGUAGE_CODES[0]):
+            with self.subTest(language=code):
+                markup = read_page(partial, code, SOME_TRANSLATED_PAGE)
+                self.assertEqual([], CANONICAL.findall(markup))
+                self.assertEqual({}, self.alternates_of(markup))
+                self.assertNotIn('rel="alternate"', markup)
+
+
+class AssetsAndStructure(unittest.TestCase):
+    def test_US1_AS13_a_language_page_loads_the_shared_assets_from_the_root_and_the_stylesheet_stays_versioned(self):
+        full = language_build(FULL)
+        version = hashlib.sha256((full.out / STYLE_NAME).read_bytes()).hexdigest()[:10]
+        for code in LANGUAGE_CODES:
+            with self.subTest(language=code):
+                markup = read_page(full, code, SOME_TRANSLATED_PAGE)
+                self.assertIn(f'href="../style.css?v={version}"', markup)
+                self.assertRegex(markup, r'src="\.\./theme\.js\?v=[0-9a-f]{10}"')
+                self.assertRegex(markup, r'src="\.\./site\.js\?v=[0-9a-f]{10}"')
+                self.assertIn('href="../favicon.svg"', markup)
+                self.assertNotRegex(markup, r'(?:href|src)="(?:style\.css|theme\.js|site\.js|favicon)')
+
+    def test_US1_AS13_every_internal_reference_of_a_language_page_resolves_from_its_own_address(self):
+        full = language_build(FULL)
+        for code in LANGUAGE_CODES:
+            with self.subTest(language=code):
+                missing = [problem for page in sorted((full.out / code).glob("*.html")) for problem in dangling_references(page, full.out)]
+                self.assertEqual([], missing)
+
+    def test_US1_AS13_a_page_whose_slug_is_a_language_prefix_is_refused(self):
+        entry = {"slug": LANGUAGE_CODES[0], TITLE_KEY: "French", "source": "index.md", "group": "Guides", "description": "A clash."}
+        root = make_repo({"index.md": "# French\n"}, [entry, {**entry, "slug": INDEX_SLUG, TITLE_KEY: "Home"}],
+                         languages={"en": {"name": "English", "path": "", "lang": "en"},
+                                    LANGUAGE_CODES[0]: {"name": "Français", "path": LANGUAGE_CODES[0], "lang": LANGUAGE_CODES[0], "enabled": False}})
+        self.addCleanup(shutil.rmtree, root, True)
+        with self.assertRaisesRegex(bs.BuildError, LANGUAGE_CODES[0]):
+            bs.build(root, root / "_out")
+
+    def test_US1_AS11_each_enabled_language_gets_its_folder_with_its_translated_documents_only(self):
+        full = language_build(FULL)
+        expected = {f"{slug}.html" for slug in translated_slugs(full)}
+        for code in LANGUAGE_CODES:
+            with self.subTest(language=code):
+                self.assertEqual(expected, {page.name for page in (full.out / code).glob("*.html")})
+
+    def test_FR_023_the_shared_assets_are_written_once_at_the_root(self):
+        full = language_build(FULL)
+        shared = (STYLE_NAME, "theme.js", "site.js", "favicon.svg", "favicon.ico", "apple-touch-icon.png")
+        for code in LANGUAGE_CODES:
+            with self.subTest(language=code):
+                self.assertEqual([], [name for name in shared if (full.out / code / name).exists()])
+                self.assertFalse((full.out / code / "fonts").exists())
+        self.assertEqual([], [name for name in shared if not (full.out / name).is_file()])
+
+    def test_FR_024_the_folder_of_a_disabled_language_is_cleared_and_the_enabled_one_is_written(self):
+        partial = language_build(PARTIAL)
+        self.assertTrue((partial.out / LANGUAGE_CODES[0] / f"{SOME_TRANSLATED_PAGE}.html").is_file())
+        for code in LANGUAGE_CODES[1:]:
+            with self.subTest(language=code):
+                self.assertFalse((partial.out / code / LEFTOVER).exists())
+
+    def test_FR_026_an_english_only_page_is_built_once_at_its_english_address(self):
+        full = language_build(FULL)
+        slugs = english_slugs(full)
+        self.assertEqual([], [slug for slug in slugs if not (full.out / f"{slug}.html").is_file()])
+        for code in LANGUAGE_CODES:
+            with self.subTest(language=code):
+                self.assertEqual([], [slug for slug in slugs if (full.out / code / f"{slug}.html").exists() or (full.out / code / f"{slug}.md").exists()])
+
+
+# ---------------------------------------------------------------- T006b: sidebar, pager and links
+
+class SidebarAndPager(unittest.TestCase):
+    def sidebar(self, build, code: str, slug: str = LINKED_PAGE) -> str:
+        return region(read_page(build, code, slug), SIDEBAR)
+
+    def test_US1_AS11_the_group_and_subgroup_names_of_the_sidebar_are_in_the_language(self):
+        full = language_build(FULL)
+        for code in LANGUAGE_CODES:
+            with self.subTest(language=code):
+                sidebar = self.sidebar(full, code)
+                ui = ui_strings(code)
+                names = (*ui[GROUP_NAMES].values(), *ui["subgroups"].values())
+                self.assertEqual([], [name for name in names if f"<summary>{name}</summary>" not in sidebar])
+
+    def test_US1_AS11_the_sidebar_lists_the_translated_pages_under_their_translated_titles(self):
+        full = language_build(FULL)
+        pages = [page for page in site_pages(full.root) if page.scope == "translated" and page.slug != INDEX_SLUG]
+        for code in LANGUAGE_CODES:
+            with self.subTest(language=code):
+                sidebar = self.sidebar(full, code)
+                missing = [page.slug for page in pages if not re.search(rf'href="{page.slug}\.html"[^>]*>\[{code}\] {re.escape(html.escape(page.title))}</a>', sidebar)]
+                self.assertEqual([], missing)
+
+    def test_US1_AS11_the_sidebar_marks_each_english_only_page_and_links_it_at_its_english_address(self):
+        full = language_build(FULL)
+        for code in LANGUAGE_CODES:
+            with self.subTest(language=code):
+                sidebar = self.sidebar(full, code)
+                unmarked = [slug for slug in english_slugs(full) if not marked_after(sidebar, f"../{slug}.html", MARKS[code])]
+                self.assertEqual([], unmarked)
+                self.assertEqual([], [slug for slug in translated_slugs(full) if f'href="../{slug}.html"' in sidebar])
+
+    def test_US1_AS11_the_sidebar_of_a_language_page_on_the_real_tree_has_24_english_entries(self):
+        full = language_build(FULL)
+        for code in LANGUAGE_CODES:
+            with self.subTest(language=code):
+                items = LEAF_ITEM.findall(self.sidebar(full, code))
+                self.assertEqual(24, len([item for item in items if MARKS[code] in item]))
+                self.assertEqual(24, len(english_slugs(full)))
+
+    def test_US1_AS11_the_pager_marks_an_english_only_neighbour_at_the_boundary_and_not_a_translated_one(self):
+        full = language_build(FULL)
+        for code in LANGUAGE_CODES:
+            with self.subTest(language=code):
+                pager = region(read_page(full, code, README_PAGE), PAGER)
+                self.assertIn(html.escape(ui_strings(code)["pager_label"]), pager)
+                self.assertTrue(marked_after(pager, SPEC_HREF, MARKS[code]))
+                self.assertIn('href="dialects-and-providers.html"', pager)
+                self.assertNotIn(MARKS[code], pager.split(f'href="{SPEC_HREF}"')[0])
+
+    def test_US1_AS11_the_pager_uses_the_words_of_the_language(self):
+        full = language_build(FULL)
+        for code in LANGUAGE_CODES:
+            with self.subTest(language=code):
+                pager = region(read_page(full, code, README_PAGE), PAGER)
+                ui = ui_strings(code)
+                self.assertEqual([], [word for word in (ui["previous"], ui["next"]) if word not in pager])
+
+
+class LinkRewriting(unittest.TestCase):
+    ENGLISH_TARGETS = (SEMANTICS_TARGET, "spec.html", "performance.html", "semantics.html", "grid-schema.html")
+
+    def page(self, build, code: str, slug: str = LINKED_PAGE) -> str:
+        return read_page(build, code, slug)
+
+    def test_US1_AS11_links_into_english_only_pages_go_to_the_english_address_with_their_fragment_and_carry_the_mark(self):
+        full = language_build(FULL)
+        for code in LANGUAGE_CODES:
+            for target in self.ENGLISH_TARGETS:
+                with self.subTest(language=code, target=target):
+                    markup = self.page(full, code)
+                    self.assertTrue(marked_after(markup, f"../{target}", MARKS[code]))
+                    self.assertNotIn(f'href="{target}"', markup)
+
+    def test_US1_AS11_the_same_holds_for_a_translation_of_the_readme_whose_links_start_at_the_repository_root(self):
+        full = language_build(FULL)
+        for code in LANGUAGE_CODES:
+            with self.subTest(language=code):
+                markup = self.page(full, code, README_PAGE)
+                self.assertIn(HANDWRITTEN_OVERVIEW, markup)
+                self.assertTrue(marked_after(markup, f"../{SEMANTICS_TARGET}", MARKS[code]))
+                self.assertTrue(marked_after(markup, SPEC_HREF, MARKS[code]))
+                self.assertTrue(marked_after(markup, "../performance.html", MARKS[code]))
+
+    def test_US1_AS11_a_link_to_a_translated_page_that_has_a_file_stays_in_the_language_and_is_not_marked(self):
+        full = language_build(FULL)
+        for code in LANGUAGE_CODES:
+            with self.subTest(language=code):
+                markup = self.page(full, code)
+                self.assertIn(f'href="{SIBLING_PAGE}.html"', markup)
+                self.assertFalse(marked_after(markup, f"{SIBLING_PAGE}.html", MARKS[code]))
+                self.assertFalse(marked_after(markup, f"{README_PAGE}.html", MARKS[code]))
+                self.assertNotIn(f'href="../{SIBLING_PAGE}.html"', markup)
+
+    def test_US1_AS11_a_link_to_a_translated_page_with_no_file_in_a_preview_build_goes_to_the_english_page_with_the_mark(self):
+        partial = language_build(PARTIAL)
+        code = LANGUAGE_CODES[0]
+        self.assertFalse((partial.out / code / f"{README_PAGE}.html").exists())
+        markup = self.page(partial, code)
+        self.assertTrue(marked_after(markup, f"../{README_PAGE}.html", MARKS[code]))
+        self.assertTrue(marked_after(region(markup, SIDEBAR), f"../{README_PAGE}.html", MARKS[code]))
+        self.assertFalse(marked_after(markup, f"{SIBLING_PAGE}.html", MARKS[code]))
+
+    def test_US1_AS13_fragment_only_links_external_addresses_and_assets_are_left_alone(self):
+        full = language_build(FULL)
+        for code in LANGUAGE_CODES:
+            with self.subTest(language=code):
+                markup = self.page(full, code)
+                self.assertIn('href="#section-one"', markup)
+                self.assertIn(f'href="{OUTSIDE_LINK}"', markup)
+                self.assertFalse(marked_after(markup, OUTSIDE_LINK, MARKS[code]))
+                self.assertNotIn("../https", markup)
+                self.assertNotIn("../../", markup)
+                self.assertRegex(markup, r'href="\.\./style\.css\?v=[0-9a-f]{10}"')
+
+    def test_US1_AS11_the_rewrite_marks_each_link_once(self):
+        full = language_build(FULL)
+        for code in LANGUAGE_CODES:
+            with self.subTest(language=code):
+                markup = self.page(full, code)
+                rewritten = sum(markup.count(f'href="../{slug}.html') for slug in english_slugs(full))
+                self.assertEqual(rewritten, markup.count(MARKS[code]))
+
+    def test_US1_AS11_a_code_block_that_shows_an_english_only_link_is_not_rewritten(self):
+        full = language_build(FULL)
+        shown = bs.render_markdown(f"```html\n{CODE_SNIPPET}\n```\n").html.strip()
+        for code in LANGUAGE_CODES:
+            with self.subTest(language=code):
+                markup = self.page(full, code)
+                self.assertIn(shown, markup)
+                self.assertNotIn("../grid-schema.html", "".join(PRE_BLOCK.findall(markup)))
+                self.assertIn(HANDWRITTEN, markup)
+
+
+# ---------------------------------------------------------------- T006c: the home page
+
+class HomePage(unittest.TestCase):
+    def test_US1_AS15_the_group_cards_of_the_home_page_are_in_the_language(self):
+        full = language_build(FULL)
+        english_cards = bs.load_config(ROOT)["groups"].values()
+        for code in LANGUAGE_CODES:
+            with self.subTest(language=code):
+                markup = read_page(full, code, INDEX_SLUG)
+                ui = ui_strings(code)
+                for name in ui[GROUP_NAMES]:
+                    self.assertIn(f"<h3>{ui[GROUP_NAMES][name]}</h3><p>{ui['groups'][name]}</p>", markup)
+                self.assertEqual([], [text for text in english_cards if html.escape(text) in markup])
+
+    def test_US1_AS15_the_link_list_of_the_home_page_is_translated_and_its_english_only_links_are_rewritten_and_marked(self):
+        full = language_build(FULL)
+        for code in LANGUAGE_CODES:
+            with self.subTest(language=code):
+                markup = read_page(full, code, INDEX_SLUG)
+                self.assertIn(f"[{code}] Home", markup)
+                self.assertIn('href="quickstart-csharp.html"', markup)
+                self.assertTrue(marked_after(markup, SPEC_HREF, MARKS[code]))
+                self.assertTrue(marked_after(markup, "../semantics.html", MARKS[code]))
+
+    def test_US1_AS15_a_translated_home_template_that_keeps_the_english_href_has_it_rewritten_and_marked(self):
+        full = language_build(FULL)
+        for code in LANGUAGE_CODES:
+            with self.subTest(language=code):
+                markup = read_page(full, code, INDEX_SLUG)
+                self.assertIn(f"[{code}] Declare a GridSchema", markup)
+                self.assertTrue(marked_after(markup, "../grid-schema.html", MARKS[code]))
+                self.assertNotIn('href="grid-schema.html"', markup)
+                self.assertIn(f"[{code}] Find your way in", markup)
+
+
+# ---------------------------------------------------------------- T007a: search and llms files
+
+class SearchIndex(unittest.TestCase):
+    def index_of(self, out: Path) -> list[dict]:
+        return json.loads((out / "search-index.json").read_text(encoding=ENCODING))
+
+    def test_US1_AS9_each_language_has_its_own_index_over_translated_pages_only_with_translated_group_names(self):
+        full = language_build(FULL)
+        for code in LANGUAGE_CODES:
+            with self.subTest(language=code):
+                entries = self.index_of(full.out / code)
+                self.assertEqual(sorted(translated_slugs(full)), sorted(entry["slug"] for entry in entries))
+                groups = {entry["group"] for entry in entries if entry["slug"] != INDEX_SLUG}
+                self.assertEqual(set(), groups - set(ui_strings(code)[GROUP_NAMES].values()))
+                self.assertTrue(all(entry[TITLE_KEY].startswith(f"[{code}]") for entry in entries))
+
+    def test_FR_015_the_english_index_covers_every_page(self):
+        full = language_build(FULL)
+        self.assertEqual(sorted(page.slug for page in site_pages(full.root)), sorted(entry["slug"] for entry in self.index_of(full.out)))
+
+    def test_US1_AS17_the_english_index_finds_a_term_only_a_semantics_page_contains(self):
+        index = self.index_of(english_build())
+        scopes = {page.slug: page.scope for page in site_pages(ROOT)}
+        hits = [entry["slug"] for entry in index if SEMANTICS_ONLY_TERM in entry["text"].lower()]
+        self.assertTrue(hits)
+        self.assertEqual({"english"}, {scopes[slug] for slug in hits})
+
+    def test_US1_AS9_the_search_box_says_in_the_language_where_the_english_site_is_searched(self):
+        self.assertEqual([], [key for key in SEARCH_ENGLISH_KEYS if key not in si.SCRIPT_KEYS])
+        for code in LANGUAGE_CODES:
+            with self.subTest(language=code):
+                handed = json.loads(si.script_ui(ui_strings(code)))
+                self.assertEqual({key: ui_strings(code)[key] for key in SEARCH_ENGLISH_KEYS}, {key: handed.get(key) for key in SEARCH_ENGLISH_KEYS})
+
+
+class LlmsFiles(unittest.TestCase):
+    def links(self, path: Path) -> list[str]:
+        return LLMS_LINK.findall(path.read_text(encoding=ENCODING))
+
+    def test_FR_016_a_language_llms_txt_links_translated_pages_in_the_language_and_english_only_pages_at_their_english_address(self):
+        full = language_build(FULL)
+        for code in LANGUAGE_CODES:
+            with self.subTest(language=code):
+                links = self.links(full.out / code / LLMS_NAME)
+                expected = [f"{BASE_URL}/{code}/{slug}.md" for slug in translated_slugs(full)] + [f"{BASE_URL}/{slug}.md" for slug in english_slugs(full)]
+                self.assertEqual(sorted(expected), sorted(links))
+
+    def test_FR_016_a_language_llms_txt_names_the_english_source_and_takes_its_section_titles_from_the_interface_file(self):
+        full = language_build(FULL)
+        for code in LANGUAGE_CODES:
+            with self.subTest(language=code):
+                text = (full.out / code / LLMS_NAME).read_text(encoding=ENCODING)
+                ui = ui_strings(code)
+                self.assertEqual([], [title for title in (ui["llms_home"], *ui[GROUP_NAMES].values()) if f"## {title}\n" not in text])
+                self.assertTrue([line for line in text.splitlines() if ui["llms_english_source"] in line and BASE_URL in line])
+
+    def test_FR_016_a_language_llms_full_txt_holds_the_translated_pages_and_names_the_english_source(self):
+        full = language_build(FULL)
+        for code in LANGUAGE_CODES:
+            with self.subTest(language=code):
+                text = (full.out / code / "llms-full.txt").read_text(encoding=ENCODING)
+                self.assertEqual([], [slug for slug in translated_slugs(full) if f"| {slug}.md ====" not in text])
+                self.assertEqual([], [slug for slug in english_slugs(full) if f"| {slug}.md ====" in text])
+                self.assertIn(ui_strings(code)["llms_english_source"], text)
+
+    def test_FR_016_the_source_of_each_translated_page_is_copied_next_to_it(self):
+        full = language_build(FULL)
+        for code in LANGUAGE_CODES:
+            with self.subTest(language=code):
+                self.assertEqual([], [slug for slug in translated_slugs(full) if not (full.out / code / f"{slug}.md").is_file()])
+                self.assertIn(HANDWRITTEN, (full.out / code / f"{LINKED_PAGE}.md").read_text(encoding=ENCODING))
+
+    def test_FR_016_the_english_llms_txt_still_lists_every_page_once(self):
+        full = language_build(FULL)
+        links = self.links(full.out / LLMS_NAME)
+        self.assertEqual(sorted(f"{BASE_URL}/{page.slug}.md" for page in site_pages(full.root)), sorted(links))
+
+
+# ---------------------------------------------------------------- T007b: the script and the stylesheet
+
+def fixed_widths(css: str) -> list[tuple[str, float]]:
+    return [(selector.strip(), float(value)) for selector, body in CSS_BLOCK.findall(css) for value in FIXED_WIDTH.findall(body)
+            if float(value) > NARROW_PIXELS and selector.strip() not in SCROLLING_RULES]
+
+
+def chinese_font_rules(css: str) -> list[str]:
+    return [body for selector, body in CSS_BLOCK.findall(css) if re.search(r'lang\W*"?zh', selector) and "font-family" in body]
+
+
+class ScriptStorage(unittest.TestCase):
+    def test_US1_AS6_the_only_storage_key_of_the_scripts_is_the_themes(self):
+        keys = {key for script in sorted(JS_DIR.glob("*.js")) for key in STORAGE_CALL.findall(script.read_text(encoding=ENCODING))}
+        self.assertTrue(keys)
+        self.assertLessEqual(keys, THEME_STORAGE_KEYS)
+        self.assertIn('const THEME_KEY = "craticula-theme"', SITE_JS.read_text(encoding=ENCODING))
+
+    def test_US1_AS6_no_script_of_the_site_writes_a_cookie(self):
+        self.assertEqual([], [script.name for script in JS_DIR.glob("*.js") if "cookie" in script.read_text(encoding=ENCODING).lower()])
+
+    def test_US1_AS6_the_build_writes_no_cookie_and_no_language_storage_into_any_page_or_script(self):
+        full = language_build(FULL)
+        offenders = [name for name, text in tree_texts(full.out) if re.search(r"(?i)set-cookie|document\.cookie|localStorage\.\w+\(\s*[\"'](?!craticula-theme)", text)]
+        self.assertEqual([], offenders)
+
+
+class ChineseSearch(unittest.TestCase):
+    """US1-AS8: a characterisation that passes before and after any change to the search; the browser check is the G2 manual one."""
+
+    def terms_pattern(self) -> str:
+        found = re.search(r"const terms = .*?\.split\(/(.+?)/\)", SITE_JS.read_text(encoding=ENCODING))
+        self.assertIsNotNone(found, "site.js has no `terms` that splits on a pattern")
+        return found.group(1)
+
+    def terms(self, query: str) -> list[str]:
+        return [word for word in re.split(self.terms_pattern(), query.lower()) if word]
+
+    def test_US1_AS8_a_one_character_term_and_a_run_of_characters_are_one_term_each(self):
+        self.assertEqual(["数"], self.terms("数"))
+        self.assertEqual(["数据库"], self.terms("数据库"))
+
+    def test_US1_AS8_two_terms_separated_by_a_full_width_space_are_two_terms(self):
+        self.assertEqual(["数据", "搜索"], self.terms("数据　搜索"))
+
+    def test_US1_AS8_a_term_matches_inside_a_run_of_characters(self):
+        found = re.search(r"const has = .*?\n  \};", SITE_JS.read_text(encoding=ENCODING), re.S)
+        self.assertIsNotNone(found, "site.js has no `has`")
+        self.assertIn(".includes(", found.group(0))
+
+
+class Stylesheet(unittest.TestCase):
+    def css(self) -> str:
+        return STYLE_CSS.read_text(encoding=ENCODING)
+
+    def test_US1_AS7_chinese_text_is_set_in_a_stack_of_chinese_system_fonts(self):
+        rules = chinese_font_rules(self.css())
+        self.assertTrue(rules, "no rule for lang zh sets a font-family")
+        self.assertTrue([body for body in rules if len([font for font in CHINESE_FONTS if font in body]) >= 2])
+
+    def test_US1_AS7_the_stylesheet_holds_no_remote_font_or_address(self):
+        css = self.css()
+        self.assertNotIn("@import", css)
+        self.assertEqual([], [address for address in re.findall(r"url\(\s*[\"']?([^)\"']+)", css) if re.match(r"(?i)(?:https?:)?//", address)])
+
+    def test_US1_AS7_no_font_file_over_100_KB_and_none_for_chinese_was_added(self):
+        fonts = [path for path in (ROOT / "site" / "fonts").iterdir() if path.suffix in (".woff", ".woff2", ".ttf", ".otf")]
+        self.assertTrue(fonts)
+        self.assertEqual([], [path.name for path in fonts if path.stat().st_size > FONT_LIMIT])
+        self.assertEqual([], [path.name for path in fonts if CHINESE_FONT_FILE.search(path.name)])
+
+    def test_US1_AS14_no_rule_fixes_a_width_above_320_px_outside_a_scrolling_container(self):
+        self.assertEqual([], fixed_widths(self.css()))
+
+    def test_US1_AS14_long_words_and_unspaced_lines_wrap_in_the_page_and_in_the_language_control(self):
+        blocks = CSS_BLOCK.findall(self.css())
+        self.assertTrue([body for selector, body in blocks if ".prose" in selector and "overflow-wrap" in body])
+        control = [(selector, body) for selector, body in blocks if "lang-menu" in selector or "lang-panel" in selector]
+        self.assertTrue(control, "no rule styles the language control")
+        self.assertTrue([selector for selector, body in control if "overflow-wrap" in body or "word-break" in body])
+
+
+if __name__ == "__main__":
+    unittest.main()
