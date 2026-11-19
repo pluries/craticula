@@ -40,6 +40,15 @@ jobs:
       - name: Test the site generator
         run: python3 scripts/test_build_site.py
 
+      - name: Test the site languages
+        run: python3 scripts/test_site_i18n.py
+
+      - name: Test the translation tree
+        run: python3 scripts/test_site_i18n_content.py
+
+      - name: Test the language build
+        run: python3 scripts/test_site_languages.py
+
       - name: Build the site
         run: python3 scripts/build_site.py --out site/_build
 

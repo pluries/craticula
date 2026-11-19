@@ -66,6 +66,12 @@ STRIP_SAMPLE = ('<head><link rel="alternate" hreflang="fr" href="https://x/fr/a.
 STRIP_EXPECTED = ('<head><link rel="alternate" type="application/rss+xml" href="feed.xml"><link rel="icon" href="favicon.ico"></head>'
                   '<body class="home"><nav class="pager"></nav></body>')
 SEARCH_ENGLISH_KEYS = ("search_english", "search_english_url")
+FOOTER_OPEN, FOOTER_CLOSE = "<footer", "</footer>"
+FOOTER_CAP_CHARS = 120   # provisional (English: 90); T039a sets it from the real German and Spanish footers
+LICENCE_NAME = "Apache-2.0"
+SCRIPT_OPENING = re.compile(r"<script\b")
+BLOB_LINK = re.compile(r"https://github\.com/[^/]+/[^/]+/(?:blob|tree|raw)/[^/]+/(.*)$")
+EXPECTED_SCRIPTS = 2
 
 
 # ---------------------------------------------------------------- helpers
@@ -799,6 +805,60 @@ class BuiltFolderScan(Scratch):
     def test_US2_AS8_a_link_into_a_private_path_in_a_translation_is_refused(self):
         errors = self.edited("# T {#t}\n\n[notes](../../docs/notes.md)\n")
         self.assertTrue(any("private" in error and EDITED_PAGE in error for error in errors), errors)
+
+
+class FooterAndScripts(unittest.TestCase):
+    """T020b, FR-028, FR-018: the footer of every built language and the whole-site output rules over a built language folder."""
+
+    def pages(self):
+        full = language_build(FULL)
+        return full, [(code, page) for code in LANGUAGE_CODES for page in language_pages(full.out, code)]
+
+    def test_FR_028_the_footer_of_every_built_language_holds_the_licence_the_repository_and_the_spec_version_within_the_cap(self):
+        full, pages = self.pages()
+        version = (ROOT / "spec" / "VERSION").read_text(encoding=ENCODING).strip()
+        repository = full.config["repo"].split("//", 1)[1]
+        self.assertEqual(len(LANGUAGE_CODES) * DOCUMENT_COUNT, len(pages))
+        for code, page in pages:
+            with self.subTest(language=code, page=page.name):
+                markup = page.read_text(encoding=ENCODING)
+                start = markup.find(FOOTER_OPEN)
+                self.assertGreaterEqual(start, 0)
+                foot = markup[start:markup.find(FOOTER_CLOSE, start) + len(FOOTER_CLOSE)]
+                plain = " ".join(re.sub(r"<[^>]+>", " ", foot).split())
+                self.assertIn(LICENCE_NAME, plain)
+                self.assertIn(f"spec {version}", plain)
+                self.assertIn(repository, plain + " ".join(HREF.findall(foot)))
+                self.assertLessEqual(len(plain), FOOTER_CAP_CHARS)
+
+    def test_FR_018_a_built_language_page_holds_only_the_two_own_scripts_and_no_inline_body(self):
+        _, pages = self.pages()
+        for code, page in pages:
+            with self.subTest(language=code, page=page.name):
+                markup = page.read_text(encoding=ENCODING)
+                self.assertEqual(EXPECTED_SCRIPTS, len(SCRIPT_OPENING.findall(markup)))
+                self.assertEqual(EXPECTED_SCRIPTS, markup.count("></script>"))
+
+    def test_FR_018_no_link_of_a_built_language_page_points_into_a_private_path_even_on_the_repository_address(self):
+        _, pages = self.pages()
+        for code, page in pages:
+            with self.subTest(language=code, page=page.name):
+                for target in HREF.findall(page.read_text(encoding=ENCODING)):
+                    path = target.partition("#")[0].partition("?")[0]
+                    blob = BLOB_LINK.match(path)
+                    path = blob.group(1) if blob else path
+                    while path.startswith(("./", "../")):
+                        path = path.split("/", 1)[1]
+                    if not SCHEME.match(path):
+                        self.assertFalse(bs._is_private(path), target)
+
+    def test_FR_018_raw_html_of_the_sources_is_never_written_as_a_tag_in_a_built_language_page(self):
+        _, pages = self.pages()
+        for code, page in pages:
+            with self.subTest(language=code, page=page.name):
+                markup = PRE_BLOCK.sub("", page.read_text(encoding=ENCODING))
+                self.assertEqual([], re.findall(r"<(?:img|iframe|object|embed|form)\b", markup))
+                self.assertEqual([], re.findall(r"<[a-z][^>]*\son[a-z]+=", markup))
 
 
 class DeclaredAnchors(Scratch):
