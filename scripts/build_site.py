@@ -398,6 +398,7 @@ class Page:
     reviewed: str | None = None  # #3555, DS-24: ISO date of the review of an authored page
     summary: str = ""  # #3555, DS-10: the lead paragraph of a split semantics page
     alias: str = ""  # #3555: the rule anchor (`sem-1`) a split page keeps next to its title
+    scope: str = "translated"  # spec 004 FR-027: "translated" or "english"; SiteBuild.load_pages reads it (T004)
 
 
 def _layout(pages: list["Page"]) -> dict[str, list]:

@@ -20,6 +20,12 @@ from test_build_site_structure import CODED, TICKET  # noqa: E402
 HTML_SUFFIX = ".html"
 
 PAGES_DIR = ROOT / "site" / "pages"
+
+# Spec 004-site-languages: shared literals of the language tests (a literal repeated three times is a Sonar finding)
+I18N_DIR = "site/i18n"
+LANGUAGE_CODES = ("fr", "de", "it", "es", "zh")
+HEADER_KEYS = ("translates", "title", "description", "source_fingerprint", "drafter", "drafted_on", "status")
+SCOPES = ("translated", "english")
 FAKE_REVIEW = "2026-11-03"   # a date for the scratch builds only: the maker's real review date is not invented here
 # "There is no live demo site" is an honest denial that the pages may keep, so the claims are the affirmative phrases.
 FORBIDDEN_CLAIMS = ("available on nuget", "install from nuget", "published on nuget", "on nuget.org", "try the demo", "online demo", "hosted demo",
