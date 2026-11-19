@@ -1,1 +1,42 @@
-[]
+[
+  {
+    "language": "fr",
+    "document": "index",
+    "source_fingerprint": "f272b4e25325a7883ba81c3752956f48f267c02f44dc873e6ec19779ef6f5638",
+    "translation_hash": "d17f1472718b53478c32a9ba60a4474623b509c902357ba7a35efbcf0d70a72d",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-19"
+  },
+  {
+    "language": "es",
+    "document": "index",
+    "source_fingerprint": "f272b4e25325a7883ba81c3752956f48f267c02f44dc873e6ec19779ef6f5638",
+    "translation_hash": "bd17b1287a7893cebef199faf200d0f89de516d01ec186d73770235756465daf",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-19"
+  },
+  {
+    "language": "de",
+    "document": "index",
+    "source_fingerprint": "f272b4e25325a7883ba81c3752956f48f267c02f44dc873e6ec19779ef6f5638",
+    "translation_hash": "09001f417abdb8c4bc2648b2561f8611ab9c98cadcb2e406e09787e1563b16a1",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-19"
+  },
+  {
+    "language": "it",
+    "document": "index",
+    "source_fingerprint": "f272b4e25325a7883ba81c3752956f48f267c02f44dc873e6ec19779ef6f5638",
+    "translation_hash": "b05ade4a2337e11742ef1d0d25d8e0ed31ea39ecaa946af3cf7650e75d1baf86",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-19"
+  },
+  {
+    "language": "zh",
+    "document": "index",
+    "source_fingerprint": "f272b4e25325a7883ba81c3752956f48f267c02f44dc873e6ec19779ef6f5638",
+    "translation_hash": "f04d47e462df8e148bd99900b2e2a4681c884a068401f7967779387ab32689c5",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-19"
+  }
+]

@@ -5,7 +5,7 @@ description: Craticula 把服务器端的 AG Grid 请求转换为安全的原生
 source_fingerprint: f272b4e25325a7883ba81c3752956f48f267c02f44dc873e6ec19779ef6f5638
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 ## 所有页面 {#all-pages}
 

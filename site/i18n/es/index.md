@@ -5,7 +5,7 @@ description: Craticula transforma las solicitudes de AG Grid del lado del servid
 source_fingerprint: f272b4e25325a7883ba81c3752956f48f267c02f44dc873e6ec19779ef6f5638
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 ## Todas las páginas {#all-pages}
 
