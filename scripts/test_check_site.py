@@ -102,15 +102,22 @@ class Stub(BaseHTTPRequestHandler):
             return "# Craticula\n"
         return f"# Craticula\n\nSource: {base}/{name}\n"
 
+    def _split_language(self, path):
+        """The language prefix and the rest of a path: a path without a served prefix belongs to English."""
+        parts = path.strip("/").split("/", 1)
+        if parts[0] not in (*self.server.languages, UNKNOWN_PREFIX):
+            return "en", path.lstrip("/")
+        rest = parts[1] if len(parts) > 1 else ""
+        return parts[0], rest
+
     def _site_routes(self, path, accept):
         """Returns (status, content type, body) for a path of the good site, or None when the stub has no such page."""
-        defects, served = self.server.defects, self.server.languages
+        defects = self.server.defects
         if path in ("/", "/index.html"):
             if accept == ACCEPT_GERMAN and "negotiate_content" in defects:
                 return 200, "text/html", self._home("de", "de")
             return 200, "text/html", self._home("en", "en")
-        parts = path.strip("/").split("/", 1)
-        code, rest = (parts[0], parts[1] if len(parts) > 1 else "") if parts[0] in (*served, UNKNOWN_PREFIX) else ("en", path.lstrip("/"))
+        code, rest = self._split_language(path)
         if code == UNKNOWN_PREFIX:
             return (200, "text/html", self._home("en", "en")) if "unknown_language_200" in defects else None
         if code != "en" and rest == "":
@@ -119,6 +126,12 @@ class Stub(BaseHTTPRequestHandler):
         if rest in missing and not (code != "en" and missing[rest] in defects):
             return 200, "text/plain", "[]" if rest == SEARCH_INDEX else self._lang_file(code, rest)
         return None
+
+    def _send_security_headers(self):
+        defects = self.server.defects
+        for header, defect in ((NOSNIFF, "no_nosniff"), (REFERRER, "no_referrer")):
+            if defect not in defects:
+                self.send_header(*header)
 
     def _serve_site(self, path):
         """A site that behaves as the spec says; server.defects switches single faults on (read per test)."""
@@ -132,12 +145,11 @@ class Stub(BaseHTTPRequestHandler):
             self.send_header("Content-Length", "0")
             self.end_headers()
             return
-        body = (found[2] if found else "Not found\n").encode()
-        self.send_response(found[0] if found else 404)
-        self.send_header("Content-Type", found[1] if found else "text/plain")
-        for header in (NOSNIFF, REFERRER):
-            if not (header is NOSNIFF and "no_nosniff" in defects) and not (header is REFERRER and "no_referrer" in defects):
-                self.send_header(*header)
+        status, content_type, text = found or (404, "text/plain", "Not found\n")
+        body = text.encode()
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self._send_security_headers()
         if "vary" in defects and path == "/":
             self.send_header("Vary", "Accept-Language")
         if accept and "language_cookie" in defects:
@@ -285,7 +297,7 @@ class CheckSiteTests(unittest.TestCase):
         result = self.run_script()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         requested = self._requested()
-        self.assertTrue({"/", f"/{UNKNOWN_PREFIX}/", f"/{LLMS}"} <= requested, requested)
+        self.assertLessEqual({"/", f"/{UNKNOWN_PREFIX}/", f"/{LLMS}"}, requested, requested)
         self.assertFalse([p for p in requested if p.startswith(("/fr/", "/de/", "/zh/"))], requested)
 
     def test_US4_AS1_a_request_with_accept_language_de_is_sent_to_the_english_address(self):  # US4-AS1

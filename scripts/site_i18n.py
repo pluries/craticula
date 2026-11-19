@@ -532,7 +532,10 @@ _TABLE_RULE = re.compile(r"^\s*\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)+\|?\s*$")
 _LIST_ITEM = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
 _TAG_NAME = re.compile(r"<([a-zA-Z][a-zA-Z0-9-]*)")
 _START_TAG = re.compile(r"""<([a-zA-Z][a-zA-Z0-9-]*)((?:"[^"]*"|'[^']*'|[^>"'])*)>""")
-_ATTRIBUTE_NAME = re.compile(r"""([^\s"'>/=]+)(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'>]+))?""")
+# Two small patterns in place of one: first the `= value` of every attribute that has a name before it goes, then what is left are the names.
+# They differ from one combined pattern only for an attribute whose name would itself start with "=" after a value, which no browser runs as script.
+_ATTRIBUTE_VALUE = re.compile(r"""(?<=[^\s"'>/=])\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'>]+)""")
+_ATTRIBUTE_NAME = re.compile(r"""[^\s"'>/=]+""")
 _TARGET_ATTRIBUTE = re.compile(r"\b(?:href|src)=\"([^\"]*)\"")
 _PRE, _CODE = re.compile(r"<pre\b[^>]*>(.*?)</pre>", re.S), re.compile(r"<code\b[^>]*>(.*?)</code>", re.S)
 _SCRIPT = re.compile(r"<script\b", re.I)
@@ -730,7 +733,7 @@ def _element_texts(pattern: re.Pattern, text: str) -> list[str]:
 
 def _attribute_sets(markup: str) -> list[tuple[str, frozenset[str]]]:
     """Each start tag in document order with the lower-cased names of its attributes, however they are quoted."""
-    return [(tag.lower(), frozenset(name.lower() for name in _ATTRIBUTE_NAME.findall(attributes))) for tag, attributes in _START_TAG.findall(markup)]
+    return [(tag.lower(), frozenset(name.lower() for name in _ATTRIBUTE_NAME.findall(_ATTRIBUTE_VALUE.sub(" ", attributes)))) for tag, attributes in _START_TAG.findall(markup)]
 
 
 def _attribute_findings(source: str, target: str) -> list[str]:

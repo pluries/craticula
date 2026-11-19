@@ -634,7 +634,7 @@ class HomeTemplate(unittest.TestCase):
 
 QUICKSTARTS = (CSHARP, "quickstart-typescript", "quickstart-python", GO)
 HEADING_LINE = re.compile(r"^(#{1,6}\s+.*?)\s*$", re.M)
-BLOCK_LINE = re.compile(r"^(?:\s*)(```|~~~)")
+BLOCK_LINE = re.compile(r"^\s*(```|~~~)")
 
 
 def declare_anchors(text: str) -> str:
@@ -714,9 +714,6 @@ class MiniRepository(unittest.TestCase):
         text = path.read_text(encoding=ENCODING)
         self.assertIn(old, text)
         path.write_text(text.replace(old, new), encoding=ENCODING)
-
-    def restamp(self) -> None:
-        stamp_documents(self.root, FRENCH)
 
 
 class ScopeCheck(MiniRepository):

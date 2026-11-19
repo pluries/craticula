@@ -676,7 +676,7 @@ class ChineseSearch(unittest.TestCase):
         self.assertEqual(["数据", "搜索"], self.terms("数据　搜索"))
 
     def test_US1_AS8_a_term_matches_inside_a_run_of_characters(self):
-        found = re.search(r"const has = .*?\n  \};", SITE_JS.read_text(encoding=ENCODING), re.S)
+        found = re.search(r"const has = .*?\n {2}\};", SITE_JS.read_text(encoding=ENCODING), re.S)
         self.assertIsNotNone(found, "site.js has no `has`")
         self.assertIn(".includes(", found.group(0))
 
@@ -1037,8 +1037,8 @@ SEARCH_ENGLISH_URL = "search_english_url"
 SEARCH_ENGLISH = "search_english"
 KEEP_NAME = "keep.txt"
 OLD_PAGE = "old.html"
-FUNCTION_BODY = re.compile(r"\n  const (\w+) = \([^)]*\) => \{(.*?)\n  \};", re.S)
-ENGLISH_DEFAULTS = re.compile(r"const ENGLISH = \{.*?\n  \};", re.S)
+FUNCTION_BODY = re.compile(r"\n {2}const (\w+) = \([^)]*\) => \{(.*?)\n {2}\};", re.S)
+ENGLISH_DEFAULTS = re.compile(r"const ENGLISH = \{.*?\n {2}\};", re.S)
 SEARCH_GUARD = re.compile(r"if\s*\(\s*T\.search_english\b|\bT\.search_english\s*(?:&&|\?)")
 
 
@@ -1123,7 +1123,7 @@ class SiteScriptSearchEnglish(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.source = SITE_JS.read_text(encoding=ENCODING)
-        cls.bodies = {name: body for name, body in FUNCTION_BODY.findall(cls.source)}
+        cls.bodies = dict(FUNCTION_BODY.findall(cls.source))
 
     def uses(self) -> list[str]:
         return [name for name, body in self.bodies.items() if "T.search_english" in body]

@@ -21,6 +21,7 @@ from test_build_site_structure import CODED, TICKET  # noqa: E402
 
 # repeated literals (SonarQube S1192)
 HTML_SUFFIX = ".html"
+SITE_CONFIG = "site.json"
 
 PAGES_DIR = ROOT / "site" / "pages"
 
@@ -52,7 +53,7 @@ def title_of(slug: str) -> str:
 
 def real_slugs() -> set[str]:
     """The slugs of the built site: the registered pages and the pages the semantics split generates (one per rule summary)."""
-    config = json.loads((ROOT / "site" / "site.json").read_text(encoding="utf-8"))
+    config = json.loads((ROOT / "site" / SITE_CONFIG).read_text(encoding="utf-8"))
     slugs = {entry["slug"] for entry in config["pages"]}
     for entry in config["pages"]:
         if entry.get("generator") == "semantics-split":
@@ -91,7 +92,7 @@ def build_registered(transform) -> SimpleNamespace:
         if entry.name not in ("site", ".git", "github"):
             os.symlink(entry, root / entry.name)
     shutil.copytree(ROOT / "site", root / "site", ignore=shutil.ignore_patterns("_build"))
-    config_path = root / "site" / "site.json"
+    config_path = root / "site" / SITE_CONFIG
     config = json.loads(config_path.read_text(encoding="utf-8"))
     config["pages"] = transform(config["pages"])
     config_path.write_text(json.dumps(config), encoding="utf-8")
@@ -371,7 +372,7 @@ def language_tree(tmp: Path, omit: tuple[str, ...] = (), keep_base: bool = True)
         if entry.name not in ("site", ".git", "github"):
             os.symlink(entry, root / entry.name)
     shutil.copytree(ROOT / "site", root / "site", ignore=shutil.ignore_patterns("_build", "i18n"))
-    config_path = root / "site" / "site.json"
+    config_path = root / "site" / SITE_CONFIG
     config = json.loads(config_path.read_text(encoding=ENCODING))
     if not keep_base:
         config.pop("baseUrl")
@@ -400,7 +401,7 @@ def language_build(name: str) -> SimpleNamespace:
         if not full:
             write_tree(out, {f"{code}/{LEFTOVER}": "old" for code in LANGUAGE_CODES[1:]})
         errors = bs.build(root, out, BASE_URL if full else None, preview=LANGUAGE_CODES if full else LANGUAGE_CODES[:1])
-        _BUILDS[name] = SimpleNamespace(root=root, out=out, errors=errors, config=json.loads((root / "site" / "site.json").read_text(encoding=ENCODING)))
+        _BUILDS[name] = SimpleNamespace(root=root, out=out, errors=errors, config=json.loads((root / "site" / SITE_CONFIG).read_text(encoding=ENCODING)))
     return _BUILDS[name]
 
 

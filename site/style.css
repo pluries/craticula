@@ -339,5 +339,4 @@ a.card:hover { border-color: var(--accent); }
 
 /* Long German words and unspaced lines wrap in the page text */
 body, .prose, .card, .foot { overflow-wrap: anywhere; }
-.prose pre, .prose th, .prose td { overflow-wrap: normal; }
-.prose th, .prose td { overflow-wrap: break-word; }
+.prose pre { overflow-wrap: normal; }

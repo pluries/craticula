@@ -236,154 +236,197 @@ def _split_declaration(text: str) -> tuple[str, str]:
     return (match.group(1), match.group(2)) if match else (text, "")
 
 
-def render_markdown(source: str, resolve=lambda href, image=False: href, *, require_anchors: bool = False) -> Rendered:
-    """Markdown to HTML for the subset the repository's documents use (headings, paragraphs, lists, tables, fenced code,
-    block quotes, rules, inline code, links, emphasis). Raw HTML in the source is escaped, never passed through.
-    `## Heading {#anchor}` declares the anchor (US2-AS11); with `require_anchors`, a heading without one goes to `Rendered.undeclared`."""
-    source = source.replace("\x00", "\ufffd")  # NUL marks this converter's placeholders
-    out = Rendered(html="")
-    slugs = Slugger()
-    body: list[str] = []
-    lines = source.replace("\r\n", "\n").split("\n")
-    i = 0
+_INDENTED = (" ", "\t")
 
-    def inline(text: str, number: int) -> str:
-        return _inline(text, number, out, resolve)
 
-    while i < len(lines):
-        line = lines[i]
-        number = i + 1
+class _BlockParser:
+    """One pass over the lines of a document: each block kind has its own method, tried in a fixed order; a line none of them
+    takes starts a paragraph. Reads and advances `self.i` (the index of the next line)."""
 
-        if not line.strip():
-            i += 1
-            continue
+    def __init__(self, source: str, resolve, require_anchors: bool) -> None:
+        self.resolve = resolve
+        self.require_anchors = require_anchors
+        self.out = Rendered(html="")
+        self.slugs = Slugger()
+        self.body: list[str] = []
+        self.lines = source.replace("\r\n", "\n").split("\n")
+        self.i = 0
 
+    def inline(self, text: str, number: int) -> str:
+        return _inline(text, number, self.out, self.resolve)
+
+    def parse(self) -> Rendered:
+        blocks = (self._fence, self._heading, self._hrule, self._quote, self._table, self._list)
+        while self.i < len(self.lines):
+            line = self.lines[self.i]
+            if not line.strip():
+                self.i += 1
+            elif not any(block(line, self.i + 1) for block in blocks):
+                self._paragraph(line, self.i + 1)
+        self.out.html = "\n".join(self.body)
+        return self.out
+
+    def _read_fence(self, opener: re.Match) -> str:
+        """The `<pre>` of the fenced block whose opening line is `self.lines[self.i]`; leaves `self.i` after the closing line."""
+        marker, language, indent = opener.group(2), opener.group(3), len(opener.group(1))
+        closing = re.compile(rf"^\s*{re.escape(marker[0])}{{{len(marker)},}}\s*$")
+        self.i += 1
+        code: list[str] = []
+        while self.i < len(self.lines) and not closing.match(self.lines[self.i]):
+            text = self.lines[self.i]
+            code.append(text[indent:] if text[:indent].strip() == "" else text)
+            self.i += 1
+        self.i += 1
+        cls = f' class="language-{html.escape(language)}"' if language else ""
+        return f"<pre><code{cls}>{html.escape(chr(10).join(code), quote=False)}</code></pre>"
+
+    def _fence(self, line: str, number: int) -> bool:
         fence = _FENCE.match(line)
         if fence:
-            marker, language = fence.group(2), fence.group(3)
-            indent = len(fence.group(1))
-            i += 1
-            code: list[str] = []
-            while i < len(lines) and not re.match(rf"^\s*{re.escape(marker[0])}{{{len(marker)},}}\s*$", lines[i]):
-                code.append(lines[i][indent:] if lines[i][:indent].strip() == "" else lines[i])
-                i += 1
-            i += 1
-            cls = f' class="language-{html.escape(language)}"' if language else ""
-            body.append(f"<pre><code{cls}>{html.escape(chr(10).join(code), quote=False)}</code></pre>")
-            continue
+            self.body.append(self._read_fence(fence))
+        return bool(fence)
 
+    def _heading(self, line: str, number: int) -> bool:
         heading = _HEADING.match(line)
-        if heading:
-            level, (text, declared) = len(heading.group(1)), _split_declaration(heading.group(2))
-            plain = re.sub(r"[`*]", "", re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text))
-            anchor = slugs.declare(declared) if declared else slugs(plain)
-            if require_anchors and not declared:
-                out.undeclared.append(plain)
-            out.anchors.add(anchor)
-            out.headings.append((level, plain, anchor))
-            alias = ""
-            rule = _RULE_HEADING.match(text)
-            if rule:  # `## SEM-1. Case sensitivity` is also reachable as `#sem-1`
-                anchor_id = rule_anchor(rule.group(1))
-                out.anchors.add(anchor_id)
-                alias = f'<a id="{anchor_id}"></a>'
-            if level == 1 and not out.title:
-                out.title = re.sub(r"[`*]", "", text)
-            body.append(f'<h{level} id="{anchor}">{alias}{inline(text, number)}</h{level}>')
-            i += 1
-            continue
+        if not heading:
+            return False
+        out = self.out
+        level, (text, declared) = len(heading.group(1)), _split_declaration(heading.group(2))
+        plain = re.sub(r"[`*]", "", re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text))
+        anchor = self.slugs.declare(declared) if declared else self.slugs(plain)
+        if self.require_anchors and not declared:
+            out.undeclared.append(plain)
+        out.anchors.add(anchor)
+        out.headings.append((level, plain, anchor))
+        alias = self._rule_alias(text)
+        if level == 1 and not out.title:
+            out.title = re.sub(r"[`*]", "", text)
+        self.body.append(f'<h{level} id="{anchor}">{alias}{self.inline(text, number)}</h{level}>')
+        self.i += 1
+        return True
 
+    def _rule_alias(self, text: str) -> str:
+        """`## SEM-1. Case sensitivity` is also reachable as `#sem-1`: the empty anchor element that carries it, or ''."""
+        rule = _RULE_HEADING.match(text)
+        if not rule:
+            return ""
+        anchor_id = rule_anchor(rule.group(1))
+        self.out.anchors.add(anchor_id)
+        return f'<a id="{anchor_id}"></a>'
+
+    def _hrule(self, line: str, number: int) -> bool:
         if _RULE.match(line):
-            body.append("<hr>")
-            i += 1
-            continue
+            self.body.append("<hr>")
+            self.i += 1
+            return True
+        return False
 
-        if line.lstrip().startswith(">"):
-            quote: list[str] = []
-            start = i
-            while i < len(lines) and lines[i].lstrip().startswith(">"):
-                quote.append(re.sub(r"^\s*>\s?", "", lines[i]))
-                i += 1
-            inner = render_markdown("\n".join(quote), resolve)
-            out.links.extend((start + n, href) for n, href in inner.links)
-            out.anchors.update(inner.anchors)
-            body.append(f"<blockquote>{inner.html}</blockquote>")
-            continue
+    def _quote(self, line: str, number: int) -> bool:
+        if not line.lstrip().startswith(">"):
+            return False
+        quote: list[str] = []
+        start = self.i
+        while self.i < len(self.lines) and self.lines[self.i].lstrip().startswith(">"):
+            quote.append(re.sub(r"^\s*>\s?", "", self.lines[self.i]))
+            self.i += 1
+        inner = render_markdown("\n".join(quote), self.resolve)
+        self.out.links.extend((start + n, href) for n, href in inner.links)
+        self.out.anchors.update(inner.anchors)
+        self.body.append(f"<blockquote>{inner.html}</blockquote>")
+        return True
 
-        if "|" in line and i + 1 < len(lines) and _TABLE_SEP.match(lines[i + 1]) and "|" in lines[i + 1]:
-            head = _cells(line)
-            i += 2
-            rows: list[tuple[int, list[str]]] = []
-            while i < len(lines) and lines[i].strip() and "|" in lines[i]:
-                rows.append((i + 1, _cells(lines[i])))
-                i += 1
-            parts = ["<table><thead><tr>" + "".join(f"<th>{inline(c, number)}</th>" for c in head) + "</tr></thead><tbody>"]
-            for row_number, cells in rows:
-                parts.append("<tr>" + "".join(f"<td>{inline(c, row_number)}</td>" for c in cells) + "</tr>")
-            parts.append("</tbody></table>")
-            body.append("".join(parts))
-            continue
+    def _table(self, line: str, number: int) -> bool:
+        lines, i = self.lines, self.i
+        if not ("|" in line and i + 1 < len(lines) and _TABLE_SEP.match(lines[i + 1]) and "|" in lines[i + 1]):
+            return False
+        head = _cells(line)
+        self.i += 2
+        rows: list[tuple[int, list[str]]] = []
+        while self.i < len(lines) and lines[self.i].strip() and "|" in lines[self.i]:
+            rows.append((self.i + 1, _cells(lines[self.i])))
+            self.i += 1
+        parts = ["<table><thead><tr>" + "".join(f"<th>{self.inline(c, number)}</th>" for c in head) + "</tr></thead><tbody>"]
+        for row_number, cells in rows:
+            parts.append("<tr>" + "".join(f"<td>{self.inline(c, row_number)}</td>" for c in cells) + "</tr>")
+        parts.append("</tbody></table>")
+        self.body.append("".join(parts))
+        return True
 
-        if _LIST.match(line):
-            # (line, indent, ordered, parts): a part is a list of text lines or an HTML string for a fenced block, in source order
-            items: list[tuple[int, int, bool, list]] = []
-            while i < len(lines):
-                m = _LIST.match(lines[i])
-                if m:
-                    items.append((i + 1, len(m.group(1).expandtabs(4)), m.group(2)[0].isdigit(), [[m.group(3)]]))
-                    i += 1
-                elif not lines[i].strip():
-                    # A blank line stays inside the list only when an indented list item or fenced block follows it.
-                    j = i
-                    while j < len(lines) and not lines[j].strip():
-                        j += 1
-                    if items and j < len(lines) and lines[j].startswith(("  ", "\t")) and (_FENCE.match(lines[j]) or _LIST.match(lines[j])):
-                        i = j
-                    else:
-                        break
-                elif items and lines[i].startswith((" ", "\t")) and _FENCE.match(lines[i]):
-                    opener = _FENCE.match(lines[i])
-                    marker, language, indent = opener.group(2), opener.group(3), len(opener.group(1))
-                    i += 1
-                    code = []
-                    while i < len(lines) and not re.match(rf"^\s*{re.escape(marker[0])}{{{len(marker)},}}\s*$", lines[i]):
-                        code.append(lines[i][indent:] if lines[i][:indent].strip() == "" else lines[i])
-                        i += 1
-                    i += 1
-                    cls = f' class="language-{html.escape(language)}"' if language else ""
-                    items[-1][3].append(f"<pre><code{cls}>{html.escape(chr(10).join(code), quote=False)}</code></pre>")
-                elif lines[i].strip() and lines[i].startswith((" ", "\t")) and items:
-                    if isinstance(items[-1][3][-1], str):  # text after a fenced block is a new paragraph of the item
-                        items[-1][3].append([])
-                    items[-1][3][-1].append(lines[i].strip())
-                    i += 1
-                else:
-                    break
-            body.append(_render_list(items, inline))
-            continue
+    def _list(self, line: str, number: int) -> bool:
+        if not _LIST.match(line):
+            return False
+        # (line, indent, ordered, parts): a part is a list of text lines or an HTML string for a fenced block, in source order
+        items: list[tuple[int, int, bool, list]] = []
+        while self.i < len(self.lines) and self._list_step(items):
+            pass
+        self.body.append(_render_list(items, self.inline))
+        return True
 
+    def _list_step(self, items: list) -> bool:
+        """Consume the list's next line (an item, a continuation, a nested fenced block, a blank inside it); False when the list ends."""
+        text = self.lines[self.i]
+        match = _LIST.match(text)
+        if match:
+            items.append((self.i + 1, len(match.group(1).expandtabs(4)), match.group(2)[0].isdigit(), [[match.group(3)]]))
+            self.i += 1
+            return True
+        if not text.strip():
+            return self._list_blank(items)
+        if not (items and text.startswith(_INDENTED)):
+            return False
+        opener = _FENCE.match(text)
+        if opener:
+            items[-1][3].append(self._read_fence(opener))
+            return True
+        if isinstance(items[-1][3][-1], str):  # text after a fenced block is a new paragraph of the item
+            items[-1][3].append([])
+        items[-1][3][-1].append(text.strip())
+        self.i += 1
+        return True
+
+    def _list_blank(self, items: list) -> bool:
+        """A blank line stays inside the list only when an indented list item or fenced block follows it."""
+        j = self.i
+        while j < len(self.lines) and not self.lines[j].strip():
+            j += 1
+        if items and j < len(self.lines) and self.lines[j].startswith(("  ", "\t")) and (_FENCE.match(self.lines[j]) or _LIST.match(self.lines[j])):
+            self.i = j
+            return True
+        return False
+
+    def _ends_paragraph(self, index: int) -> bool:
+        lines = self.lines
+        text = lines[index]
+        return bool(
+            not text.strip()
+            or _HEADING.match(text) or _FENCE.match(text) or _LIST.match(text)
+            or text.lstrip().startswith(">") or _RULE.match(text)
+            or ("|" in text and index + 1 < len(lines) and _TABLE_SEP.match(lines[index + 1]))
+        )
+
+    def _paragraph(self, line: str, number: int) -> None:
         paragraph = [line.strip()]
-        start = number
-        i += 1
-        while i < len(lines) and lines[i].strip() and not (
-            _HEADING.match(lines[i]) or _FENCE.match(lines[i]) or _LIST.match(lines[i])
-            or lines[i].lstrip().startswith(">") or _RULE.match(lines[i])
-            or ("|" in lines[i] and i + 1 < len(lines) and _TABLE_SEP.match(lines[i + 1]))
-        ):
-            paragraph.append(lines[i].strip())
-            i += 1
+        self.i += 1
+        while self.i < len(self.lines) and not self._ends_paragraph(self.i):
+            paragraph.append(self.lines[self.i].strip())
+            self.i += 1
         joined = " ".join(paragraph)
         opener = _RULE_OPENER.match(joined)
         attribute = ""
         if opener:  # `**GRP-7. A ...**` opens a rule: give the paragraph the anchor `#grp-7`
             anchor_id = rule_anchor(opener.group(1))
-            if anchor_id not in out.anchors:
-                out.anchors.add(anchor_id)
+            if anchor_id not in self.out.anchors:
+                self.out.anchors.add(anchor_id)
                 attribute = f' id="{anchor_id}"'
-        body.append(f"<p{attribute}>{inline(joined, start)}</p>")
+        self.body.append(f"<p{attribute}>{self.inline(joined, number)}</p>")
 
-    out.html = "\n".join(body)
-    return out
+
+def render_markdown(source: str, resolve=lambda href, image=False: href, *, require_anchors: bool = False) -> Rendered:
+    """Markdown to HTML for the subset the repository's documents use (headings, paragraphs, lists, tables, fenced code,
+    block quotes, rules, inline code, links, emphasis). Raw HTML in the source is escaped, never passed through.
+    `## Heading {#anchor}` declares the anchor (US2-AS11); with `require_anchors`, a heading without one goes to `Rendered.undeclared`."""
+    source = source.replace("\x00", "\ufffd")  # NUL marks this converter's placeholders
+    return _BlockParser(source, resolve, require_anchors).parse()
 
 
 def _render_list(items, inline) -> str:
@@ -1664,8 +1707,10 @@ class SiteBuild:
 
     def llms_prefix(self, page: Page) -> str:
         """The address prefix of a page's source file in a language's `llms.txt`: its own folder for a translated page, the English root otherwise."""
-        folder = f"{self.path}/" if page.slug in self.translated else ""
-        return f"{self.base}/{folder}" if self.base else ("" if page.slug in self.translated else "../")
+        own_folder = page.slug in self.translated
+        if self.base:
+            return f"{self.base}/{self.path}/" if own_folder else f"{self.base}/"
+        return "" if own_folder else "../"
 
     def write_listings(self, out_dir: Path, page_texts: dict[str, str], index_entries: list[dict]) -> None:
         if self.language is None:
