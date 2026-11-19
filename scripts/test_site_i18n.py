@@ -419,6 +419,36 @@ class IdentityCode(unittest.TestCase):
         self.assertTrue(mentions(identity(swapped), BLOCK_ONE))
 
 
+class IdentityWrappedInlineCode(unittest.TestCase):
+    """US2-AS2: an inline code span wrapped across a line break is one span, as the renderer reads it (build_site._INLINE_CODE, re.S)."""
+
+    EN = "# A guide\n\n## First step\n\nFor a tree such as `not startswith(a,'x') and (b eq 1\nor c gt 2)`, use `customFilters` here and `and` there.\n"
+    FR = ("# Un guide {#a-guide}\n\n## Première étape {#first-step}\n\nPour un arbre tel que `not startswith(a,'x') and\n(b eq 1 or c gt 2)`, "
+          "utilisez `customFilters` ici et `and` là.\n")
+
+    def check(self, translated: str) -> list[str]:
+        return si.check_identity(LABEL, self.EN, translated, EN_ANCHORS)
+
+    def test_US2_AS2_a_span_wrapped_at_different_places_is_not_a_finding(self):
+        self.assertEqual([], [item for item in self.check(self.FR) if "inline code" in item])
+
+    def test_US2_AS2_a_changed_character_inside_a_wrapped_span_is_a_finding(self):
+        found = [item for item in self.check(self.FR.replace("c gt 2", "c gt 3")) if "inline code" in item]
+        self.assertTrue(any("c gt 3" in item for item in found), found)
+
+    def test_US2_AS2_control_spans_on_one_line_are_unchanged(self):
+        one_line = "`dotnet build`"
+        self.assertEqual([], si.check_identity(LABEL, "# A guide\n\n## First step\n\nRun " + one_line + ".\n",
+                                               "# Un guide {#a-guide}\n\n## Première étape {#first-step}\n\nLancez " + one_line + ".\n", EN_ANCHORS))
+        self.assertTrue(mentions(identity(FR_PAGE.replace(INLINE, "`dotnet builds` sur")), "inline code"))
+
+    def test_US2_AS2_the_real_french_odata_page_has_no_inline_code_finding(self):
+        root = Path(__file__).resolve().parent.parent
+        if not (root / "site" / "i18n" / "fr" / "odata-migration.md").is_file():
+            self.skipTest("site/i18n/fr/odata-migration.md does not exist")
+        self.assertEqual([], [item for item in si.check_page(root, "fr", "odata-migration") if "inline code" in item])
+
+
 class IdentityTargets(unittest.TestCase):
     """T014a, US2-AS3: images, headings, anchors and link targets."""
 
@@ -534,6 +564,42 @@ class GlossaryTerms(unittest.TestCase):
         self.assertEqual(1, len(findings))
         self.assertIn(GERMAN, findings[0])
         self.assertEqual([], glossary("使用GridSchema声明AG Grid。", "zh"))
+
+
+ANCHOR_TABLE = {VERBATIM: [TERM, "AG Grid"], FORBIDDEN: {GERMAN: {"AG Grid": ["AG-Grid"]}}}
+
+
+def anchored(translated: str, english: str, table: dict | None = None) -> list[str]:
+    return glossary(translated, GERMAN, english, ANCHOR_TABLE if table is None else table)
+
+
+class GlossaryAnchors(unittest.TestCase):
+    """US2-AS6: a declared anchor `{#...}` on a heading is an identifier, not prose; the glossary check ignores it in both halves."""
+
+    def test_US2_AS6_a_forbidden_rendering_inside_a_declared_anchor_is_not_a_finding(self):
+        english = "## Supported backends and AG Grid versions {#supported-backends-and-ag-grid-versions}\n"
+        translated = "## Unterstützte Backends und AG Grid Versionen {#supported-backends-and-ag-grid-versions}\n"
+        self.assertEqual([], anchored(translated, english))
+
+    def test_US2_AS6_a_forbidden_rendering_in_prose_is_still_a_finding(self):
+        english = "## Supported {#supported-backends-and-ag-grid-versions}\n\nRequests from AG Grid.\n"
+        translated = "## Unterstützt {#supported-backends-and-ag-grid-versions}\n\nAnfragen von AG-Grid.\n"
+        findings = anchored(translated, english, {VERBATIM: [], FORBIDDEN: {GERMAN: {"AG Grid": ["AG-Grid"]}}})
+        self.assertEqual(1, len(findings))
+        self.assertIn("AG-Grid", findings[0])
+
+    def test_US2_AS6_a_verbatim_term_that_only_occurs_in_an_anchor_is_missing(self):
+        english = "## Overview {#gridschema-overview}\n\nDeclare a GridSchema.\n"
+        translated = "## Überblick {#gridschema-overview}\n\nDeklarieren Sie ein Schema.\n"
+        findings = anchored(translated, english, {VERBATIM: [TERM], FORBIDDEN: {GERMAN: {}}})
+        self.assertEqual(1, len(findings))
+        self.assertIn(TERM, findings[0])
+
+    def test_US2_AS6_without_anchors_the_check_is_unchanged(self):
+        table = {VERBATIM: [TERM], FORBIDDEN: {GERMAN: {"AG Grid": ["AG-Grid"]}}}
+        self.assertEqual([], anchored("## Überblick\n\nEin GridSchema für AG Grid.\n", "## Overview\n\nA GridSchema.\n", table))
+        self.assertTrue(anchored("## Überblick\n\nEin GridSchema für AG-Grid.\n", "## Overview\n\nA GridSchema.\n", table))
+        self.assertTrue(anchored("## Überblick\n\nEin Schema.\n", "## Overview\n\nA GridSchema.\n", table))
 
 
 # ---------------------------------------------------------------- T014c: home template, quickstarts, scope (US3-AS1, AS2, AS5)
