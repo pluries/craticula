@@ -75,7 +75,7 @@ def where_it_comes_from(text: str) -> str:
 
 def registered_entry(slug: str, title: str, group: str, description: str) -> dict:
     return {"slug": slug, "title": title, "source": f"site/pages/{slug}.md", "group": group, "description": description,
-            "authored": True, "reviewed": FAKE_REVIEW}
+            "authored": True, "reviewed": FAKE_REVIEW, "scope": SCOPES[0]}
 
 
 def build_registered(transform) -> SimpleNamespace:

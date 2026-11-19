@@ -12,6 +12,46 @@
     "Configuration": "The GridSchema, limits, and dialects and providers.",
     "Reference": "The specification, one page for each rule of how requests behave, and both schemas."
   },
+  "languages": {
+    "en": {
+      "name": "English",
+      "path": "",
+      "lang": "en"
+    },
+    "fr": {
+      "name": "Français",
+      "path": "fr",
+      "lang": "fr",
+      "enabled": false
+    },
+    "de": {
+      "name": "Deutsch",
+      "path": "de",
+      "lang": "de",
+      "enabled": false
+    },
+    "it": {
+      "name": "Italiano",
+      "path": "it",
+      "lang": "it",
+      "enabled": false
+    },
+    "es": {
+      "name": "Español",
+      "path": "es",
+      "lang": "es",
+      "enabled": false
+    },
+    "zh": {
+      "name": "中文",
+      "path": "zh",
+      "lang": "zh-Hans",
+      "enabled": false
+    }
+  },
+  "i18n": {
+    "complete": false
+  },
   "ruleSource": "spec/semantics.md",
   "ruleIdPrefixes": [
     "SEM",
@@ -29,7 +69,8 @@
       "title": "Home",
       "source": "site/pages/index.md",
       "description": "Craticula turns AG Grid server-side requests into safe native queries.",
-      "template": "site/home.html"
+      "template": "site/home.html",
+      "scope": "translated"
     },
     {
       "slug": "what-is-craticula",
@@ -38,7 +79,8 @@
       "group": "Concepts",
       "description": "What Craticula compiles, what it never does, and where it stands.",
       "authored": true,
-      "reviewed": "2026-11-03"
+      "reviewed": "2026-11-03",
+      "scope": "translated"
     },
     {
       "slug": "request-to-query",
@@ -47,7 +89,8 @@
       "group": "Concepts",
       "description": "The path from an AG Grid request to a statement with parameters.",
       "authored": true,
-      "reviewed": "2026-11-03"
+      "reviewed": "2026-11-03",
+      "scope": "translated"
     },
     {
       "slug": "strict-and-lenient",
@@ -56,7 +99,8 @@
       "group": "Concepts",
       "description": "What the two schema modes do with columns the schema does not allow.",
       "authored": true,
-      "reviewed": "2026-11-03"
+      "reviewed": "2026-11-03",
+      "scope": "translated"
     },
     {
       "slug": "safety-model",
@@ -65,7 +109,8 @@
       "group": "Concepts",
       "description": "How values, identifiers and limits keep a compiled query safe, and what is left to you.",
       "authored": true,
-      "reviewed": "2026-11-03"
+      "reviewed": "2026-11-03",
+      "scope": "translated"
     },
     {
       "slug": "quickstart-csharp",
@@ -73,7 +118,8 @@
       "source": "site/pages/quickstart-csharp.md",
       "group": "Guides",
       "description": "Compile a grid request to SQL and MongoDB from C#.",
-      "subgroup": "Quickstarts"
+      "subgroup": "Quickstarts",
+      "scope": "translated"
     },
     {
       "slug": "quickstart-typescript",
@@ -81,7 +127,8 @@
       "source": "site/pages/quickstart-typescript.md",
       "group": "Guides",
       "description": "What a TypeScript port will follow.",
-      "subgroup": "Quickstarts"
+      "subgroup": "Quickstarts",
+      "scope": "translated"
     },
     {
       "slug": "quickstart-python",
@@ -89,7 +136,8 @@
       "source": "site/pages/quickstart-python.md",
       "group": "Guides",
       "description": "What a Python port will follow.",
-      "subgroup": "Quickstarts"
+      "subgroup": "Quickstarts",
+      "scope": "translated"
     },
     {
       "slug": "quickstart-go",
@@ -97,21 +145,24 @@
       "source": "site/pages/quickstart-go.md",
       "group": "Guides",
       "description": "What a Go port will follow.",
-      "subgroup": "Quickstarts"
+      "subgroup": "Quickstarts",
+      "scope": "translated"
     },
     {
       "slug": "index-guidance",
       "title": "Index guidance",
       "source": "site/pages/index-guidance.md",
       "group": "Guides",
-      "description": "Which database indexes and settings keep compiled queries fast and exact."
+      "description": "Which database indexes and settings keep compiled queries fast and exact.",
+      "scope": "translated"
     },
     {
       "slug": "odata-migration",
       "title": "Migrating from OData",
       "source": "site/pages/odata-migration.md",
       "group": "Guides",
-      "description": "Move a grid from OData to compiled queries and see what changes."
+      "description": "Move a grid from OData to compiled queries and see what changes.",
+      "scope": "translated"
     },
     {
       "slug": "paging-and-sorting",
@@ -120,7 +171,8 @@
       "group": "Guides",
       "description": "How rows are windowed and ordered, and why paging is deterministic.",
       "authored": true,
-      "reviewed": "2026-11-03"
+      "reviewed": "2026-11-03",
+      "scope": "translated"
     },
     {
       "slug": "grouping-and-aggregation",
@@ -129,7 +181,8 @@
       "group": "Guides",
       "description": "How a grouped grid asks for one level at a time and how aggregations behave.",
       "authored": true,
-      "reviewed": "2026-11-03"
+      "reviewed": "2026-11-03",
+      "scope": "translated"
     },
     {
       "slug": "csv-export",
@@ -138,7 +191,8 @@
       "group": "Guides",
       "description": "Stream a grid's rows to CSV with the same request model and the same checks.",
       "authored": true,
-      "reviewed": "2026-11-03"
+      "reviewed": "2026-11-03",
+      "scope": "translated"
     },
     {
       "slug": "relational-adapters",
@@ -147,7 +201,8 @@
       "group": "Guides",
       "description": "What the two relational adapters give you, what they need and what they never do.",
       "authored": true,
-      "reviewed": "2026-11-03"
+      "reviewed": "2026-11-03",
+      "scope": "translated"
     },
     {
       "slug": "search-adapters",
@@ -156,7 +211,8 @@
       "group": "Guides",
       "description": "Run compiled MongoDB and OpenSearch queries with the optional adapters, including deep paging.",
       "authored": true,
-      "reviewed": "2026-11-03"
+      "reviewed": "2026-11-03",
+      "scope": "translated"
     },
     {
       "slug": "the-gridschema",
@@ -165,7 +221,8 @@
       "group": "Configuration",
       "description": "The schema that lists what a grid may touch, and which of its flags are enforced today.",
       "authored": true,
-      "reviewed": "2026-11-03"
+      "reviewed": "2026-11-03",
+      "scope": "translated"
     },
     {
       "slug": "limits",
@@ -174,7 +231,8 @@
       "group": "Configuration",
       "description": "The default resource limits, what each one does and how to change them.",
       "authored": true,
-      "reviewed": "2026-11-03"
+      "reviewed": "2026-11-03",
+      "scope": "translated"
     },
     {
       "slug": "dialects-and-providers",
@@ -183,21 +241,24 @@
       "group": "Configuration",
       "description": "How each database engine differs in quoting, paging, null order and case-insensitive matching.",
       "authored": true,
-      "reviewed": "2026-11-03"
+      "reviewed": "2026-11-03",
+      "scope": "translated"
     },
     {
       "slug": "overview",
       "title": "Overview",
       "source": "README.md",
       "group": "Reference",
-      "description": "What Craticula is, what it compiles and where it stands."
+      "description": "What Craticula is, what it compiles and where it stands.",
+      "scope": "translated"
     },
     {
       "slug": "spec",
       "title": "The spec",
       "source": "spec/README.md",
       "group": "Reference",
-      "description": "The specification, its fixtures and how to read them."
+      "description": "The specification, its fixtures and how to read them.",
+      "scope": "english"
     },
     {
       "slug": "semantics",
@@ -206,7 +267,8 @@
       "group": "Reference",
       "generator": "semantics-split",
       "summaries": "site/summaries.json",
-      "description": "The rules every compiler follows, one page for each topic."
+      "description": "The rules every compiler follows, one page for each topic.",
+      "scope": "english"
     },
     {
       "slug": "grid-schema",
@@ -214,7 +276,8 @@
       "group": "Reference",
       "description": "Every member of the grid schema.",
       "generator": "schema-reference",
-      "schema": "spec/grid-schema.schema.json"
+      "schema": "spec/grid-schema.schema.json",
+      "scope": "english"
     },
     {
       "slug": "ir-schema",
@@ -222,14 +285,16 @@
       "group": "Reference",
       "description": "Every member of the query intermediate representation.",
       "generator": "schema-reference",
-      "schema": "spec/ir.schema.json"
+      "schema": "spec/ir.schema.json",
+      "scope": "english"
     },
     {
       "slug": "performance",
       "title": "Performance",
       "source": "site/pages/performance.md",
       "group": "Reference",
-      "description": "Measured compile time and load results, each number linked to its raw file."
+      "description": "Measured compile time and load results, each number linked to its raw file.",
+      "scope": "english"
     }
   ]
 }

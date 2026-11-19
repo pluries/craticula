@@ -67,6 +67,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+import site_i18n
+
 # The private paths of scripts/publish-github.sh (its PRIVATE array): what the public mirror does not carry, so a link to one is
 # dead there. test_build_site.py pins this tuple to the real array where that script exists (the private repository).
 PRIVATE_PATHS = ("docs", ".claude", "CLAUDE.md", ".mcp.json", ".githooks", ".azuredevops", ".sonarlint", ".vscode",
@@ -398,7 +400,7 @@ class Page:
     reviewed: str | None = None  # #3555, DS-24: ISO date of the review of an authored page
     summary: str = ""  # #3555, DS-10: the lead paragraph of a split semantics page
     alias: str = ""  # #3555: the rule anchor (`sem-1`) a split page keeps next to its title
-    scope: str = "translated"  # spec 004 FR-027: "translated" or "english"; SiteBuild.load_pages reads it (T004)
+    scope: str = "translated"  # spec 004-site-languages FR-027: "translated" or "english", read from the page entry of site.json
 
 
 def _layout(pages: list["Page"]) -> dict[str, list]:
@@ -917,6 +919,9 @@ def load_config(root: Path) -> dict:
     slugs = [p["slug"] for p in config["pages"]]
     if len(set(slugs)) != len(slugs) or "index" not in slugs:
         raise BuildError(f"{path}: page slugs must be unique and include 'index'")
+    problem = site_i18n.config_problem(config, slugs)
+    if problem:
+        raise BuildError(f"{path}: {problem}")
     if not isinstance(config["ruleIdPrefixes"], list) or not all(isinstance(x, str) and re.fullmatch(r"[A-Z]{2,5}", x) for x in config["ruleIdPrefixes"]):
         raise BuildError(f"{path}: 'ruleIdPrefixes' must be a list of upper-case prefixes such as \"SEM\"")
     if config["ruleIdPrefixes"] and not config["ruleSource"]:
@@ -1229,7 +1234,8 @@ class SiteBuild:
     def load_pages(self) -> None:
         for entry in self.config["pages"]:
             page = Page(entry["slug"], entry["title"], entry["source"], entry.get("generator"), group=entry.get("group"), template=entry.get("template"),
-                        description=entry["description"], subgroup=entry.get("subgroup"), authored=entry.get("authored") is True, reviewed=entry.get("reviewed"))
+                        description=entry["description"], subgroup=entry.get("subgroup"), authored=entry.get("authored") is True, reviewed=entry.get("reviewed"),
+                        scope=entry["scope"])
             self.pages.append(page)
             if page.generator == "semantics-split":
                 self.expand_split(page, entry["summaries"])
@@ -1249,7 +1255,7 @@ class SiteBuild:
                 if CODED_REFERENCE.search(value):
                     self.errors.append(f"site/site.json: page '{part.slug}' ('{part.title}'): the {label} holds a coded reference")
             member = Page(part.slug, part.title, page.source, "semantics-part", group="Reference", subgroup=SPLIT_SUBGROUP,
-                          description=part.description, summary=part.summary, alias=part.alias)
+                          description=part.description, summary=part.summary, alias=part.alias, scope=page.scope)
             self.text_cache[member.slug] = part.markdown
             self.member_original[member.slug] = part.original
             self.pages.append(member)
