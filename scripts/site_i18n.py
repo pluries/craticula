@@ -523,7 +523,7 @@ _FENCE_OPEN = re.compile(r"^(\s*)(`{3,}|~{3,})\s*(\S*)")
 _HEADING_LINE = re.compile(r"^(#{1,6})\s+(.*?)(?:\s+#+)?\s*$")
 _DECLARED = re.compile(r"^(.*?)\s*\{#([\w-]+)\}$")
 _DECLARATION = re.compile(r"\{#[\w-]*\}")
-_INLINE_CODE = re.compile(r"(`+)(.+?)\1")
+_INLINE_CODE = re.compile(r"(`+)(.+?)\1", re.S)
 _IMAGE = re.compile(r"!\[[^\]]*\]\(([^)\s]+)[^)]*\)")
 _LINK = re.compile(r"(?<!!)\[[^\]]*\]\(([^)\s]+)[^)]*\)")
 _URL = re.compile(r"https?://[^\s<>)\]\"'`]+")
@@ -661,12 +661,17 @@ def check_identity(label: str, english: str, translated: str, english_anchors: l
     source, target = _scan(english), _scan(translated)
     found = _block_findings(source.blocks, target.blocks)
     before, after = "\n".join(source.prose), "\n".join(target.prose)
-    found += _difference("inline code", [item[1].strip() for item in _INLINE_CODE.findall(before)], [item[1].strip() for item in _INLINE_CODE.findall(after)])
+    found += _difference("inline code", _code_spans(before), _code_spans(after))
     for word, pattern in (("image", _IMAGE), ("link", _LINK)):
         found += _difference(word, [resolve(item) for item in pattern.findall(before)], [resolve(item) for item in pattern.findall(after)])
     found += [f"URL: the translation adds {url}" for url in sorted(_urls(translated) - _urls(english))]
     found += _heading_findings(_headings(source.prose), _headings(target.prose), english_anchors)
     return [f"{label}: {finding}" for finding in found]
+
+
+def _code_spans(text: str) -> list[str]:
+    """Inline code spans as the renderer reads them (across line breaks), whitespace collapsed so a re-wrapped span is equal."""
+    return [" ".join(item[1].split()) for item in _INLINE_CODE.findall(text)]
 
 
 def _numbers(text: str) -> set[str]:
@@ -692,11 +697,19 @@ def _has_token(text: str, term: str) -> bool:
     return re.search(rf"(?<![A-Za-z0-9_]){re.escape(term)}(?![A-Za-z0-9_])", text, re.I) is not None
 
 
+_HEADING_ANCHOR = re.compile(r"^(#{1,6}\s.*?)\s*\{#[^}]*\}\s*$", re.M)
+
+
+def _without_anchors(text: str) -> str:
+    return _HEADING_ANCHOR.sub(r"\1", text)
+
+
 def check_glossary(label: str, lang: str, english: str, translated: str, glossary: dict) -> list[str]:
     """`glossary` is `{"verbatim": [term...], "forbidden": {lang: {term: [word...]}}}`. A verbatim term in `english` must be in `translated`
     and no forbidden word of `lang` may be, both as a whole token without regard to case (a token is bounded by anything but an ASCII
     letter, digit or underscore, so `GridSchema` next to Chinese characters counts). A `lang` that has no key in `forbidden` (an empty
     object is an entry) is one finding naming the language."""
+    english, translated = _without_anchors(english), _without_anchors(translated)
     found = [f"the term '{term}' must stay as written in English" for term in glossary.get("verbatim", [])
              if _has_token(english, term) and not _has_token(translated, term)]
     forbidden = glossary.get("forbidden", {})
