@@ -253,6 +253,19 @@
 
   const emptyMessage = () => (terms(search.input.value).length === 0 ? T.search_empty : T.search_none);
 
+  const addEnglishLink = () => {
+    if (T.search_english && T.search_english_url) {
+      const item = document.createElement("li");
+      const link = document.createElement("a");
+      item.className = "search-note";
+      item.setAttribute("role", "presentation");
+      link.href = T.search_english_url;
+      link.textContent = T.search_english;
+      item.appendChild(link);
+      search.list.appendChild(item);
+    }
+  };
+
   const render = () => {
     if (search.failed) {
       note(T.search_unavailable);
@@ -265,11 +278,13 @@
     const found = find(search.input.value);
     if (found.length === 0) {
       note(emptyMessage());
+      addEnglishLink();
       return;
     }
     search.list.textContent = "";
     const items = found.map((result, position) => hitItem(result, position));
     search.list.append(...items);
+    addEnglishLink();
     search.hits = items.map((item) => item.firstChild);
     search.selected = 0;
     search.status.textContent = `${found.length} ${found.length === 1 ? T.result_one : T.result_other}`;

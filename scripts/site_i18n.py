@@ -48,7 +48,10 @@ SCOPES = ("translated", "english")
 LANGUAGE_FOLDERS = ("fr", "de", "it", "es", "zh")
 STATUSES = ("machine-drafted", "approved")
 REQUIRED_KEYS = (TRANSLATES, "title", "description", FINGERPRINT, "drafter", "drafted_on", STATUS)
-UI_MAPS = (GROUPS, "group_names", "subgroups", "theme_names")
+THEME_MAP = "theme_names"
+UI_MAPS = (GROUPS, "group_names", "subgroups", THEME_MAP)
+NESTED_MAPS = UI_MAPS[1:]
+THEME_KEYS = ("auto", "light", "dark")
 SCRIPT_KEYS = ("copy", "copied", "copy_failed", "copy_aria", "search_aria", "search_label", "search_placeholder", "search_empty",
                "search_none", "search_loading", "search_unavailable", "search_english", "search_english_url", "result_one", "result_other", "theme_aria", "theme_title", "theme_names")
 _HEADER_LINE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*):[ \t]*(.*)$")
@@ -166,10 +169,25 @@ def _update_header(path: Path, values: dict[str, str]) -> None:
         handle.write(_serialise(parsed, form))
 
 
+def _document_names(slug: str) -> list[str]:
+    """The files of one document: its Markdown and, for the home page, its template (`home.html`)."""
+    return [f"{slug}.md"] + ([HOME_FILE] if slug == "index" else [])
+
+
 def _page_files(folder: Path, slug: str) -> list[Path]:
-    """The files of one document: its Markdown and, for the home page, its template."""
-    names = [f"{slug}.md"] + (["home.html"] if slug == "index" else [])
-    return [folder / name for name in names if (folder / name).is_file()]
+    """The files of one document that exist."""
+    return [folder / name for name in _document_names(slug) if (folder / name).is_file()]
+
+
+def _absent(root: Path, lang: str, slug: str) -> list[str]:
+    """The names of the files of a document that a language does not have; the document is missing when there is any."""
+    return [name for name in _document_names(slug) if not (_folder(root, lang) / name).is_file()]
+
+
+def _require_declared(root: Path, lang: str) -> None:
+    """`lang` must be a translated language of `site/site.json`; it becomes a folder name, so nothing else may reach a path."""
+    if lang == ENGLISH or lang not in _declared(_read_ui(root / SITE_FILE)):
+        raise I18nError(f"the language '{lang}' is not declared in {SITE_FILE} `{LANGUAGES}`")
 
 
 def _folder(root: Path, lang: str) -> Path:
@@ -198,6 +216,7 @@ def stamp(root: Path, lang: str, slug: str, today: str) -> str:
     (and `home.html` for `index`), and set `status: machine-drafted`; every other key and the body stay as they are. Returns the
     fingerprint written. Raises I18nError for a slug the site does not have or a translation file that does not exist."""
     from build_site import BuildError, SiteBuild, load_config  # build_site imports this module
+    _require_declared(root, lang)
     folder = _folder(root, lang)
     if not (folder / f"{slug}.md").is_file():
         raise I18nError(f"{SITE}/{I18N}/{lang}/{slug}.md does not exist")
@@ -238,13 +257,6 @@ class Translations:
         if header[TRANSLATES] != slug:
             raise I18nError(f"{SITE}/{I18N}/{lang}/{slug}.md: `{TRANSLATES}` says '{header[TRANSLATES]}', the file is the page '{slug}'")
         return replace(english, title=header["title"], description=header["description"], rendered=None)
-
-    def is_stale(self, lang: str, slug: str, current: str) -> bool:
-        """Whether the file's recorded English fingerprint is not `current`; a file that cannot be read is stale."""
-        try:
-            return _read(self.root, lang, f"{slug}.md").header.get(FINGERPRINT) != current
-        except (I18nError, OSError):
-            return True
 
     def body(self, lang: str, slug: str) -> str:
         """The page text of a translation file, without its header. Raises I18nError when the file cannot be read."""
@@ -308,7 +320,17 @@ def load_ui(root: Path, lang: str, reference: dict | None = None) -> dict:
         wrong = [key for key in UI_MAPS if key in reference and not isinstance(ui[key], dict)]
         if wrong:
             raise I18nError(f"{ui_path(root, lang).relative_to(root).as_posix()}: {', '.join(wrong)} must be an object")
+        _check_nested(ui_path(root, lang).relative_to(root).as_posix(), ui, reference)
     return ui
+
+
+def _check_nested(shown: str, ui: dict, reference: dict) -> None:
+    """The names of the themes, of the groups and of the sub-groups: a translation that leaves one out would show an English label or none."""
+    for name in NESTED_MAPS:
+        expected = THEME_KEYS if name == THEME_MAP else reference.get(name, {})
+        missing = [key for key in expected if key not in ui[name]]
+        if missing:
+            raise I18nError(f"{shown}: {name} misses the key(s): {', '.join(missing)}")
 
 
 def script_ui(ui: dict) -> str:
@@ -346,6 +368,17 @@ def _scope_problem(entry: object) -> str | None:
     return f"page '{entry.get('slug')}': '{SCOPE}' must be 'translated' or 'english'"
 
 
+def _clash_problem(config: dict, slugs: list[str]) -> str | None:
+    """Two languages that write into one folder, or a page that takes the name of a language folder."""
+    owners: dict[str, str] = {}
+    for code, entry in _declared(config).items():
+        path = entry.get(PATH, code)
+        if code != ENGLISH and owners.setdefault(path, code) != code:
+            return f"languages '{owners[path]}' and '{code}' both write into the path '{path}'; each needs its own `{PATH}`"
+    clash = sorted(set(slugs) & language_prefixes(config))
+    return f"page slug '{clash[0]}' is also the prefix of a language folder; a page cannot take a language's name" if clash else None
+
+
 def config_problem(config: dict, slugs: list[str]) -> str | None:
     """Why the `languages` and `i18n` keys of site.json or a page's `scope` cannot be used (or a page slug takes a language
     folder), or None. `slugs` are the page slugs (US1-AS13, FR-027)."""
@@ -356,9 +389,7 @@ def config_problem(config: dict, slugs: list[str]) -> str | None:
     options = config.get(I18N, {})
     if not isinstance(options, dict) or not isinstance(options.get("complete", False), bool):
         problems.append(f"'{I18N}' must be an object whose 'complete' is true or false")
-    clash = sorted(set(slugs) & language_prefixes(config)) if not any(problems) else []
-    if clash:
-        problems.append(f"page slug '{clash[0]}' is also the prefix of a language folder; a page cannot take a language's name")
+    problems.append(None if any(problems) else _clash_problem(config, slugs))
     problems += [_scope_problem(entry) for entry in config.get("pages", [])]
     return next((problem for problem in problems if problem), None)
 
@@ -384,10 +415,15 @@ def languages_to_build(config: dict, preview: tuple[str, ...] = ()) -> list[str]
 
 
 def clear_language_folders(out_dir: Path, config: dict) -> None:
-    """A language that is disabled, or a page that is removed, must leave nothing in the output."""
-    for name in language_prefixes(config):
-        if SAFE_NAME.fullmatch(name):
-            shutil.rmtree(out_dir / name, ignore_errors=True)
+    """A language that is disabled, or a page that is removed, must leave nothing in the output. Only the folders of the declared languages
+    go; a folder that is a symbolic link is refused before anything is removed, so the build never writes through it."""
+    folders = [(code, out_dir / language_path(config, code)) for code in _declared(config) if code != ENGLISH]
+    for code, folder in folders:
+        if folder.is_symlink():
+            raise I18nError(f"language '{code}': {folder.as_posix()} is a symbolic link; remove it before building")
+    for _, folder in folders:
+        if SAFE_NAME.fullmatch(folder.name):
+            shutil.rmtree(folder, ignore_errors=True)
 
 
 def address(base: str, path: str, slug: str) -> str:
@@ -495,6 +531,8 @@ _NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
 _TABLE_RULE = re.compile(r"^\s*\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)+\|?\s*$")
 _LIST_ITEM = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
 _TAG_NAME = re.compile(r"<([a-zA-Z][a-zA-Z0-9-]*)")
+_START_TAG = re.compile(r"""<([a-zA-Z][a-zA-Z0-9-]*)((?:"[^"]*"|'[^']*'|[^>"'])*)>""")
+_ATTRIBUTE_NAME = re.compile(r"""([^\s"'>/=]+)(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'>]+))?""")
 _TARGET_ATTRIBUTE = re.compile(r"\b(?:href|src)=\"([^\"]*)\"")
 _PRE, _CODE = re.compile(r"<pre\b[^>]*>(.*?)</pre>", re.S), re.compile(r"<code\b[^>]*>(.*?)</code>", re.S)
 _SCRIPT = re.compile(r"<script\b", re.I)
@@ -677,9 +715,25 @@ def _element_texts(pattern: re.Pattern, text: str) -> list[str]:
     return [found.strip() for found in pattern.findall(text)]
 
 
+def _attribute_sets(markup: str) -> list[tuple[str, frozenset[str]]]:
+    """Each start tag in document order with the lower-cased names of its attributes, however they are quoted."""
+    return [(tag.lower(), frozenset(name.lower() for name in _ATTRIBUTE_NAME.findall(attributes))) for tag, attributes in _START_TAG.findall(markup)]
+
+
+def _attribute_findings(source: str, target: str) -> list[str]:
+    english, translated = _attribute_sets(source), _attribute_sets(target)
+    if [tag for tag, _ in english] != [tag for tag, _ in translated]:
+        return []
+    found = []
+    for (tag, before), (_, after) in zip(english, translated):
+        if before != after:
+            found.append(f"attribute(s) of <{tag}> differ: the translation lacks {sorted(before - after)} and adds {sorted(after - before)}")
+    return found
+
+
 def check_template(label: str, english_html: str, translated_html: str) -> list[str]:
     """`home.html` of a language against `site/home.html`. Findings start with `label`, name `home.html` and the thing: `structure` (the
-    sequence of element names), `<pre>`, `<code>`, `href and src`, `number` (the digit strings of the visible text), a `<script>` or a URL
+    sequence of element names), `attribute` (the names of the attributes of each element), `<pre>`, `<code>`, `href and src`, `number` (the digit strings of the visible text), a `<script>` or a URL
     English lacks."""
     source, target = _markup(english_html), _markup(translated_html)
     found: list[str] = []
@@ -692,6 +746,7 @@ def check_template(label: str, english_html: str, translated_html: str) -> list[
         found.append("href and src differ from the English template")
     if _numbers(_visible_html(source)) != _numbers(_visible_html(target)):
         found.append("number differs from the English template")
+    found += _attribute_findings(source, target)
     if len(_SCRIPT.findall(target)) > len(_SCRIPT.findall(source)):
         found.append("a <script> is added")
     found += [f"the address {url} is added" for url in sorted(_urls(target) - _urls(source))]
@@ -734,7 +789,7 @@ def documents(root: Path) -> list[str]:
 
 def missing_pages(root: Path, lang: str) -> list[str]:
     """The documents that have no `site/i18n/<lang>/<slug>.md`, in page order."""
-    return [slug for slug in documents(root) if not (_folder(root, lang) / f"{slug}.md").is_file()]
+    return [slug for slug in documents(root) if _absent(root, lang, slug)]
 
 
 class _English:
@@ -919,6 +974,9 @@ def _approval_source(root: Path, lang: str, document: str) -> str:
         return ui_source_fingerprint(root)
     if document not in documents(root):
         raise I18nError(f"the site has no document '{document}'")
+    absent = _absent(root, lang, document)
+    if absent:
+        raise I18nError(f"{lang}/{document}: {', '.join(absent)} does not exist; the document is missing")
     current = _English(root).fingerprint(document)
     for header in _headers(root, lang, document):
         if header.get(FINGERPRINT) != current:
@@ -931,6 +989,7 @@ def approve(root: Path, lang: str, document: str, by: str, today: str) -> str:
     `approvers.txt`, or when the line typed at the prompt is not `<lang>/<document>`. Otherwise sets `status: approved` in the header(s)
     of the document and writes its record (`APPROVAL_KEYS`) into `approvals.json`, replacing the record of the same language and document;
     returns the English fingerprint. `document` may be `ui.json`."""
+    _require_declared(root, lang)
     if not sys.stdin.isatty():
         raise I18nError("approve needs a terminal: it asks for a typed confirmation")
     if by not in _approvers(root):
@@ -952,7 +1011,7 @@ def approve(root: Path, lang: str, document: str, by: str, today: str) -> str:
 
 def _state(root: Path, lang: str, slug: str, current: str, records: list[dict]) -> str:
     """The first word of `STATE_WORDS` that applies to one document of a language."""
-    if not (_folder(root, lang) / f"{slug}.md").is_file():
+    if _absent(root, lang, slug):
         return STATE_WORDS[0]
     try:
         headers = _headers(root, lang, slug)
@@ -961,7 +1020,7 @@ def _state(root: Path, lang: str, slug: str, current: str, records: list[dict]) 
     if any(header.get(FINGERPRINT) != current for header in headers):
         return STATE_WORDS[1]
     own = translation_fingerprint(root, lang, slug)
-    if headers[0].get(STATUS) == APPROVED and any(record.get(FINGERPRINT) == current and record.get(HASH_KEY) == own
+    if all(header.get(STATUS) == APPROVED for header in headers) and any(record.get(FINGERPRINT) == current and record.get(HASH_KEY) == own
                                                    for record in _of_document(records, f"{lang}/{slug}")):
         return STATE_WORDS[3]
     return STATE_WORDS[2]
@@ -992,6 +1051,12 @@ def _ui_state(root: Path, lang: str, records: list[dict]) -> str | None:
     return f"{lang}/{UI_FILE}: {NOT_APPROVED}"
 
 
+def _gate_words(root: Path, lang: str, slug: str, state: str) -> str:
+    if state == STATE_WORDS[0]:
+        return f"{state} ({', '.join(_absent(root, lang, slug))})"
+    return NOT_APPROVED if state == STATE_WORDS[2] else state
+
+
 def check_enable_gate(root: Path, lang: str) -> list[str]:
     """FR-024, US4-AS4, AS5: one finding per document of `lang` (`<lang>/<slug>: missing`, `: stale` or `: not approved`) and one for
     `<lang>/ui.json: not approved` when its record is missing, stale or does not match the file. No finding when all are current and approved."""
@@ -1000,7 +1065,7 @@ def check_enable_gate(root: Path, lang: str) -> list[str]:
     for slug in documents(root):
         state = _state(root, lang, slug, english.fingerprint(slug), records)
         if state != APPROVED:
-            found.append(f"{lang}/{slug}: {NOT_APPROVED if state == STATE_WORDS[2] else state}")
+            found.append(f"{lang}/{slug}: " + _gate_words(root, lang, slug, state))
     ui = _ui_state(root, lang, records)
     return found + ([ui] if ui else [])
 

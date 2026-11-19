@@ -86,6 +86,14 @@ MAX_TOC_LABEL = 60  # DS-9
 ADDENDUM = "Addendum — "
 SPLIT_SUBGROUP = "Semantics"
 LLMS_NAME, LLMS_FULL_NAME = "llms.txt", "llms-full.txt"
+I18N_DIR = "site/i18n"
+
+
+def language_file(code: str, name: str) -> str:
+    """The repository path of a file of a language's translation folder."""
+    return f"{I18N_DIR}/{code}/{name}"
+
+
 GROUP_NAMES, SUBGROUPS = "group_names", "subgroups"  # the tables of the interface text that name the groups and the subgroups
 
 
@@ -1277,6 +1285,7 @@ class LanguageContext:
     translations: site_i18n.Translations
     pages: dict[str, "Page"] = field(default_factory=dict)
     bodies: dict[str, str] = field(default_factory=dict)
+    templates: dict[str, str] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
 
 
@@ -1336,7 +1345,7 @@ class SiteBuild:
         return [page for page in self.pages if self.language is None or page.slug in self.translated]
 
     def source_label(self, page: Page) -> str:
-        return f"site/i18n/{self.code}/{page.slug}.md" if page.slug in self.translated else page.source
+        return language_file(self.code, f"{page.slug}.md") if page.slug in self.translated else page.source
 
     def load_pages(self) -> None:
         for entry in self.config["pages"]:
@@ -1544,7 +1553,10 @@ class SiteBuild:
             folder.mkdir(parents=True, exist_ok=True)
             return folder
         self.scripts_ready = self.write_assets(out_dir)
-        site_i18n.clear_language_folders(out_dir, self.config)
+        try:
+            site_i18n.clear_language_folders(out_dir, self.config)
+        except site_i18n.I18nError as error:
+            raise BuildError(str(error)) from error
         self.versions = asset_versions(out_dir)
         return out_dir
 
@@ -1573,10 +1585,8 @@ class SiteBuild:
     def template_of(self, page: Page, templates: dict[str, str]) -> str:
         """The template of a page; a translated home page uses its language's `home.html` when the language has one."""
         rel = page.template or "site/template.html"
-        if self.language is not None and page.template:
-            own = self.language.translations.template(self.code, rel)
-            if own is not None:
-                return own
+        if self.language is not None:
+            return self.language.templates.get(rel, templates[rel])
         return templates[rel]
 
     def finish(self, page_html: str) -> str:
@@ -1627,7 +1637,10 @@ class SiteBuild:
 
     def data_ui(self) -> str:
         """The `data-ui` attribute of `<body>` with the messages of `site.js`; empty for English, where the script's own strings stand."""
-        return f' data-ui="{html.escape(site_i18n.script_ui(self.ui), quote=True)}"' if self.ui is not None else ""
+        if self.ui is None:
+            return ""
+        handed = {**self.ui, "search_english_url": self.langset.prefix(self.code) + "index.html"}
+        return f' data-ui="{html.escape(site_i18n.script_ui(handed), quote=True)}"'
 
     def page_values(self, page: Page, rendered: Rendered) -> dict[str, str]:
         menu = self.langset.menu(self.code, page.slug, _ui(self.ui)["language_label"])
@@ -1678,8 +1691,30 @@ class SiteBuild:
 
 def coded_reference_errors(code: str, page: "Page") -> list[str]:
     """DS-19 on the title and the description of a translated page."""
-    return [f"site/i18n/{code}/{page.slug}.md: page '{page.slug}': the {label} holds a coded reference"
+    return [f"{language_file(code, f'{page.slug}.md')}: page '{page.slug}': the {label} holds a coded reference"
             for label, value in (("title", page.title), ("description", page.description)) if CODED_REFERENCE.search(value)]
+
+
+def add_translation(context: LanguageContext, page: Page) -> None:
+    """Adds the translated copy and text of `page` to the context, and its template (`home.html`): raw HTML that gets the DS-21 check
+    English sources get. Raises I18nError for a file that is missing or cannot be read."""
+    code, translations = context.code, context.translations
+    mine = translations.page(code, page.slug)
+    if mine is None:
+        return
+    body = expand_includes(translations.body(code, page.slug), context.english.root, language_file(code, f"{page.slug}.md"))
+    if page.template:
+        name = Path(page.template).name
+        own = translations.template(code, page.template)
+        if own is None:
+            raise site_i18n.I18nError(f"{language_file(code, name)} does not exist; the document '{page.slug}' needs it")
+        problem = unsafe_markup(own)
+        if problem:
+            context.errors.append(f"{language_file(code, name)}: page '{page.slug}' holds {problem}, which the site never publishes")
+        context.templates[page.template] = own
+    context.bodies[page.slug] = body
+    context.pages[page.slug] = mine
+    context.errors.extend(coded_reference_errors(code, mine))
 
 
 def language_context(english: SiteBuild, code: str, translations: site_i18n.Translations, ui: dict) -> LanguageContext:
@@ -1690,13 +1725,11 @@ def language_context(english: SiteBuild, code: str, translations: site_i18n.Tran
         if page.scope != "translated":
             continue
         try:
-            mine = translations.page(code, page.slug)
-            if mine is not None:
-                context.bodies[page.slug] = expand_includes(translations.body(code, page.slug), english.root, f"site/i18n/{code}/{page.slug}.md")
-                context.pages[page.slug] = mine
-                context.errors.extend(coded_reference_errors(code, mine))
+            add_translation(context, page)
         except site_i18n.I18nError as error:
             context.errors.append(str(error))
+            context.pages.pop(page.slug, None)
+            context.bodies.pop(page.slug, None)
     return context
 
 
