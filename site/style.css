@@ -317,3 +317,27 @@ a.card:hover { border-color: var(--accent); }
 .path h3 a { color: var(--text); text-decoration: none; }
 .path h3 a:hover { color: var(--link); }
 .path p { margin: 0; color: var(--soft); }
+
+/* Language control (spec 004): a plain-link dropdown, no script; colours from the custom properties above */
+.lang-menu { position: relative; font-size: 0.9375rem; max-width: 100%; overflow-wrap: anywhere; }
+.lang-dropdown > summary { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 10px; color: var(--text); cursor: pointer; list-style: none; max-width: 100%; overflow-wrap: anywhere; }
+.lang-dropdown > summary::-webkit-details-marker { display: none; }
+.lang-dropdown > summary::after { content: "\25BE"; color: var(--muted); }
+.lang-dropdown > summary:hover { border-color: var(--faint); background: var(--surface); }
+.lang-panel { position: absolute; right: 0; z-index: 20; display: flex; flex-direction: column; gap: 2px; margin-top: 6px; padding: 8px; min-width: min(14rem, calc(100vw - 32px)); max-width: calc(100vw - 32px); border: 1px solid var(--line-strong); border-radius: 12px; background: var(--bg); overflow-wrap: anywhere; }
+.lang-panel a { display: block; padding: 8px 12px; border-radius: 8px; color: var(--muted); text-decoration: none; overflow-wrap: anywhere; }
+.lang-panel a:hover { color: var(--text); background: var(--surface); }
+.lang-panel a[aria-current="true"] { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.lang-note { display: block; padding: 0 12px 6px; color: var(--faint); font-size: 0.8125rem; overflow-wrap: anywhere; }
+.en-mark { color: var(--faint); font-size: 0.875em; font-weight: 400; }
+
+/* Chinese: our Latin fonts first (they hold no Chinese glyphs), then system fonts; no remote font and no font file */
+:lang(zh-Hans), [lang="zh-Hans"] { font-family: "Instrument Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Noto Sans SC", "Source Han Sans SC", "WenQuanYi Micro Hei", "SimHei", sans-serif; }
+[lang="zh-Hans"] .prose h1, [lang="zh-Hans"] .prose h2, [lang="zh-Hans"] .prose h3, [lang="zh-Hans"] .prose h4 { font-family: "Bricolage Grotesque", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Noto Sans SC", "Source Han Sans SC", "WenQuanYi Micro Hei", "SimHei", sans-serif; letter-spacing: 0; }
+[lang="zh-Hans"] pre, [lang="zh-Hans"] code { font-family: "JetBrains Mono", ui-monospace, monospace; }
+@media (max-width: 800px) { .lang-panel { right: auto; left: 0; } }
+
+/* Long German words and unspaced lines wrap in the page text */
+body, .prose, .card, .foot { overflow-wrap: anywhere; }
+.prose pre, .prose th, .prose td { overflow-wrap: normal; }
+.prose th, .prose td { overflow-wrap: break-word; }
