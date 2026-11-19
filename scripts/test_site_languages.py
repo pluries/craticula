@@ -8,6 +8,7 @@ Run: python3 scripts/test_site_languages.py
 import hashlib
 import html
 import json
+import os
 import re
 import shutil
 import sys
@@ -24,13 +25,13 @@ from site_test_support import (  # noqa: E402
     ROOT, SCHEME, SEMANTICS_TARGET, SIBLING_PAGE, build_english_fixture, html_digests, language_build, make_repo, normalise_versions, site_pages,
     strip_added_fragments, ui_strings)
 from site_test_support import (  # noqa: E402
-    CODED_SAMPLE, DOCUMENT_COUNT, DRAFTED, UI_DOCUMENT, approve_documents, language_tree, stamp_documents, translation_file, write_tree)
+    CODED_SAMPLE, DOCUMENT_COUNT, DRAFTED, HTML_SUFFIX, UI_DOCUMENT, approve_documents, language_tree, stamp_documents, translation_file, write_tree)
 
 ENGLISH = "en"
 STYLE_NAME = "style.css"
 LLMS_NAME = "llms.txt"
 GROUP_NAMES = "group_names"
-SPEC_HREF = "../spec.html"
+SPEC_HREF = f"../spec{HTML_SUFFIX}"
 JS_DIR = ROOT / "site" / "js"
 ALL_CODES = (ENGLISH, *LANGUAGE_CODES)
 INDEX_SLUG = "index"
@@ -59,9 +60,10 @@ NARROW_PIXELS = 320
 SCROLLING_RULES = (".diagram svg",)
 CSS_BLOCK = re.compile(r"([^{}]+)\{([^{}]*)\}")
 FIXED_WIDTH = re.compile(r"(?<![\w-])(?:min-)?width\s*:\s*(\d+(?:\.\d+)?)px")
-STRIP_SAMPLE = ('<head><link rel="alternate" hreflang="fr" href="https://x/fr/a.html"><link rel="canonical" href="https://x/a.html">'
+STRIP_SAMPLE = (f'<head><link rel="alternate" hreflang="fr" href="https://x/fr/a{HTML_SUFFIX}"><link rel="canonical" href="https://x/a{HTML_SUFFIX}">'
                 '<link rel="alternate" type="application/rss+xml" href="feed.xml"><link rel="icon" href="favicon.ico"></head>'
-                '<body class="home" data-ui="{&quot;a&quot;:1}"><nav class="lang-menu" aria-label="Language"><details><a href="a.html">English</a></details></nav>'
+                '<body class="home" data-ui="{&quot;a&quot;:1}"><nav class="lang-menu" aria-label="Language"><details><a href="a'
+                f'{HTML_SUFFIX}">English</a></details></nav>'
                 '<nav class="pager"></nav></body>')
 STRIP_EXPECTED = ('<head><link rel="alternate" type="application/rss+xml" href="feed.xml"><link rel="icon" href="favicon.ico"></head>'
                   '<body class="home"><nav class="pager"></nav></body>')
@@ -81,7 +83,7 @@ def language_dir(out: Path, code: str) -> Path:
 
 
 def read_page(build, code: str, slug: str) -> str:
-    return (language_dir(build.out, code) / f"{slug}.html").read_text(encoding=ENCODING)
+    return (language_dir(build.out, code) / f"{slug}{HTML_SUFFIX}").read_text(encoding=ENCODING)
 
 
 def region(markup: str, pattern: re.Pattern) -> str:
@@ -108,10 +110,10 @@ def menu_entries(markup: str) -> list[tuple[str, str, bool]]:
 
 def control_href(current: str, target: str, slug: str) -> str:
     if current == target:
-        return f"{slug}.html"
+        return f"{slug}{HTML_SUFFIX}"
     up = "" if current == ENGLISH else "../"
     path = "" if target == ENGLISH else f"{target}/"
-    return f"{up}{path}{slug}.html"
+    return f"{up}{path}{slug}{HTML_SUFFIX}"
 
 
 def marked_after(markup: str, href: str, mark: str, window: int = 250) -> bool:
@@ -144,7 +146,7 @@ def dangling_references(page: Path, out: Path) -> list[str]:
 
 def tree_texts(out: Path) -> list[tuple[str, str]]:
     return [(path.relative_to(out).as_posix(), path.read_text(encoding=ENCODING)) for path in sorted(out.rglob("*"))
-            if path.suffix in (".html", ".js", ".json", ".txt")]
+            if path.suffix in (HTML_SUFFIX, ".js", ".json", ".txt")]
 
 
 _ENGLISH_BUILD: list = []
@@ -176,7 +178,7 @@ class EnglishPin(unittest.TestCase):
         self.assertEqual(json.loads(PIN_FILE.read_text(encoding=ENCODING)), html_digests(out))
 
     def test_US1_AS10_the_pin_holds_the_home_page_and_one_other_page(self):
-        self.assertEqual({"index.html", "guide.html"}, set(json.loads(PIN_FILE.read_text(encoding=ENCODING))))
+        self.assertEqual({f"index{HTML_SUFFIX}", f"guide{HTML_SUFFIX}"}, set(json.loads(PIN_FILE.read_text(encoding=ENCODING))))
 
     def test_US1_AS10_the_fixture_is_deterministic(self):
         first, second = build_english_fixture(), build_english_fixture()
@@ -228,7 +230,7 @@ class LanguageControl(unittest.TestCase):
             with self.subTest(page=slug):
                 markup = read_page(full, ENGLISH, slug)
                 hrefs = [href for _, href, _ in menu_entries(markup)]
-                self.assertEqual([f"{slug}.html"] + [f"{code}/{INDEX_SLUG}.html" for code in LANGUAGE_CODES], hrefs)
+                self.assertEqual([f"{slug}{HTML_SUFFIX}"] + [f"{code}/{INDEX_SLUG}{HTML_SUFFIX}" for code in LANGUAGE_CODES], hrefs)
                 menu = region(markup, LANG_MENU)
                 self.assertEqual([], [code for code in LANGUAGE_CODES if ui_strings(code)["english_only"] not in menu])
 
@@ -284,10 +286,10 @@ class Alternates(unittest.TestCase):
         for code in ALL_CODES:
             with self.subTest(language=code):
                 markup = read_page(full, code, SOME_TRANSLATED_PAGE)
-                own = f"{BASE_URL}/" + ("" if code == ENGLISH else f"{code}/") + f"{SOME_TRANSLATED_PAGE}.html"
+                own = f"{BASE_URL}/" + ("" if code == ENGLISH else f"{code}/") + f"{SOME_TRANSLATED_PAGE}{HTML_SUFFIX}"
                 self.assertEqual([own], CANONICAL.findall(markup))
-                expected = {LANG_ATTRIBUTES[c]: f"{BASE_URL}/" + ("" if c == ENGLISH else f"{c}/") + f"{SOME_TRANSLATED_PAGE}.html" for c in ALL_CODES}
-                expected["x-default"] = f"{BASE_URL}/{SOME_TRANSLATED_PAGE}.html"
+                expected = {LANG_ATTRIBUTES[c]: f"{BASE_URL}/" + ("" if c == ENGLISH else f"{c}/") + f"{SOME_TRANSLATED_PAGE}{HTML_SUFFIX}" for c in ALL_CODES}
+                expected["x-default"] = f"{BASE_URL}/{SOME_TRANSLATED_PAGE}{HTML_SUFFIX}"
                 self.assertEqual(expected, self.alternates_of(markup))
 
     def test_US1_AS5_an_english_only_page_carries_its_english_canonical_address_and_x_default_only(self):
@@ -295,7 +297,7 @@ class Alternates(unittest.TestCase):
         for slug in ENGLISH_ONLY_PAGES:
             with self.subTest(page=slug):
                 markup = read_page(full, ENGLISH, slug)
-                english = f"{BASE_URL}/{slug}.html"
+                english = f"{BASE_URL}/{slug}{HTML_SUFFIX}"
                 self.assertEqual([english], CANONICAL.findall(markup))
                 alternates = self.alternates_of(markup)
                 self.assertIn("x-default", alternates)
@@ -329,7 +331,7 @@ class AssetsAndStructure(unittest.TestCase):
         full = language_build(FULL)
         for code in LANGUAGE_CODES:
             with self.subTest(language=code):
-                missing = [problem for page in sorted((full.out / code).glob("*.html")) for problem in dangling_references(page, full.out)]
+                missing = [problem for page in sorted((full.out / code).glob(f"*{HTML_SUFFIX}")) for problem in dangling_references(page, full.out)]
                 self.assertEqual([], missing)
 
     def test_US1_AS13_a_page_whose_slug_is_a_language_prefix_is_refused(self):
@@ -343,10 +345,10 @@ class AssetsAndStructure(unittest.TestCase):
 
     def test_US1_AS11_each_enabled_language_gets_its_folder_with_its_translated_documents_only(self):
         full = language_build(FULL)
-        expected = {f"{slug}.html" for slug in translated_slugs(full)}
+        expected = {f"{slug}{HTML_SUFFIX}" for slug in translated_slugs(full)}
         for code in LANGUAGE_CODES:
             with self.subTest(language=code):
-                self.assertEqual(expected, {page.name for page in (full.out / code).glob("*.html")})
+                self.assertEqual(expected, {page.name for page in (full.out / code).glob(f"*{HTML_SUFFIX}")})
 
     def test_FR_023_the_shared_assets_are_written_once_at_the_root(self):
         full = language_build(FULL)
@@ -359,7 +361,7 @@ class AssetsAndStructure(unittest.TestCase):
 
     def test_FR_024_the_folder_of_a_disabled_language_is_cleared_and_the_enabled_one_is_written(self):
         partial = language_build(PARTIAL)
-        self.assertTrue((partial.out / LANGUAGE_CODES[0] / f"{SOME_TRANSLATED_PAGE}.html").is_file())
+        self.assertTrue((partial.out / LANGUAGE_CODES[0] / f"{SOME_TRANSLATED_PAGE}{HTML_SUFFIX}").is_file())
         for code in LANGUAGE_CODES[1:]:
             with self.subTest(language=code):
                 self.assertFalse((partial.out / code / LEFTOVER).exists())
@@ -367,10 +369,10 @@ class AssetsAndStructure(unittest.TestCase):
     def test_FR_026_an_english_only_page_is_built_once_at_its_english_address(self):
         full = language_build(FULL)
         slugs = english_slugs(full)
-        self.assertEqual([], [slug for slug in slugs if not (full.out / f"{slug}.html").is_file()])
+        self.assertEqual([], [slug for slug in slugs if not (full.out / f"{slug}{HTML_SUFFIX}").is_file()])
         for code in LANGUAGE_CODES:
             with self.subTest(language=code):
-                self.assertEqual([], [slug for slug in slugs if (full.out / code / f"{slug}.html").exists() or (full.out / code / f"{slug}.md").exists()])
+                self.assertEqual([], [slug for slug in slugs if (full.out / code / f"{slug}{HTML_SUFFIX}").exists() or (full.out / code / f"{slug}.md").exists()])
 
 
 # ---------------------------------------------------------------- T006b: sidebar, pager and links
@@ -394,7 +396,7 @@ class SidebarAndPager(unittest.TestCase):
         for code in LANGUAGE_CODES:
             with self.subTest(language=code):
                 sidebar = self.sidebar(full, code)
-                missing = [page.slug for page in pages if not re.search(rf'href="{page.slug}\.html"[^>]*>\[{code}\] {re.escape(html.escape(page.title))}</a>', sidebar)]
+                missing = [page.slug for page in pages if not re.search(rf'href="{page.slug}{re.escape(HTML_SUFFIX)}"[^>]*>\[{code}\] {re.escape(html.escape(page.title))}</a>', sidebar)]
                 self.assertEqual([], missing)
 
     def test_US1_AS11_the_sidebar_marks_each_english_only_page_and_links_it_at_its_english_address(self):
@@ -402,9 +404,9 @@ class SidebarAndPager(unittest.TestCase):
         for code in LANGUAGE_CODES:
             with self.subTest(language=code):
                 sidebar = self.sidebar(full, code)
-                unmarked = [slug for slug in english_slugs(full) if not marked_after(sidebar, f"../{slug}.html", MARKS[code])]
+                unmarked = [slug for slug in english_slugs(full) if not marked_after(sidebar, f"../{slug}{HTML_SUFFIX}", MARKS[code])]
                 self.assertEqual([], unmarked)
-                self.assertEqual([], [slug for slug in translated_slugs(full) if f'href="../{slug}.html"' in sidebar])
+                self.assertEqual([], [slug for slug in translated_slugs(full) if f'href="../{slug}{HTML_SUFFIX}"' in sidebar])
 
     def test_US1_AS11_the_sidebar_of_a_language_page_on_the_real_tree_has_24_english_entries(self):
         full = language_build(FULL)
@@ -421,7 +423,7 @@ class SidebarAndPager(unittest.TestCase):
                 pager = region(read_page(full, code, README_PAGE), PAGER)
                 self.assertIn(html.escape(ui_strings(code)["pager_label"]), pager)
                 self.assertTrue(marked_after(pager, SPEC_HREF, MARKS[code]))
-                self.assertIn('href="dialects-and-providers.html"', pager)
+                self.assertIn(f'href="dialects-and-providers{HTML_SUFFIX}"', pager)
                 self.assertNotIn(MARKS[code], pager.split(f'href="{SPEC_HREF}"')[0])
 
     def test_US1_AS11_the_pager_uses_the_words_of_the_language(self):
@@ -434,7 +436,7 @@ class SidebarAndPager(unittest.TestCase):
 
 
 class LinkRewriting(unittest.TestCase):
-    ENGLISH_TARGETS = (SEMANTICS_TARGET, "spec.html", "performance.html", "semantics.html", "grid-schema.html")
+    ENGLISH_TARGETS = (SEMANTICS_TARGET, f"spec{HTML_SUFFIX}", f"performance{HTML_SUFFIX}", f"semantics{HTML_SUFFIX}", f"grid-schema{HTML_SUFFIX}")
 
     def page(self, build, code: str, slug: str = LINKED_PAGE) -> str:
         return read_page(build, code, slug)
@@ -456,26 +458,26 @@ class LinkRewriting(unittest.TestCase):
                 self.assertIn(HANDWRITTEN_OVERVIEW, markup)
                 self.assertTrue(marked_after(markup, f"../{SEMANTICS_TARGET}", MARKS[code]))
                 self.assertTrue(marked_after(markup, SPEC_HREF, MARKS[code]))
-                self.assertTrue(marked_after(markup, "../performance.html", MARKS[code]))
+                self.assertTrue(marked_after(markup, f"../performance{HTML_SUFFIX}", MARKS[code]))
 
     def test_US1_AS11_a_link_to_a_translated_page_that_has_a_file_stays_in_the_language_and_is_not_marked(self):
         full = language_build(FULL)
         for code in LANGUAGE_CODES:
             with self.subTest(language=code):
                 markup = self.page(full, code)
-                self.assertIn(f'href="{SIBLING_PAGE}.html"', markup)
-                self.assertFalse(marked_after(markup, f"{SIBLING_PAGE}.html", MARKS[code]))
-                self.assertFalse(marked_after(markup, f"{README_PAGE}.html", MARKS[code]))
-                self.assertNotIn(f'href="../{SIBLING_PAGE}.html"', markup)
+                self.assertIn(f'href="{SIBLING_PAGE}{HTML_SUFFIX}"', markup)
+                self.assertFalse(marked_after(markup, f"{SIBLING_PAGE}{HTML_SUFFIX}", MARKS[code]))
+                self.assertFalse(marked_after(markup, f"{README_PAGE}{HTML_SUFFIX}", MARKS[code]))
+                self.assertNotIn(f'href="../{SIBLING_PAGE}{HTML_SUFFIX}"', markup)
 
     def test_US1_AS11_a_link_to_a_translated_page_with_no_file_in_a_preview_build_goes_to_the_english_page_with_the_mark(self):
         partial = language_build(PARTIAL)
         code = LANGUAGE_CODES[0]
-        self.assertFalse((partial.out / code / f"{README_PAGE}.html").exists())
+        self.assertFalse((partial.out / code / f"{README_PAGE}{HTML_SUFFIX}").exists())
         markup = self.page(partial, code)
-        self.assertTrue(marked_after(markup, f"../{README_PAGE}.html", MARKS[code]))
-        self.assertTrue(marked_after(region(markup, SIDEBAR), f"../{README_PAGE}.html", MARKS[code]))
-        self.assertFalse(marked_after(markup, f"{SIBLING_PAGE}.html", MARKS[code]))
+        self.assertTrue(marked_after(markup, f"../{README_PAGE}{HTML_SUFFIX}", MARKS[code]))
+        self.assertTrue(marked_after(region(markup, SIDEBAR), f"../{README_PAGE}{HTML_SUFFIX}", MARKS[code]))
+        self.assertFalse(marked_after(markup, f"{SIBLING_PAGE}{HTML_SUFFIX}", MARKS[code]))
 
     def test_US1_AS13_fragment_only_links_external_addresses_and_assets_are_left_alone(self):
         full = language_build(FULL)
@@ -494,7 +496,7 @@ class LinkRewriting(unittest.TestCase):
         for code in LANGUAGE_CODES:
             with self.subTest(language=code):
                 markup = self.page(full, code)
-                rewritten = sum(markup.count(f'href="../{slug}.html') for slug in english_slugs(full))
+                rewritten = sum(markup.count(f'href="../{slug}{HTML_SUFFIX}') for slug in english_slugs(full))
                 self.assertEqual(rewritten, markup.count(MARKS[code]))
 
     def test_US1_AS11_a_code_block_that_shows_an_english_only_link_is_not_rewritten(self):
@@ -504,7 +506,7 @@ class LinkRewriting(unittest.TestCase):
             with self.subTest(language=code):
                 markup = self.page(full, code)
                 self.assertIn(shown, markup)
-                self.assertNotIn("../grid-schema.html", "".join(PRE_BLOCK.findall(markup)))
+                self.assertNotIn(f"../grid-schema{HTML_SUFFIX}", "".join(PRE_BLOCK.findall(markup)))
                 self.assertIn(HANDWRITTEN, markup)
 
 
@@ -528,9 +530,9 @@ class HomePage(unittest.TestCase):
             with self.subTest(language=code):
                 markup = read_page(full, code, INDEX_SLUG)
                 self.assertIn(f"[{code}] Home", markup)
-                self.assertIn('href="quickstart-csharp.html"', markup)
+                self.assertIn(f'href="quickstart-csharp{HTML_SUFFIX}"', markup)
                 self.assertTrue(marked_after(markup, SPEC_HREF, MARKS[code]))
-                self.assertTrue(marked_after(markup, "../semantics.html", MARKS[code]))
+                self.assertTrue(marked_after(markup, f"../semantics{HTML_SUFFIX}", MARKS[code]))
 
     def test_US1_AS15_a_translated_home_template_that_keeps_the_english_href_has_it_rewritten_and_marked(self):  # US1-AS15
         full = language_build(FULL)
@@ -538,8 +540,8 @@ class HomePage(unittest.TestCase):
             with self.subTest(language=code):
                 markup = read_page(full, code, INDEX_SLUG)
                 self.assertIn(f"[{code}] Declare a GridSchema", markup)
-                self.assertTrue(marked_after(markup, "../grid-schema.html", MARKS[code]))
-                self.assertNotIn("grid-schema.html", [HREF.search(attrs).group(1) for attrs, _ in ANCHOR.findall(markup) if HREF.search(attrs)])
+                self.assertTrue(marked_after(markup, f"../grid-schema{HTML_SUFFIX}", MARKS[code]))
+                self.assertNotIn(f"grid-schema{HTML_SUFFIX}", [HREF.search(attrs).group(1) for attrs, _ in ANCHOR.findall(markup) if HREF.search(attrs)])
                 self.assertIn(f"[{code}] Find your way in", markup)
 
 
@@ -739,7 +741,7 @@ def foreign_requests(markup: str) -> list[str]:
 
 
 def language_pages(out: Path, code: str) -> list[Path]:
-    return sorted((out / code).glob("*.html"))
+    return sorted((out / code).glob(f"*{HTML_SUFFIX}"))
 
 
 class Scratch(unittest.TestCase):
@@ -792,7 +794,7 @@ class BuiltFolderScan(Scratch):
         body = '# T {#t}\n\n<img src="https://evil.example/q.png"> ![x](https://evil.example/p.png)\n'
         errors = self.edited(body)
         self.assertEqual([], self.page_errors(errors))
-        markup = (self.out / FRENCH / f"{EDITED_PAGE}.html").read_text(encoding=ENCODING)
+        markup = (self.out / FRENCH / f"{EDITED_PAGE}{HTML_SUFFIX}").read_text(encoding=ENCODING)
         self.assertIn("&lt;img src=", markup)
         self.assertEqual([], foreign_requests(markup))
 
@@ -881,7 +883,7 @@ class DeclaredAnchors(Scratch):
     def test_US2_AS11_the_declared_anchor_is_the_id_of_the_heading_in_the_toc_and_in_the_search_entry(self):
         errors = self.edited("# T {#t}\n\n## Abschnitt {#english-section}\n\nTexte.\n")
         self.assertEqual([], self.page_errors(errors))
-        markup = (self.out / FRENCH / f"{EDITED_PAGE}.html").read_text(encoding=ENCODING)
+        markup = (self.out / FRENCH / f"{EDITED_PAGE}{HTML_SUFFIX}").read_text(encoding=ENCODING)
         self.assertIn('id="english-section"', markup)
         self.assertIn('href="#english-section"', markup)
         self.assertNotIn("{#english-section}", markup)
@@ -957,7 +959,7 @@ class EnableGateInTheBuild(Scratch):
 
     def test_US4_AS4_an_enabled_language_with_every_document_and_the_interface_approved_has_no_gate_error(self):
         self.assertEqual([], self.gate_errors(self.enabled(True)))
-        self.assertTrue((self.out / FRENCH / "index.html").is_file())
+        self.assertTrue((self.out / FRENCH / f"index{HTML_SUFFIX}").is_file())
 
     def test_US4_AS4_an_enabled_language_with_documents_not_approved_is_refused_naming_each_document_and_the_interface_file(self):
         errors = self.gate_errors(self.enabled(False))
@@ -983,7 +985,157 @@ class EnableGateInTheBuild(Scratch):
         write_tree(self.out, {f"{FRENCH}/{LEFTOVER}": "old"})
         self.assertEqual([], self.build(root, ()))
         self.assertFalse((self.out / FRENCH).exists())
-        self.assertNotIn(f'hreflang="{FRENCH}"', (self.out / "index.html").read_text(encoding=ENCODING))
+        self.assertNotIn(f'hreflang="{FRENCH}"', (self.out / f"index{HTML_SUFFIX}").read_text(encoding=ENCODING))
+
+
+# ---------------------------------------------------------------- review round: the mechanism of spec 004 (findings 1 to 3 and 7)
+
+FRENCH_HOME_FILE = f"site/i18n/{FRENCH}/{si.HOME_FILE}"
+OUTPUT_ESCAPE_HOME = {"a script element": "<script>steal()</script>", "an event-handler attribute": '<img src="x" onerror="steal()">'}
+BAD_HOME_FILES = {"a file with no header block": b"<main><h1>Accueil</h1></main>\n", "a file that is not UTF-8": b"<!--\n\xff\xfe\n-->\n<main></main>\n"}
+SEARCH_ENGLISH_URL = "search_english_url"
+SEARCH_ENGLISH = "search_english"
+KEEP_NAME = "keep.txt"
+OLD_PAGE = "old.html"
+FUNCTION_BODY = re.compile(r"\n  const (\w+) = \([^)]*\) => \{(.*?)\n  \};", re.S)
+ENGLISH_DEFAULTS = re.compile(r"const ENGLISH = \{.*?\n  \};", re.S)
+SEARCH_GUARD = re.compile(r"if\s*\(\s*T\.search_english\b|\bT\.search_english\s*(?:&&|\?)")
+
+
+class HomeTemplateInTheBuild(Scratch):
+    """Finding 1, US2-AS8, FR-018: the translated `home.html` is raw HTML, so the build runs the DS-21 markup check on it (`build_site.unsafe_markup`)
+    and reports `[<code>] site/i18n/<code>/home.html: ...` naming the problem, like any English page source."""
+
+    def test_US2_AS8_a_translated_home_page_with_a_script_or_an_event_handler_is_a_build_error_naming_the_file(self):  # US2-AS8
+        for problem, payload in OUTPUT_ESCAPE_HOME.items():
+            with self.subTest(problem=problem):
+                root = self.tree()
+                path = root / FRENCH_HOME_FILE
+                path.write_text(path.read_text(encoding=ENCODING) + payload + "\n", encoding=ENCODING)
+                errors = [error for error in self.build(root) if FRENCH_HOME_FILE in error]
+                self.assertTrue(any(f"[{FRENCH}]" in error and problem in error for error in errors), errors)
+
+    def test_US2_AS8_the_unchanged_fixture_home_page_has_no_error(self):  # US2-AS8 (control)
+        self.assertEqual([], [error for error in self.build(self.tree()) if FRENCH_HOME_FILE in error])
+
+
+class HomeTemplateIsPartOfTheDocument(Scratch):
+    """Finding 2, US3-AS3, US3-AS4, FR-024: the build reports a language's `index` whose `home.html` is missing or unreadable as an error
+    `[<code>] site/i18n/<code>/home.html: ...`, never a traceback and never the English template used silently."""
+
+    def build_or_fail(self, root: Path, preview: tuple[str, ...] = (FRENCH,)) -> list[str]:
+        try:
+            return self.build(root, preview)
+        except si.I18nError as error:
+            self.fail(f"the build raised instead of reporting: {error}")
+
+    def home_errors(self, errors: list[str]) -> list[str]:
+        return [error for error in errors if error.startswith(f"[{FRENCH}]") and FRENCH_HOME_FILE in error]
+
+    def test_US3_AS4_an_enabled_language_whose_index_has_no_home_page_is_an_error_naming_the_file(self):  # US3-AS4
+        root = self.tree()
+        self.configure(root, True)
+        (root / FRENCH_HOME_FILE).unlink()
+        self.assertTrue(self.home_errors(self.build_or_fail(root, ())))
+
+    def test_US3_AS4_a_previewed_language_whose_index_has_no_home_page_is_an_error_naming_the_file(self):  # US3-AS4
+        root = self.tree()
+        (root / FRENCH_HOME_FILE).unlink()
+        self.assertTrue(self.home_errors(self.build_or_fail(root)))
+
+    def test_US2_AS17_a_home_page_with_a_bad_header_or_bad_bytes_is_an_error_naming_the_file_and_not_a_traceback(self):  # US2-AS17
+        for case, content in BAD_HOME_FILES.items():
+            with self.subTest(case=case):
+                root = self.tree()
+                (root / FRENCH_HOME_FILE).write_bytes(content)
+                self.assertTrue(self.home_errors(self.build_or_fail(root)))
+
+
+class SearchEnglishLink(Scratch):
+    """Finding 3, US1-AS9, FR-003, FR-015: the search box says, in the visitor's language, where the English pages can be searched; the build
+    hands a language page `search_english_url` = `../index.html` whatever the interface file says, and English pages keep their own."""
+
+    def test_US1_AS9_a_language_page_hands_the_search_box_the_english_home_one_folder_up(self):  # US1-AS9
+        root = self.tree()
+        for code in LANGUAGE_CODES:
+            path = root / "site" / "i18n" / code / si.UI_FILE
+            ui = json.loads(path.read_text(encoding=ENCODING))
+            ui[SEARCH_ENGLISH_URL] = f"index{HTML_SUFFIX}"
+            path.write_text(json.dumps(ui, ensure_ascii=False), encoding=ENCODING)
+        self.build(root, LANGUAGE_CODES)
+        for code in LANGUAGE_CODES:
+            for slug in (INDEX_SLUG, SOME_TRANSLATED_PAGE):
+                with self.subTest(language=code, page=slug):
+                    handed = page_ui(read_page(self, code, slug))
+                    self.assertEqual(f"../index{HTML_SUFFIX}", handed.get(SEARCH_ENGLISH_URL))
+                    self.assertEqual(ui_strings(code)[SEARCH_ENGLISH], handed.get(SEARCH_ENGLISH))
+
+    def test_US1_AS9_an_english_page_keeps_its_own_address_or_none(self):  # US1-AS9 (control)
+        markup = read_page(language_build(FULL), ENGLISH, INDEX_SLUG)
+        if DATA_UI_ATTRIBUTE.search(markup):
+            self.assertEqual(f"index{HTML_SUFFIX}", page_ui(markup).get(SEARCH_ENGLISH_URL, f"index{HTML_SUFFIX}"))
+
+
+class SiteScriptSearchEnglish(unittest.TestCase):
+    """Finding 3, US1-AS9, FR-015: `site.js` shows `T.search_english` as a link to `T.search_english_url` where the language's index is searched
+    (in `render`, or in a helper `render` calls), only when the page carries the string (English defaults do not), and as text, never as markup."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.source = SITE_JS.read_text(encoding=ENCODING)
+        cls.bodies = {name: body for name, body in FUNCTION_BODY.findall(cls.source)}
+
+    def uses(self) -> list[str]:
+        return [name for name, body in self.bodies.items() if "T.search_english" in body]
+
+    def test_US1_AS9_the_script_reads_the_string_and_its_address(self):  # US1-AS9
+        self.assertIn(f"T.{SEARCH_ENGLISH_URL}", self.source)
+        self.assertRegex(self.source, rf"T\.{SEARCH_ENGLISH}\b(?!_)")
+
+    def test_US1_AS9_the_english_defaults_do_not_carry_it_and_the_use_is_guarded(self):  # US1-AS9
+        defaults = ENGLISH_DEFAULTS.search(self.source)
+        self.assertIsNotNone(defaults)
+        self.assertNotIn(SEARCH_ENGLISH, defaults.group(0))
+        self.assertRegex(self.source, SEARCH_GUARD)
+
+    def test_US1_AS9_it_is_shown_where_the_loaded_index_is_rendered(self):  # US1-AS9
+        render = self.bodies.get("render", "")
+        self.assertTrue(render)
+        reached = "T.search_english" in render or any(f"{name}(" in render for name in self.uses())
+        self.assertTrue(reached, f"render() does not show it; functions that mention it: {self.uses()}")
+
+    def test_US1_AS9_it_is_shown_as_text_and_never_as_markup(self):  # US1-AS9
+        lines = [line for line in self.source.splitlines() if "T.search_english" in line]
+        self.assertTrue(lines)
+        self.assertEqual([], [line for line in lines if "innerHTML" in line or "insertAdjacentHTML" in line])
+        self.assertNotRegex(self.source, r"(?:innerHTML|insertAdjacentHTML)\s*[=(]")
+
+
+class OutputFolderGuards(Scratch):
+    """Finding 7, FR-024: the build clears only the folders of the declared languages and refuses a language folder that is a symbolic link
+    (BuildError), writing nothing through it."""
+
+    def test_FR_024_a_folder_named_like_an_undeclared_language_is_left_alone(self):  # FR-024
+        root = self.tree()
+        path = root / "site" / "site.json"
+        config = json.loads(path.read_text(encoding=ENCODING))
+        del config["languages"]["es"]
+        path.write_text(json.dumps(config), encoding=ENCODING)
+        write_tree(self.out, {f"es/{OLD_PAGE}": "old", f"{FRENCH}/{OLD_PAGE}": "old"})
+        self.assertEqual([], [error for error in self.build(root, ()) if "es/" in error])
+        self.assertTrue((self.out / "es" / OLD_PAGE).is_file())
+        self.assertFalse((self.out / FRENCH / OLD_PAGE).exists())
+
+    def test_FR_024_a_language_folder_that_is_a_symbolic_link_is_a_build_error_and_nothing_is_written_through_it(self):  # FR-024
+        root = self.tree()
+        elsewhere = self.out.parent / "elsewhere"
+        write_tree(elsewhere, {KEEP_NAME: "keep"})
+        self.out.mkdir()
+        os.symlink(elsewhere, self.out / FRENCH)
+        with self.assertRaises(bs.BuildError) as raised:
+            self.build(root)
+        self.assertIn(FRENCH, str(raised.exception))
+        self.assertEqual([KEEP_NAME], [path.name for path in elsewhere.iterdir()])
 
 
 if __name__ == "__main__":

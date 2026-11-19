@@ -4,6 +4,7 @@ import contextlib
 import copy
 import io
 import json
+import os
 import re
 import shutil
 import sys
@@ -18,7 +19,7 @@ import site_i18n as si  # noqa: E402
 from site_test_support import (  # noqa: E402
     APPROVALS_PATH, APPROVED, APPROVER, APPROVERS_PATH, DOCUMENT_COUNT, DRAFTED, GLOSSARY_PATH, HEADER_KEYS, LANGUAGE_CODES, ROOT, SCOPES,
     STATE_WORDS, TODAY, UI_DOCUMENT, ZERO_FINGERPRINT, approval_record, approve_documents, english_fingerprints, language_tree, make_repo, mark_approved,
-    stamp_documents, translation_file, write_records, write_tree)
+    stamp_documents, translation_file, ui_strings, write_records, write_tree)
 
 FRENCH, GERMAN = LANGUAGE_CODES[0], LANGUAGE_CODES[1]
 LANGUAGES = "languages"
@@ -26,6 +27,10 @@ ENABLED = "enabled"
 PAGES = "pages"
 SLUG = "slug"
 SCOPE = "scope"
+COMPLETE = "complete"
+ZH_HANS = "zh-Hans"
+ENGLISH_CODE = "en"
+I18N_KEY = "i18n"
 
 
 def page_entry(slug: str, scope: str | None = SCOPES[0]) -> dict:
@@ -39,8 +44,8 @@ def good_config() -> dict:
     return {
         LANGUAGES: {"en": {"name": "English", "path": "", "lang": "en"},
                     FRENCH: {"name": "Français", "path": FRENCH, "lang": FRENCH, ENABLED: False},
-                    "zh": {"name": "中文", "path": "zh", "lang": "zh-Hans", ENABLED: True}},
-        "i18n": {"complete": False},
+                    "zh": {"name": "中文", "path": "zh", "lang": ZH_HANS, ENABLED: True}},
+        I18N_KEY: {COMPLETE: False},
         PAGES: [page_entry("index"), page_entry("overview"), page_entry("semantics", SCOPES[1])],
     }
 
@@ -103,19 +108,19 @@ class ConfigShape(unittest.TestCase):
 
     def test_a_script_subtag_code_and_path_are_accepted(self):
         config = good_config()
-        config[LANGUAGES]["zh-Hans"] = {"name": "中文", "path": "zh-Hans", "lang": "zh-Hans"}
+        config[LANGUAGES][ZH_HANS] = {"name": "中文", "path": ZH_HANS, "lang": ZH_HANS}
         self.assertIsNone(problem(config))
 
     def test_i18n_must_be_an_object_with_a_boolean_complete(self):
-        for value in ("yes", ["complete"], {"complete": "true"}, {"complete": 1}):
+        for value in ("yes", [COMPLETE], {COMPLETE: "true"}, {COMPLETE: 1}):
             with self.subTest(value=value):
                 config = good_config()
-                config["i18n"] = value
-                self.assertIn("i18n", problem(config) or "")
+                config[I18N_KEY] = value
+                self.assertIn(I18N_KEY, problem(config) or "")
 
     def test_i18n_complete_true_is_accepted(self):
         config = good_config()
-        config["i18n"] = {"complete": True}
+        config[I18N_KEY] = {COMPLETE: True}
         self.assertIsNone(problem(config))
 
 
@@ -349,8 +354,8 @@ class StaleFingerprint(unittest.TestCase):
 # shared literals of the tests below (a literal repeated three times is a Sonar finding)
 GUIDE, INDEX, OVERVIEW, CSHARP, GO = "guide", "index", "overview", "quickstart-csharp", "quickstart-go"
 MISSING, STALE, ENCODING = "missing", "stale", "utf-8"
-VERBATIM, FORBIDDEN, LANGUAGE_KEY, DOCUMENT_KEY, COMPLETE = "verbatim", "forbidden", "language", "document", "complete"
-ZH_HANS, VOYEZ, REGARDEZ, NOBODY, TERM, GUIDES, SOURCE = "zh-Hans", "voyez la", "regardez la", "Nobody", "GridSchema", "Guides", "source"
+VERBATIM, FORBIDDEN, LANGUAGE_KEY, DOCUMENT_KEY = "verbatim", "forbidden", "language", "document"
+VOYEZ, REGARDEZ, NOBODY, TERM, GUIDES, SOURCE = "voyez la", "regardez la", "Nobody", "GridSchema", "Guides", "source"
 BLOCK_ONE, APPROVED_BY, HASH_KEY, APPROVALS_NAME, GUIDE_SOURCE = "code block 1", "approved_by", "translation_hash", "approvals.json", "site/pages/guide.md"
 ENGLISH_NAME, HEX_64, TITLE_KEY, DESCRIPTION_KEY = "English", r"^[0-9a-f]{64}$", "title", "description"
 
@@ -630,7 +635,7 @@ class MiniRepository(unittest.TestCase):
     def setUp(self):
         files = {"site/pages/index.md": HOME_PAGE_EN, GUIDE_SOURCE: GUIDE_EN, "site/pages/ref.md": REF_EN, "site/home.html": HOME_EN,
                  "site/i18n/en/ui.json": '{"a": "b"}', GLOSSARY_PATH: json.dumps(MINI_GLOSSARY), APPROVERS_PATH: APPROVER + "\n"}
-        self.root = make_repo(files, MINI_PAGES, languages=MINI_LANGUAGES, i18n={COMPLETE: self.complete})
+        self.root = make_repo(files, MINI_PAGES, languages=MINI_LANGUAGES, **{I18N_KEY: {COMPLETE: self.complete}})
         self.addCleanup(shutil.rmtree, self.root, True)
         write_tree(self.root, {GUIDE_FILE: translation_file(GUIDE, "Un guide", "Le guide.", FR_PAGE),
                                INDEX_FILE: translation_file(INDEX, "Accueil", "La page d'accueil.", INDEX_FR),
@@ -1073,6 +1078,252 @@ class EnableGate(TwentyDocuments):
         with contextlib.redirect_stderr(io.StringIO()) as complaint:
             self.assertEqual(1, si.main(["gate", GERMAN], root=self.root))
         self.assertIn("de/quickstart-csharp", complaint.getvalue())
+
+
+# ---------------------------------------------------------------- review round: the mechanism of spec 004 (findings 1 to 7)
+
+HOME_NAME = si.HOME_FILE
+ATTRIBUTE_WORD = "attribute"
+NOT_APPROVED = "not approved"
+NOT_DECLARED = "declared"
+OUTSIDE_LANG = "../x"
+UNDECLARED_LANG = "es"
+OUTSIDE_DIR = "site/x"
+OUTSIDE_FILE = f"{OUTSIDE_DIR}/guide.md"
+UNDECLARED_FILE = f"site/i18n/{UNDECLARED_LANG}/guide.md"
+KEEP_NAME = "keep.txt"
+OLD_PAGE = "old.html"
+ELEMENT_EN = '<main><p class="lead"><a href="guide.html" title="Go to the guide">Go</a></p></main>'
+
+
+class TemplateAttributes(unittest.TestCase):
+    """Finding 1, US2-AS8, FR-018: `check_template` compares the full set of attribute names of each element, so a translator cannot add an
+    event handler, a style or any attribute the English element lacks (nor drop one). A finding starts with the label, names `home.html` and the
+    word `attribute`, and names each attribute that differs (compared without regard to case)."""
+
+    def named(self, english: str, translated: str, name: str) -> bool:
+        findings = si.check_template(LABEL, english, translated)
+        return any(item.startswith(LABEL) and HOME_NAME in item and ATTRIBUTE_WORD in item and name in item.lower() for item in findings)
+
+    def test_US2_AS8_attributes_added_to_an_element_are_named(self):  # US2-AS8
+        added = '<main id="main" onmouseover="steal()" style="background:url(//e.example/a)">'
+        findings = template(HOME_FR.replace("<main>", added))
+        for name in ("id", "onmouseover", "style"):
+            with self.subTest(attribute=name):
+                self.assertTrue(any(item.startswith(LABEL) and HOME_NAME in item and ATTRIBUTE_WORD in item and name in item for item in findings), findings)
+
+    def test_US2_AS8_every_way_of_writing_an_attribute_is_found(self):  # US2-AS8
+        spellings = {"onclick": ("onclick='x()'", "onclick=x()", 'ONCLICK="x()"', 'onclick = "x()"'), "hidden": ("hidden",)}
+        for name, forms in spellings.items():
+            for form in forms:
+                with self.subTest(form=form):
+                    self.assertTrue(self.named(HOME_EN, HOME_FR.replace("<main>", f"<main {form}>"), name), form)
+
+    def test_US2_AS8_an_attribute_the_translation_dropped_is_named(self):  # US2-AS8
+        self.assertTrue(self.named(ELEMENT_EN, ELEMENT_EN.replace(' class="lead"', ""), "class"))
+        self.assertTrue(self.named(ELEMENT_EN, ELEMENT_EN.replace(' title="Go to the guide"', ""), "title"))
+
+    def test_US2_AS8_an_attribute_moved_to_another_element_is_named(self):  # US2-AS8
+        moved = '<main><p><a class="lead" href="guide.html" title="Go to the guide">Go</a></p></main>'
+        self.assertTrue(self.named(ELEMENT_EN, moved, "class"))
+
+    def test_US2_AS8_the_same_names_in_another_order_with_another_text_have_no_finding(self):  # US2-AS8
+        translated = '<main><p class="envol"><a title="Aller au guide" href="guide.html">Aller</a></p></main>'
+        self.assertEqual([], si.check_template(LABEL, ELEMENT_EN, translated))
+
+
+class HomeFileIsPartOfIndex(MiniRepository):
+    """Finding 2, US3-AS3, US3-AS4, FR-024: the document `index` is `index.md` and `home.html`; without the second it is missing."""
+
+    def test_US3_AS4_a_home_page_without_its_template_is_listed_as_missing(self):  # US3-AS4
+        (self.root / HOME_FILE).unlink()
+        self.assertEqual([INDEX], si.missing_pages(self.root, FRENCH))
+        self.assertEqual([INDEX, GUIDE], si.missing_pages(self.root, GERMAN))
+
+    def test_US3_AS6_the_status_counts_it_as_missing_and_not_as_drafted(self):  # US3-AS6
+        (self.root / HOME_FILE).unlink()
+        self.assertEqual({MISSING: 1, STALE: 0, DRAFTED: 1, APPROVED: 0}, si.status(self.root)[FRENCH])
+
+    def test_US4_AS4_the_enable_gate_names_the_missing_file(self):  # US4-AS4
+        (self.root / HOME_FILE).unlink()
+        found = [item for item in si.check_enable_gate(self.root, FRENCH) if item.startswith(f"{FRENCH}/{INDEX}")]
+        self.assertEqual(1, len(found), found)
+        self.assertIn(MISSING, found[0])
+        self.assertIn(HOME_NAME, found[0])
+        self.assertNotIn(NOT_APPROVED, found[0])
+
+    def test_US3_AS3_an_index_approved_with_a_home_page_still_machine_drafted_is_machine_drafted(self):  # US3-AS3
+        approve_documents(self.root, FRENCH, (INDEX,))
+        self.assertEqual({MISSING: 0, STALE: 0, DRAFTED: 1, APPROVED: 1}, si.status(self.root)[FRENCH])
+        si._update_header(self.root / HOME_FILE, {si.STATUS: DRAFTED})
+        self.assertEqual({MISSING: 0, STALE: 0, DRAFTED: 2, APPROVED: 0}, si.status(self.root)[FRENCH])
+        found = [item for item in si.check_enable_gate(self.root, FRENCH) if item.startswith(f"{FRENCH}/{INDEX}")]
+        self.assertEqual(1, len(found), found)
+        self.assertIn(NOT_APPROVED, found[0])
+
+    def test_US3_AS3_approve_refuses_an_index_that_has_no_home_page_and_writes_nothing(self):  # US3-AS3
+        (self.root / HOME_FILE).unlink()
+        before = (self.root / INDEX_FILE).read_bytes()
+        with stdin(f"{FRENCH}/{INDEX}\n"), contextlib.redirect_stdout(io.StringIO()), self.assertRaises(si.I18nError) as raised:
+            si.approve(self.root, FRENCH, INDEX, APPROVER, TODAY)
+        self.assertIn(HOME_NAME, str(raised.exception))
+        self.assertEqual([], read_records(self.root))
+        self.assertEqual(before, (self.root / INDEX_FILE).read_bytes())
+        self.assertEqual(DRAFTED, status_of(self.root, INDEX))
+
+
+class HomeFileInCompleteMode(MiniRepository):
+    """Finding 2, US3-AS4: the complete mode names a home page whose template is missing."""
+
+    complete = True
+
+    def test_US3_AS4_complete_mode_reports_the_index_whose_template_is_missing(self):  # US3-AS4
+        (self.root / HOME_FILE).unlink()
+        self.assertIn(f"{FRENCH}/{INDEX}: {MISSING}", si.check_site(self.root))
+
+
+class TwoLanguagesOnePath(unittest.TestCase):
+    """Finding 4, FR-001: two languages may not write into the same folder; the message names the path and both codes."""
+
+    def test_FR_001_a_path_taken_by_two_languages_is_refused_and_both_are_named(self):  # FR-001
+        config = good_config()
+        config[LANGUAGES][GERMAN] = {"name": "Deutsch", "path": FRENCH, "lang": GERMAN, ENABLED: False}
+        message = problem(config) or ""
+        for word in (FRENCH, GERMAN, "path"):
+            self.assertIn(word, message)
+
+    def test_FR_001_a_path_that_is_the_default_of_another_language_is_refused(self):  # FR-001
+        config = good_config()
+        config[LANGUAGES][GERMAN] = {"name": "Deutsch", "lang": GERMAN, ENABLED: False}
+        config[LANGUAGES]["it"] = {"name": "Italiano", "path": GERMAN, "lang": "it", ENABLED: False}
+        message = problem(config) or ""
+        for word in (GERMAN, "it", "path"):
+            self.assertIn(word, message)
+
+    def test_FR_001_languages_with_their_own_paths_are_accepted(self):  # FR-001
+        config = good_config()
+        config[LANGUAGES][GERMAN] = {"name": "Deutsch", "lang": GERMAN, ENABLED: False}
+        config[LANGUAGES]["it"] = {"name": "Italiano", "path": "ita", "lang": "it", ENABLED: False}
+        self.assertIsNone(problem(config))
+
+
+class LanguageArgument(MiniRepository):
+    """Finding 5, FR-012: `stamp` and `approve` accept only a language declared in site.json; anything else (a path out of the folder, an
+    undeclared folder) is an I18nError that says the language is not declared, and nothing is written."""
+
+    BAD = (OUTSIDE_LANG, UNDECLARED_LANG, "fr/../fr", "")
+
+    def setUp(self):
+        super().setUp()
+        for rel in (OUTSIDE_FILE, UNDECLARED_FILE):
+            write_tree(self.root, {rel: translation_file(GUIDE, "Un guide", "Le guide.", FR_PAGE)})
+        stamp_documents(self.root, FRENCH)
+        self.before = self.snapshot()
+
+    def snapshot(self) -> dict[str, bytes]:
+        return {path.relative_to(self.root).as_posix(): path.read_bytes() for path in sorted(self.root.rglob("*")) if path.is_file()}
+
+    def test_FR_012_stamp_refuses_a_language_that_is_not_declared_and_writes_nothing(self):  # FR-012
+        for lang in self.BAD:
+            with self.subTest(language=lang):
+                with self.assertRaises(si.I18nError) as raised:
+                    si.stamp(self.root, lang, GUIDE, TODAY)
+                self.assertIn(NOT_DECLARED, str(raised.exception))
+                self.assertEqual(self.before, self.snapshot())
+
+    def test_FR_012_the_stamp_command_exits_2_for_such_a_language(self):  # FR-012
+        with contextlib.redirect_stderr(io.StringIO()) as complaint:
+            self.assertEqual(2, si.main(["stamp", OUTSIDE_LANG, GUIDE], root=self.root))
+        self.assertIn(NOT_DECLARED, complaint.getvalue())
+        self.assertEqual(self.before, self.snapshot())
+
+    def test_FR_012_approve_refuses_a_language_that_is_not_declared_and_writes_nothing(self):  # FR-012
+        for lang in self.BAD:
+            with self.subTest(language=lang):
+                with stdin(f"{lang}/{GUIDE}\n"), contextlib.redirect_stdout(io.StringIO()), self.assertRaises(si.I18nError) as raised:
+                    si.approve(self.root, lang, GUIDE, APPROVER, TODAY)
+                self.assertIn(NOT_DECLARED, str(raised.exception))
+                self.assertEqual(self.before, self.snapshot())
+
+    def test_FR_012_a_declared_language_is_still_stamped(self):  # FR-012 (control)
+        self.assertRegex(si.stamp(self.root, FRENCH, GUIDE, TODAY), r"^[0-9a-f]{64}$")
+
+
+THEMES = ("auto", "light", "dark")
+NESTED_MAPS = {"theme_names": THEMES, "group_names": ("Concepts", "Guides", "Configuration", "Reference"), "subgroups": ("Semantics", "Quickstarts")}
+
+
+class NestedInterfaceMaps(unittest.TestCase):
+    """Finding 6, US1-AS4, FR-003: `load_ui` checks the keys inside `theme_names`, `group_names` and `subgroups` against the English maps,
+    so a translation cannot leave one out and fall back to an English label or a traceback. The error names the file, the map and the key."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.reference = ui_strings(ENGLISH_CODE)
+
+    def load(self, ui: dict) -> dict:
+        write_tree(self.tmp, {f"site/i18n/{FRENCH}/{UI_DOCUMENT}": json.dumps(ui, ensure_ascii=False)})
+        return si.load_ui(self.tmp, FRENCH, self.reference)
+
+    def test_US1_AS4_a_complete_interface_file_is_accepted(self):  # US1-AS4 (control)
+        ui = ui_strings(FRENCH)
+        self.assertEqual(ui, self.load(ui))
+
+    def test_US1_AS4_a_key_missing_from_a_nested_map_is_an_error_naming_the_map_and_the_key(self):  # US1-AS4
+        for name, keys in NESTED_MAPS.items():
+            for key in keys:
+                with self.subTest(map=name, key=key):
+                    ui = ui_strings(FRENCH)
+                    del ui[name][key]
+                    with self.assertRaises(si.I18nError) as raised:
+                        self.load(ui)
+                    message = str(raised.exception)
+                    for word in (UI_DOCUMENT, name, key):
+                        self.assertIn(word, message)
+
+    def test_US1_AS4_a_nested_map_that_is_empty_is_refused_too(self):  # US1-AS4
+        ui = ui_strings(FRENCH)
+        ui["theme_names"] = {}
+        with self.assertRaises(si.I18nError):
+            self.load(ui)
+
+
+class ClearLanguageFolders(unittest.TestCase):
+    """Finding 7, FR-024: the build clears the folder of each language the configuration declares and nothing else, and does not write through
+    a symbolic link."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.out = self.tmp / "out"
+        self.elsewhere = self.tmp / "elsewhere"
+        write_tree(self.tmp, {f"elsewhere/{KEEP_NAME}": "keep"})
+        self.config = good_config()
+        self.config[LANGUAGES][GERMAN] = {"name": "Deutsch", "path": GERMAN, "lang": GERMAN, ENABLED: False}
+        self.config[LANGUAGES]["pt"] = {"name": "Português", "path": "br", "lang": "pt", ENABLED: False}
+
+    def test_FR_024_the_folders_of_the_declared_languages_go_and_every_other_folder_stays(self):  # FR-024
+        folders = (FRENCH, GERMAN, "zh", "br", UNDECLARED_LANG, "images", "pt")
+        write_tree(self.out, {f"{name}/{OLD_PAGE}": "old" for name in folders})
+        si.clear_language_folders(self.out, self.config)
+        self.assertEqual({UNDECLARED_LANG, "images", "pt"}, {path.name for path in self.out.iterdir()})
+
+    def test_FR_024_a_language_folder_that_is_a_symbolic_link_is_refused_and_its_target_is_untouched(self):  # FR-024
+        self.out.mkdir()
+        os.symlink(self.elsewhere, self.out / FRENCH)
+        with self.assertRaises(si.I18nError) as raised:
+            si.clear_language_folders(self.out, self.config)
+        for word in (FRENCH, "symbolic link"):
+            self.assertIn(word, str(raised.exception))
+        self.assertEqual([KEEP_NAME], [path.name for path in self.elsewhere.iterdir()])
+
+    def test_FR_024_a_link_with_the_name_of_an_undeclared_language_is_not_this_builds_business(self):  # FR-024 (control)
+        self.out.mkdir()
+        os.symlink(self.elsewhere, self.out / UNDECLARED_LANG)
+        si.clear_language_folders(self.out, self.config)
+        self.assertTrue((self.out / UNDECLARED_LANG).is_symlink())
+        self.assertEqual([KEEP_NAME], [path.name for path in self.elsewhere.iterdir()])
 
 
 if __name__ == "__main__":
