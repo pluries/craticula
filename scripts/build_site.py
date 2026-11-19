@@ -110,6 +110,13 @@ class Slugger:
         self.used: set[str] = set()
         self.counts: dict[str, int] = {}
 
+    def declare(self, anchor: str) -> str:
+        """A heading's own anchor (`{#anchor}`): it takes the place of the generated one, and no later heading can generate it."""
+        if anchor in self.used:
+            raise BuildError(f"the anchor '{anchor}' is declared or generated twice on the page")
+        self.used.add(anchor)
+        return anchor
+
     def __call__(self, text: str) -> str:
         base = slugify(text)
         candidate = base
@@ -212,12 +219,19 @@ def _cells(row: str) -> list[str]:
     return [c.strip().replace("\\|", "|") for c in re.split(r"(?<!\\)\|", row)]
 
 
+_DECLARED_ANCHOR = re.compile(r"^(.*?)\s*\{#([\w-]+)\}$")
+
+
+def _split_declaration(text: str) -> tuple[str, str]:
+    """A heading's text without its `{#anchor}` declaration, and the anchor ('' when it declares none)."""
+    match = _DECLARED_ANCHOR.match(text)
+    return (match.group(1), match.group(2)) if match else (text, "")
+
+
 def render_markdown(source: str, resolve=lambda href, image=False: href, *, require_anchors: bool = False) -> Rendered:
     """Markdown to HTML for the subset the repository's documents use (headings, paragraphs, lists, tables, fenced code,
     block quotes, rules, inline code, links, emphasis). Raw HTML in the source is escaped, never passed through.
     `## Heading {#anchor}` declares the anchor (US2-AS11); with `require_anchors`, a heading without one goes to `Rendered.undeclared`."""
-    if require_anchors:
-        raise NotImplementedError("not implemented")
     source = source.replace("\x00", "\ufffd")  # NUL marks this converter's placeholders
     out = Rendered(html="")
     slugs = Slugger()
@@ -252,9 +266,11 @@ def render_markdown(source: str, resolve=lambda href, image=False: href, *, requ
 
         heading = _HEADING.match(line)
         if heading:
-            level, text = len(heading.group(1)), heading.group(2)
+            level, (text, declared) = len(heading.group(1)), _split_declaration(heading.group(2))
             plain = re.sub(r"[`*]", "", re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text))
-            anchor = slugs(plain)
+            anchor = slugs.declare(declared) if declared else slugs(plain)
+            if require_anchors and not declared:
+                out.undeclared.append(plain)
             out.anchors.add(anchor)
             out.headings.append((level, plain, anchor))
             alias = ""
@@ -1493,9 +1509,11 @@ class SiteBuild:
         """The page's HTML body: links resolved against what the site builds, an alias anchor and the heading anchors added."""
         link_errors: list[str] = []
         text, figures = self.draw_diagrams(page, text)
-        first = render_markdown(text, resolve=lambda href, image=False: href)
+        required = self.language is not None and page.slug in self.translated
+        first = render_markdown(text, resolve=lambda href, image=False: href, require_anchors=required)
         # Second pass with the real resolver, now that the page's own anchors are known; the line of each link comes from the first pass.
-        rendered = render_markdown(text, resolve=self.resolver_for(page, self.page_anchors(page.slug), link_errors, iter(line for line, _ in first.links)))
+        rendered = render_markdown(text, resolve=self.resolver_for(page, self.page_anchors(page.slug), link_errors, iter(line for line, _ in first.links)),
+                                   require_anchors=required)
         self.errors.extend(link_errors)
         for key, figure in figures.items():
             rendered.html = rendered.html.replace(f"<p>{key}</p>", figure)
@@ -1506,6 +1524,8 @@ class SiteBuild:
         return rendered
 
     def check_headings(self, page: Page, rendered: Rendered) -> None:
+        for heading in rendered.undeclared:
+            self.errors.append(f"page '{page.slug}': the heading '{heading[:60]}' declares no English anchor; end it with {{#english-anchor}}")
         for level, heading, _ in rendered.headings:
             if level != 2:
                 continue
@@ -1574,7 +1594,11 @@ class SiteBuild:
             self.errors.append(f"site/site.json: page '{page.slug}': cannot read {page.source}: {error}")
             return None
         self.check_markup(page, text)
-        rendered = self.render(page, text)
+        try:
+            rendered = self.render(page, text)
+        except BuildError as error:
+            self.errors.append(f"page '{page.slug}': {error}")
+            return None
         entry = search_entry(page, self.ui)
         rendered.html = add_anchors(rendered.html)
         self.check_headings(page, rendered)
@@ -1652,6 +1676,12 @@ class SiteBuild:
             self.errors.append(f"site/site.json: cannot read the rule source {self.config['ruleSource']}: {error}")
 
 
+def coded_reference_errors(code: str, page: "Page") -> list[str]:
+    """DS-19 on the title and the description of a translated page."""
+    return [f"site/i18n/{code}/{page.slug}.md: page '{page.slug}': the {label} holds a coded reference"
+            for label, value in (("title", page.title), ("description", page.description)) if CODED_REFERENCE.search(value)]
+
+
 def language_context(english: SiteBuild, code: str, translations: site_i18n.Translations, ui: dict) -> LanguageContext:
     """The translated copy and text of each translated-scope page the language has a file for; a file that cannot be read is an error and
     the page counts as not translated."""
@@ -1664,6 +1694,7 @@ def language_context(english: SiteBuild, code: str, translations: site_i18n.Tran
             if mine is not None:
                 context.bodies[page.slug] = expand_includes(translations.body(code, page.slug), english.root, f"site/i18n/{code}/{page.slug}.md")
                 context.pages[page.slug] = mine
+                context.errors.extend(coded_reference_errors(code, mine))
         except site_i18n.I18nError as error:
             context.errors.append(str(error))
     return context
