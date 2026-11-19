@@ -38,7 +38,7 @@ SIDEBAR = re.compile(r'<aside[^>]*id="sidebar".*?</aside>', re.S)
 PAGER = re.compile(r'<nav class="pager".*?</nav>', re.S)
 ANCHOR = re.compile(r"<a\b([^>]*)>(.*?)</a>", re.S)
 HREF = re.compile(r'href="([^"]*)"')
-REFERENCE = re.compile(r'\b(?:href|src)="([^"]*)"')
+REFERENCE = re.compile(r'<(?:a|link|script|img)\b[^>]*?\b(?:href|src)="([^"]*)"')
 ALTERNATE = re.compile(r'<link rel="alternate" hreflang="([^"]*)" href="([^"]*)">')
 CANONICAL = re.compile(r'<link rel="canonical" href="([^"]*)">')
 LEAF_ITEM = re.compile(r"<li>.*?</li>", re.S)
@@ -438,7 +438,7 @@ class LinkRewriting(unittest.TestCase):
                 with self.subTest(language=code, target=target):
                     markup = self.page(full, code)
                     self.assertTrue(marked_after(markup, f"../{target}", MARKS[code]))
-                    self.assertNotIn(f'href="{target}"', markup)
+                    self.assertNotIn(target, [HREF.search(attrs).group(1) for attrs, _ in ANCHOR.findall(markup) if HREF.search(attrs)])
 
     def test_US1_AS11_the_same_holds_for_a_translation_of_the_readme_whose_links_start_at_the_repository_root(self):
         full = language_build(FULL)
@@ -531,7 +531,7 @@ class HomePage(unittest.TestCase):
                 markup = read_page(full, code, INDEX_SLUG)
                 self.assertIn(f"[{code}] Declare a GridSchema", markup)
                 self.assertTrue(marked_after(markup, "../grid-schema.html", MARKS[code]))
-                self.assertNotIn('href="grid-schema.html"', markup)
+                self.assertNotIn("grid-schema.html", [HREF.search(attrs).group(1) for attrs, _ in ANCHOR.findall(markup) if HREF.search(attrs)])
                 self.assertIn(f"[{code}] Find your way in", markup)
 
 

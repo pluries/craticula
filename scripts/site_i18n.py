@@ -241,6 +241,10 @@ class Translations:
         except (I18nError, OSError):
             return True
 
+    def body(self, lang: str, slug: str) -> str:
+        """The page text of a translation file, without its header. Raises I18nError when the file cannot be read."""
+        return _read(self.root, lang, f"{slug}.md").body
+
     def template(self, lang: str, rel: str) -> str | None:
         """The page template of a language (`site/i18n/<lang>/home.html` for `site/home.html`) without its header, or None."""
         name = Path(rel).name
@@ -395,10 +399,12 @@ class Language:
 
 @dataclass
 class LanguageSet:
-    """The languages one build writes (English first) and, for each, the slugs that have a translation file."""
+    """The languages one build writes (English first), for each the slugs that have a translation file, and for each the line that
+    says in its own words that a page is English only (`notes`)."""
     languages: list[Language] = field(default_factory=list)
     translated: dict[str, set[str]] = field(default_factory=dict)
     base: str = ""
+    notes: dict[str, str] = field(default_factory=dict)
 
     def prefix(self, code: str) -> str:
         path = next((entry.path for entry in self.languages if entry.code == code), "")
@@ -407,26 +413,38 @@ class LanguageSet:
     def _is_translated(self, code: str, slug: str) -> bool:
         return code == ENGLISH or slug in self.translated.get(code, set())
 
+    def _has_translation(self, slug: str) -> bool:
+        return any(slug in slugs for slugs in self.translated.values())
+
     def alternates(self, code: str, slug: str) -> str:
         """The canonical link and the `hreflang` alternates of a page; nothing while only English is built or without a base
-        address."""
+        address. A page no language has translated carries its English canonical address and `x-default` only (US1-AS5)."""
         if len(self.languages) < 2 or not self.base:
             return ""
         english = next(entry for entry in self.languages if entry.code == ENGLISH)
         own = next(entry for entry in self.languages if entry.code == code)
         links = [f'<link rel="canonical" href="{html.escape(address(self.base, own.path, slug))}">']
-        links += [f'<link rel="alternate" hreflang="{html.escape(entry.lang)}" href="{html.escape(address(self.base, entry.path, slug))}">'
-                  for entry in self.languages if self._is_translated(entry.code, slug)]
+        if self._has_translation(slug):
+            links += [f'<link rel="alternate" hreflang="{html.escape(entry.lang)}" href="{html.escape(address(self.base, entry.path, slug))}">'
+                      for entry in self.languages if self._is_translated(entry.code, slug)]
         links.append(f'<link rel="alternate" hreflang="x-default" href="{html.escape(address(self.base, english.path, slug))}">')
         return "".join(links)
 
     def _item(self, current: Language, entry: Language, slug: str) -> str:
+        """One link of the control: the same page in that language, or its home page (with the language's own "English only"
+        line after the link) when that language has no file for the page."""
+        translated = self._is_translated(entry.code, slug)
+        target = slug if translated else "index"
         if entry.code == current.code:
             href = f"{slug}.html"
         else:
-            href = self.prefix(current.code) + (f"{entry.path}/" if entry.path else "") + f"{slug}.html"
+            href = self.prefix(current.code) + (f"{entry.path}/" if entry.path else "") + f"{target}.html"
         mark = ' aria-current="true"' if entry.code == current.code else ""
-        return f'<a href="{html.escape(href)}" lang="{html.escape(entry.lang)}" hreflang="{html.escape(entry.lang)}"{mark}>{html.escape(entry.name)}</a>'
+        link = f'<a href="{html.escape(href)}" lang="{html.escape(entry.lang)}" hreflang="{html.escape(entry.lang)}"{mark}>{html.escape(entry.name)}</a>'
+        note = self.notes.get(entry.code, "")
+        if translated or not note:
+            return link
+        return f'{link}<span class="lang-note" lang="{html.escape(entry.lang)}">{html.escape(note)}</span>'
 
     def menu(self, code: str, slug: str, label: str) -> str:
         """The language control: a dropdown of plain links to the same page in every language built, the current one marked."""
@@ -438,9 +456,9 @@ class LanguageSet:
                 f'<summary><span class="lang-current">{html.escape(current.name)}</span></summary><div class="lang-panel">{items}</div></details></nav>')
 
 
-def language_set(config: dict, base: str, codes: list[str], translations: Translations) -> LanguageSet:
-    """English plus `codes`, with the slugs each of them has translated."""
+def language_set(config: dict, base: str, codes: list[str], translations: Translations, notes: dict[str, str] | None = None) -> LanguageSet:
+    """English plus `codes`, with the slugs each of them has translated and, in `notes`, each language's "English only" line."""
     entries = [Language(code, _declared(config).get(code, {}).get("name", code), language_path(config, code),
                         language_attribute(config, code)) for code in [ENGLISH, *codes]]
     translated = {code: {slug for slug in translations.english if translations.exists(code, slug)} for code in codes}
-    return LanguageSet(entries, translated, base)
+    return LanguageSet(entries, translated, base, notes or {})
