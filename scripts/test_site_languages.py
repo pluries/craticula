@@ -302,7 +302,7 @@ class Alternates(unittest.TestCase):
                 self.assertEqual({english}, set(alternates.values()))
                 self.assertEqual(set(), set(alternates) & {LANG_ATTRIBUTES[code] for code in LANGUAGE_CODES})
 
-    def test_US1_AS16_a_build_with_no_base_address_omits_canonical_and_hreflang_links(self):
+    def test_US1_AS16_a_build_with_no_base_address_omits_canonical_and_hreflang_links(self):  # US1-AS16
         partial = language_build(PARTIAL)
         for code in (ENGLISH, LANGUAGE_CODES[0]):
             with self.subTest(language=code):
@@ -511,7 +511,7 @@ class LinkRewriting(unittest.TestCase):
 # ---------------------------------------------------------------- T006c: the home page
 
 class HomePage(unittest.TestCase):
-    def test_US1_AS15_the_group_cards_of_the_home_page_are_in_the_language(self):
+    def test_US1_AS15_the_group_cards_of_the_home_page_are_in_the_language(self):  # US1-AS15
         full = language_build(FULL)
         english_cards = bs.load_config(ROOT)["groups"].values()
         for code in LANGUAGE_CODES:
@@ -522,7 +522,7 @@ class HomePage(unittest.TestCase):
                     self.assertIn(f"<h3>{ui[GROUP_NAMES][name]}</h3><p>{ui['groups'][name]}</p>", markup)
                 self.assertEqual([], [text for text in english_cards if html.escape(text) in markup])
 
-    def test_US1_AS15_the_link_list_of_the_home_page_is_translated_and_its_english_only_links_are_rewritten_and_marked(self):
+    def test_US1_AS15_the_link_list_of_the_home_page_is_translated_and_its_english_only_links_are_rewritten_and_marked(self):  # US1-AS15
         full = language_build(FULL)
         for code in LANGUAGE_CODES:
             with self.subTest(language=code):
@@ -532,7 +532,7 @@ class HomePage(unittest.TestCase):
                 self.assertTrue(marked_after(markup, SPEC_HREF, MARKS[code]))
                 self.assertTrue(marked_after(markup, "../semantics.html", MARKS[code]))
 
-    def test_US1_AS15_a_translated_home_template_that_keeps_the_english_href_has_it_rewritten_and_marked(self):
+    def test_US1_AS15_a_translated_home_template_that_keeps_the_english_href_has_it_rewritten_and_marked(self):  # US1-AS15
         full = language_build(FULL)
         for code in LANGUAGE_CODES:
             with self.subTest(language=code):
@@ -563,7 +563,7 @@ class SearchIndex(unittest.TestCase):
         full = language_build(FULL)
         self.assertEqual(sorted(page.slug for page in site_pages(full.root)), sorted(entry["slug"] for entry in self.index_of(full.out)))
 
-    def test_US1_AS17_the_english_index_finds_a_term_only_a_semantics_page_contains(self):
+    def test_US1_AS17_the_english_index_finds_a_term_only_a_semantics_page_contains(self):  # US1-AS17
         index = self.index_of(english_build())
         scopes = {page.slug: page.scope for page in site_pages(ROOT)}
         hits = [entry["slug"] for entry in index if SEMANTICS_ONLY_TERM in entry["text"].lower()]
@@ -615,7 +615,7 @@ class LlmsFiles(unittest.TestCase):
                 self.assertEqual([], [slug for slug in translated_slugs(full) if not (full.out / code / f"{slug}.md").is_file()])
                 self.assertIn(HANDWRITTEN, (full.out / code / f"{LINKED_PAGE}.md").read_text(encoding=ENCODING))
 
-    def test_FR_016_the_english_llms_txt_still_lists_every_page_once(self):
+    def test_FR_016_the_english_llms_txt_still_lists_every_page_once(self):  # US1-AS17
         full = language_build(FULL)
         links = self.links(full.out / LLMS_NAME)
         self.assertEqual(sorted(f"{BASE_URL}/{page.slug}.md" for page in site_pages(full.root)), sorted(links))
@@ -692,10 +692,10 @@ class Stylesheet(unittest.TestCase):
         self.assertEqual([], [path.name for path in fonts if path.stat().st_size > FONT_LIMIT])
         self.assertEqual([], [path.name for path in fonts if CHINESE_FONT_FILE.search(path.name)])
 
-    def test_US1_AS14_no_rule_fixes_a_width_above_320_px_outside_a_scrolling_container(self):
+    def test_US1_AS14_no_rule_fixes_a_width_above_320_px_outside_a_scrolling_container(self):  # US1-AS14
         self.assertEqual([], fixed_widths(self.css()))
 
-    def test_US1_AS14_long_words_and_unspaced_lines_wrap_in_the_page_and_in_the_language_control(self):
+    def test_US1_AS14_long_words_and_unspaced_lines_wrap_in_the_page_and_in_the_language_control(self):  # US1-AS14
         blocks = CSS_BLOCK.findall(self.css())
         self.assertTrue([body for selector, body in blocks if ".prose" in selector and "overflow-wrap" in body])
         control = [(selector, body) for selector, body in blocks if "lang-menu" in selector or "lang-panel" in selector]
@@ -969,13 +969,13 @@ class EnableGateInTheBuild(Scratch):
         (root / EDITED_FILE).unlink()
         self.assertTrue(any(f"fr/{EDITED_PAGE}" in error and "missing" in error for error in self.gate_errors(root)))
 
-    def test_US4_AS5_an_english_change_makes_an_enabled_language_stale_and_it_is_refused_until_it_is_current_and_approved(self):
+    def test_US4_AS5_an_english_change_makes_an_enabled_language_stale_and_it_is_refused_until_it_is_current_and_approved(self):  # US4-AS5
         root = self.enabled(True)
         page = root / "site" / "pages" / "limits.md"
         page.write_text(page.read_text(encoding=ENCODING) + "\nA sentence the translation lacks.\n", encoding=ENCODING)
         self.assertTrue(any("fr/limits" in error and "stale" in error for error in self.gate_errors(root)))
 
-    def test_US4_AS5_the_same_stale_language_disabled_builds_nothing_and_is_not_offered(self):
+    def test_US4_AS5_the_same_stale_language_disabled_builds_nothing_and_is_not_offered(self):  # US4-AS5
         root = self.enabled(True)
         self.configure(root, False)
         page = root / "site" / "pages" / "limits.md"

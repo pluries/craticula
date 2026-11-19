@@ -264,24 +264,24 @@ class Fingerprint(unittest.TestCase):
         self.assertNotEqual(base, si.fingerprint(ENGLISH, TITLE + " 2", DESCRIPTION))
         self.assertNotEqual(base, si.fingerprint(ENGLISH, TITLE, DESCRIPTION + " More."))
 
-    def test_US2_AS13_a_prose_edit_changes_it(self):
+    def test_US2_AS13_a_prose_edit_changes_it(self):  # US2-AS13
         self.assertNotEqual(finger(), finger(ENGLISH.replace("compiles", "translates")))
 
     def test_US2_AS13_a_code_edit_changes_it(self):
         self.assertNotEqual(finger(), finger(ENGLISH.replace("SELECT 1", "SELECT 2")))
 
-    def test_US2_AS13_a_badge_line_is_ignored(self):
+    def test_US2_AS13_a_badge_line_is_ignored(self):  # US2-AS13
         with_badge = f"{BADGE}\n\n{ENGLISH}"
         other_badge = with_badge.replace("badge.svg", "other.svg")
         self.assertEqual(finger(), finger(with_badge))
         self.assertEqual(finger(with_badge), finger(other_badge))
 
-    def test_US2_AS13_an_html_comment_is_ignored(self):
+    def test_US2_AS13_an_html_comment_is_ignored(self):  # US2-AS13
         commented = ENGLISH.replace("\n\nThe library", "\n<!-- maintainers: keep this short -->\n\nThe library")
         self.assertEqual(finger(), finger(commented))
         self.assertEqual(finger(commented), finger(commented.replace("keep this short", "reworded")))
 
-    def test_US2_AS14_the_text_after_include_expansion_is_what_is_covered(self):
+    def test_US2_AS14_the_text_after_include_expansion_is_what_is_covered(self):  # US2-AS14
         included = ENGLISH + "\n## Included\n\nText from a repository file.\n"
         self.assertNotEqual(finger(), finger(included))
         self.assertNotEqual(finger(included), finger(included.replace("repository file", "other file")))
