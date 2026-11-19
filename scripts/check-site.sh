@@ -9,6 +9,11 @@
 #   5. No open redirect: crafted paths (//evil.example/, /\evil.example, /https://evil.example/) and a forged Host header sent
 #      to the redirecting hosts never produce a Location outside https://<primary>. A response without Location is accepted
 #      only when it is a 4xx refusal; a 3xx without a safe Location, a 2xx, a 5xx or no answer fails.
+#   6. Languages (spec 004, FR-016, FR-022): the English home, /search-index.json, /llms.txt and /llms-full.txt answer 200; the home and
+#      each language home carry X-Content-Type-Options: nosniff and Referrer-Policy: strict-origin-when-cross-origin; GET / with
+#      Accept-Language: de answers 200 in English (no Location, no Vary naming Accept-Language, no cookie); /xx/ answers 404. For each
+#      code in CHECK_SITE_LANGUAGES: the home, /<c>/search-index.json, /<c>/llms.txt and /<c>/llms-full.txt answer 200, the home has the
+#      right lang and hreflang link, and the two llms files name the English source address.
 # Exit 0: every check passed; 1: at least one failed; 2: usage or environment (curl, openssl or GNU date missing, bad value).
 # Needs curl, openssl and GNU date (`date -d`) only. Environment (the defaults are the live values):
 #   CHECK_SITE_PRIMARY         the site host (craticula.pluries.dev)
@@ -18,6 +23,7 @@
 #                              port appears in the URLs and in the expected Location
 #   CHECK_SITE_CONNECT_TO      curl --connect-to mappings, space separated (HOST1:PORT1:HOST2:PORT2), to send the requests
 #                              elsewhere (a test stub); the certificate probe follows the mapping of <primary>:<https port>
+#   CHECK_SITE_LANGUAGES       enabled language codes besides English, space separated (empty: English only); each ^[a-z]{2,3}$, not en
 #   CHECK_SITE_CURL_OPTS       extra curl options, space separated (e.g. --cacert file)
 set -euo pipefail
 
@@ -35,6 +41,8 @@ PROBES=('//evil.example/' '/\evil.example' '/https://evil.example/')
 read -r -a CONNECT_TO <<<"${CHECK_SITE_CONNECT_TO:-}"
 read -r -a CURL_EXTRA <<<"${CHECK_SITE_CURL_OPTS:-}"
 read -r -a REDIRECTORS <<<"$REDIRECT_HOSTS"
+RAW_LANGUAGES="${CHECK_SITE_LANGUAGES:-}"
+read -r -a LANGUAGES <<<"$RAW_LANGUAGES"
 CONNECT_ARGS=()
 for mapping in ${CONNECT_TO[@]+"${CONNECT_TO[@]}"}; do CONNECT_ARGS+=(--connect-to "$mapping"); done
 
@@ -51,6 +59,11 @@ require_environment() {
   [[ "$MIN_DAYS" =~ ^[0-9]+$ ]] || die "CHECK_SITE_MIN_DAYS must be a whole number"
   [[ "$HTTP_PORT" =~ ^[0-9]+$ && "$HTTPS_PORT" =~ ^[0-9]+$ ]] || die "the ports must be whole numbers"
   [ ${#REDIRECTORS[@]} -gt 0 ] || die "CHECK_SITE_REDIRECT_HOSTS is empty"
+  [[ "$RAW_LANGUAGES" != *$'\n'* ]] || die "CHECK_SITE_LANGUAGES must be one line of language codes"
+  local code
+  for code in ${LANGUAGES[@]+"${LANGUAGES[@]}"}; do
+    [[ "$code" =~ ^[a-z]{2,3}$ && "$code" != en ]] || die "CHECK_SITE_LANGUAGES holds an invalid code (two or three lower-case letters, not en)"
+  done
 }
 
 ok() { TOTAL=$((TOTAL + 1)); }
@@ -66,14 +79,16 @@ url() {
 
 expected_base() { url https "$PRIMARY" ""; }
 
-# fetch <url> [curl options]: one request, redirects not followed. Sets STATUS and LOCATION, and fails the cookie check when
+# fetch <url> [curl options]: one request, redirects not followed. Sets STATUS and LOCATION, keeps the body in $WORK/body and the
+# headers in $WORK/headers, and fails the cookie check when
 # the response carries Set-Cookie (only its presence is reported, never a value).
 fetch() {
   local target="$1" headers; shift
   headers="$WORK/headers"
   : >"$headers"
+  : >"$WORK/body"
   STATUS="$(curl --silent --max-time "$MAX_TIME" --path-as-is ${CONNECT_ARGS[@]+"${CONNECT_ARGS[@]}"} \
-    ${CURL_EXTRA[@]+"${CURL_EXTRA[@]}"} "$@" --output /dev/null --dump-header "$headers" \
+    ${CURL_EXTRA[@]+"${CURL_EXTRA[@]}"} "$@" --output "$WORK/body" --dump-header "$headers" \
     --write-out '%{http_code}' "$target" 2>/dev/null)" || STATUS="000"
   LOCATION="$(sed -n -E 's/^[Ll][Oo][Cc][Aa][Tt][Ii][Oo][Nn]:[[:space:]]*//p' "$headers" | tr -d '\r')"
   LOCATION="${LOCATION%%$'\n'*}"
@@ -142,6 +157,89 @@ check_primary_https() {
   fi
 }
 
+# The lang attribute and hreflang value of a language code (spec FR-001).
+lang_value() { if [ "$1" = zh ]; then printf 'zh-Hans'; else printf '%s' "$1"; fi; }
+
+# expect_status <url> <status>: fetches (no extra options) and records the status check; returns 1 on a mismatch.
+expect_status() {
+  fetch "$1"
+  if [ "$STATUS" = "$2" ]; then ok; else fail "$1: expected status $2, got $STATUS"; return 1; fi
+}
+
+# expect_text <url> <needle> <message>: the body of the last fetch must contain the needle.
+expect_text() {
+  if grep -qF -- "$2" "$WORK/body"; then ok; else fail "$1: $3"; fi
+}
+
+# expect_header <url> <name> <value>: the last response must carry the header with that value.
+expect_header() {
+  if grep -qi "^$2:[[:space:]]*$3" "$WORK/headers"; then ok; else fail "$1: missing header $2: $3"; fi
+}
+
+check_hreflang_links() {
+  local target="$1" base="$2" lang="$3" folder="$4"
+  expect_text "$target" "<link rel=\"alternate\" hreflang=\"$lang\" href=\"$base/${folder}index.html\">" "missing hreflang link for $lang"
+}
+
+check_home_headers() {
+  expect_header "$1" X-Content-Type-Options nosniff
+  expect_header "$1" Referrer-Policy strict-origin-when-cross-origin
+}
+
+check_english_site() {
+  local base home name code; base="$(expected_base)"; home="$(url https "$PRIMARY" "/")"
+  if expect_status "$home" 200; then
+    expect_text "$home" '<html lang="en"' 'expected <html lang="en">'
+    check_home_headers "$home"
+    if [ ${#LANGUAGES[@]} -gt 0 ]; then
+      check_hreflang_links "$home" "$base" en ""
+      for code in "${LANGUAGES[@]}"; do check_hreflang_links "$home" "$base" "$(lang_value "$code")" "$code/"; done
+    fi
+  fi
+  for name in search-index.json llms.txt llms-full.txt; do
+    expect_status "$(url https "$PRIMARY" "/$name")" 200 || true
+  done
+}
+
+# No negotiation (FR-016): Accept-Language changes neither the answer nor the headers, and an unknown prefix is a 404.
+check_no_negotiation() {
+  local home label; home="$(url https "$PRIMARY" "/")"; label="$home (Accept-Language: de)"
+  fetch "$home" -H "Accept-Language: de"
+  if [ "$STATUS" != 200 ]; then
+    fail "$label: expected status 200, got $STATUS"
+    return
+  fi
+  ok
+  if [ -n "$LOCATION" ]; then fail "$label: the response carries a Location"; else ok; fi
+  expect_text "$label" '<html lang="en"' 'expected <html lang="en">'
+  if grep -qi '^vary:.*accept-language' "$WORK/headers"; then fail "$label: the Vary header names Accept-Language"; else ok; fi
+  expect_status "$(url https "$PRIMARY" "/xx/")" 404 || true
+}
+
+check_language() {
+  local code="$1" base value home name target; base="$(expected_base)"; value="$(lang_value "$code")"
+  home="$(url https "$PRIMARY" "/$code/")"
+  if expect_status "$home" 200; then
+    expect_text "$home" "<html lang=\"$value\"" "expected <html lang=\"$value\">"
+    check_hreflang_links "$home" "$base" "$value" "$code/"
+    check_home_headers "$home"
+  fi
+  expect_status "$(url https "$PRIMARY" "/$code/search-index.json")" 200 || true
+  for name in llms.txt llms-full.txt; do
+    target="$(url https "$PRIMARY" "/$code/$name")"
+    if expect_status "$target" 200; then
+      expect_text "$target" "$base/$name" "does not name the English source $base/$name"
+    fi
+  done
+}
+
+check_languages() {
+  local code
+  check_english_site
+  check_no_negotiation
+  for code in ${LANGUAGES[@]+"${LANGUAGES[@]}"}; do check_language "$code"; done
+}
+
 # A Location is safe when it is the site itself or a path under it.
 location_is_safe() {
   local base; base="$(expected_base)"
@@ -182,6 +280,7 @@ main() {
   check_primary_http_redirect
   check_redirect_hosts
   check_primary_https
+  check_languages
   check_open_redirects
   if [ "$FAILED" -gt 0 ]; then
     echo "check-site: $FAILED of $TOTAL checks failed"
