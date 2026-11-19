@@ -10,6 +10,8 @@ page's `scope` of `site/site.json` cannot be used (US1-AS13, FR-027). Standard l
 """
 from __future__ import annotations
 
+import argparse
+import datetime
 import functools
 import hashlib
 import html
@@ -475,7 +477,8 @@ GLOSSARY_FILE = f"{SITE}/{I18N}/glossary.json"
 LANGUAGE_KEY, DOCUMENT_KEY, HASH_KEY, APPROVED_BY = "language", "document", "translation_hash", "approved_by"
 APPROVAL_KEYS = (LANGUAGE_KEY, DOCUMENT_KEY, FINGERPRINT, HASH_KEY, APPROVED_BY, "approved_on")
 STATE_WORDS = ("missing", "stale", "machine-drafted", "approved")
-NOT_IMPLEMENTED = "not implemented"
+NOT_APPROVED = "not approved"
+COMPLETE_KEY = "complete"
 APPROVED = STATUSES[1]
 HOME_FILE = "home.html"
 CODE_BLOCK = "code block"
@@ -977,22 +980,121 @@ def status(root: Path) -> dict[str, dict[str, int]]:
 
 def render_status(counts: dict[str, dict[str, int]]) -> str:
     """One line per language: its code, then each word of `STATE_WORDS` in that order followed by its number."""
-    raise NotImplementedError(NOT_IMPLEMENTED)
+    return "".join(f"{code:<4}" + "  ".join(f"{word} {row[word]}" for word in STATE_WORDS) + "\n" for code, row in counts.items())
+
+
+def _ui_state(root: Path, lang: str, records: list[dict]) -> str | None:
+    """The finding of the interface file of one language, or None when its record matches the file and the English source of today."""
+    own = translation_fingerprint(root, lang, UI_FILE)
+    source = ui_source_fingerprint(root)
+    if own and any(record.get(FINGERPRINT) == source and record.get(HASH_KEY) == own for record in _of_document(records, f"{lang}/{UI_FILE}")):
+        return None
+    return f"{lang}/{UI_FILE}: {NOT_APPROVED}"
 
 
 def check_enable_gate(root: Path, lang: str) -> list[str]:
     """FR-024, US4-AS4, AS5: one finding per document of `lang` (`<lang>/<slug>: missing`, `: stale` or `: not approved`) and one for
     `<lang>/ui.json: not approved` when its record is missing, stale or does not match the file. No finding when all are current and approved."""
-    raise NotImplementedError(NOT_IMPLEMENTED)
+    english, records = _English(root), _records(root)
+    found = []
+    for slug in documents(root):
+        state = _state(root, lang, slug, english.fingerprint(slug), records)
+        if state != APPROVED:
+            found.append(f"{lang}/{slug}: {NOT_APPROVED if state == STATE_WORDS[2] else state}")
+    ui = _ui_state(root, lang, records)
+    return found + ([ui] if ui else [])
+
+
+def _complete(config: dict) -> bool:
+    options = config.get(I18N)
+    return (isinstance(options, dict) and options.get(COMPLETE_KEY) is True) or bool(enabled_languages(config))
+
+
+def _checked_files(root: Path, lang: str) -> list[str]:
+    """The slugs of the documents that have a translation file in the folder of `lang`."""
+    return [slug for slug in documents(root) if (_folder(root, lang) / f"{slug}.md").is_file()]
+
+
+def _language_findings(checker: _Checker, root: Path, lang: str) -> list[str]:
+    found = check_scope(root, lang)
+    for slug in _checked_files(root, lang):
+        try:
+            found += checker.page(lang, slug)
+        except I18nError as error:
+            found.append(f"{lang}/{slug}: {error}")
+    return found
 
 
 def check_site(root: Path) -> list[str]:
     """The findings of `check_page` for every translation file of every language folder, of `check_scope`, and, when `i18n.complete` is true,
     `<lang>/<slug>: missing` for each missing document of each declared language. A missing document is no finding otherwise."""
-    raise NotImplementedError(NOT_IMPLEMENTED)
+    config = _read_ui(root / SITE_FILE)
+    codes = [code for code in _declared(config) if code != ENGLISH]
+    present = [code for code in codes if _folder(root, code).is_dir() or code in enabled_languages(config)]
+    checker = _Checker(root)
+    found: list[str] = []
+    for code in present:
+        found += _language_findings(checker, root, code)
+    if _complete(config):
+        found += [f"{code}/{slug}: {STATE_WORDS[0]}" for code in codes for slug in missing_pages(root, code)]
+    return found
+
+
+def _run_stamp(root: Path, args: argparse.Namespace) -> int:
+    print(stamp(root, args.language, args.document, datetime.date.today().isoformat()))
+    return 0
+
+
+def _run_status(root: Path, args: argparse.Namespace) -> int:
+    sys.stdout.write(render_status(status(root)))
+    return 0
+
+
+def _run_gate(root: Path, args: argparse.Namespace) -> int:
+    findings = check_enable_gate(root, args.language)
+    for finding in findings:
+        print(finding, file=sys.stderr)
+    return 1 if findings else 0
+
+
+def _run_approve(root: Path, args: argparse.Namespace) -> int:
+    approve(root, args.language, args.document, args.by, datetime.date.today().isoformat())
+    return 0
+
+
+# name -> (handler, positional arguments, help)
+SUBCOMMANDS = {
+    "stamp": (_run_stamp, ("language", "document"), "record the English fingerprint in a draft"),
+    STATUS: (_run_status, (), "count the documents of each language by state"),
+    "gate": (_run_gate, ("language",), "list what keeps a language from being enabled"),
+    "approve": (_run_approve, ("language", "document"), "approve a document (asks for a typed confirmation)"),
+}
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Translations of the docs site (spec 004-site-languages).")
+    commands = parser.add_subparsers(dest="command", required=True)
+    for name, (handler, arguments, text) in SUBCOMMANDS.items():
+        command = commands.add_parser(name, help=text)
+        for argument in arguments:
+            command.add_argument(argument)
+        if name == "approve":
+            command.add_argument("--by", required=True, help="a name of approvers.txt")
+        command.set_defaults(handler=handler)
+    return parser
 
 
 def main(argv: list[str] | None = None, root: Path | None = None) -> int:
     """`stamp <lang> <slug>`, `status`, `gate <lang>` (exit 1, findings on stderr, when the gate has any) and `approve <lang> <document>
     --by <name>` (exit 2, nothing written, without a terminal). Dispatches through a table of subcommands."""
-    raise NotImplementedError(NOT_IMPLEMENTED)
+    args = _parser().parse_args(argv)
+    base = root if root is not None else Path(__file__).resolve().parent.parent
+    try:
+        return args.handler(base, args)
+    except I18nError as error:
+        print(f"site_i18n: {error}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

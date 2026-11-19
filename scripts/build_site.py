@@ -1729,6 +1729,8 @@ def build(root: Path, out_dir: Path, base_url: str | None = None, preview: tuple
         english.langset = site_i18n.language_set(config, base, codes, site_i18n.Translations(root, english.pages_by_slug), notes)
         english.langset.translated = {context.code: set(context.pages) for context in contexts}
     errors = english.run(out_dir)
+    for code in site_i18n.enabled_languages(config):
+        errors += site_i18n.check_enable_gate(root, code)
     for context in contexts:
         errors += [f"[{context.code}] {error}" for error in SiteBuild(root, config, base, context).run(out_dir)]
     return errors
