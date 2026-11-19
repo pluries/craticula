@@ -462,3 +462,150 @@ def language_set(config: dict, base: str, codes: list[str], translations: Transl
                         language_attribute(config, code)) for code in [ENGLISH, *codes]]
     translated = {code: {slug for slug in translations.english if translations.exists(code, slug)} for code in codes}
     return LanguageSet(entries, translated, base, notes or {})
+
+
+# ---------------------------------------------------------------- spec 004-site-languages, US2 and US3: checks, approvals, status, gate
+# Skeleton written with the tests (T014a to T015): every body raises NotImplementedError until T017 to T019a.
+
+APPROVALS_FILE = f"{SITE}/{I18N}/approvals.json"
+APPROVERS_FILE = f"{SITE}/{I18N}/approvers.txt"
+GLOSSARY_FILE = f"{SITE}/{I18N}/glossary.json"
+APPROVAL_KEYS = ("language", "document", FINGERPRINT, "translation_hash", "approved_by", "approved_on")
+STATE_WORDS = ("missing", "stale", "machine-drafted", "approved")
+NOT_IMPLEMENTED = "not implemented"
+
+
+@dataclass
+class _Scan:
+    """A page split into its fenced code blocks (the language tag, a newline, the code lines) and the lines outside them."""
+    blocks: list[str] = field(default_factory=list)
+    prose: list[str] = field(default_factory=list)
+
+
+def _scan(text: str) -> _Scan:
+    """Split Markdown at its fenced blocks (``` and ~~~); the lines of a block are right-trimmed and de-indented by the fence's indent."""
+    raise NotImplementedError(NOT_IMPLEMENTED)
+
+
+def check_identity(label: str, english: str, translated: str, english_anchors: list[str], resolve=None) -> list[str]:
+    """US2-AS2, AS3, AS8, FR-009. Findings start with `label` and name: `code block <n>` (fenced blocks, tag included, from 1; a missing
+    or extra block says so), `inline code`, `image`, `link` (compared by target; `resolve(target) -> str`, identity when None, is applied to every
+    link and image target first, so two spellings of one page and anchor are equal), `URL` (an http(s) address English lacks), `heading`
+    (the count) and `anchor` (each translated heading must end in `{#id}`; a heading without one is named; the ids in order must equal
+    `english_anchors`)."""
+    raise NotImplementedError(NOT_IMPLEMENTED)
+
+
+def check_numbers(label: str, english: str, translated: str) -> list[str]:
+    """US2-AS12, FR-009: the set of digit strings (`{#id}` excluded) and the counts of tables, list items and block quotes equal the
+    English ones. Findings start with `label` and name `number`, `table`, `list item` or `admonition`."""
+    raise NotImplementedError(NOT_IMPLEMENTED)
+
+
+def check_glossary(label: str, lang: str, english: str, translated: str, glossary: dict) -> list[str]:
+    """US2-AS6, FR-013: `glossary` is `{"verbatim": [term...], "forbidden": {lang: {term: [word...]}}}`. A verbatim term in `english` must
+    be in `translated` and no forbidden word of `lang` may be, both as a whole token without regard to case (a token is bounded by anything
+    but an ASCII letter, digit or underscore, so `GridSchema` next to Chinese characters counts). A `lang` that has no key in `forbidden`
+    (an empty object is an entry) is one finding naming the language."""
+    raise NotImplementedError(NOT_IMPLEMENTED)
+
+
+def check_template(label: str, english_html: str, translated_html: str) -> list[str]:
+    """US3-AS1, FR-020: `home.html` of a language against `site/home.html`. Findings start with `label`, name `home.html` and the thing:
+    `structure` (the sequence of element names), `<pre>`, `<code>`, `href and src`, `number` (the digit strings of the visible text), a
+    `<script>` or a URL English lacks."""
+    raise NotImplementedError(NOT_IMPLEMENTED)
+
+
+def check_scope(root: Path, lang: str) -> list[str]:
+    """US3-AS5: one finding `<lang>/<slug>: ...` per file `site/i18n/<lang>/<slug>.md` whose slug is a page of `scope: english`."""
+    raise NotImplementedError(NOT_IMPLEMENTED)
+
+
+def _english_anchors(text: str) -> list[str]:
+    """The anchor of each heading of the English text, in order, as the renderer gives them."""
+    raise NotImplementedError(NOT_IMPLEMENTED)
+
+
+def documents(root: Path) -> list[str]:
+    """The slugs of the documents: the pages of `scope: translated` of `site/site.json`, in page order (20 in this repository, `index`
+    included); an English-only page, a split semantics part and `ui.json` are not documents."""
+    raise NotImplementedError(NOT_IMPLEMENTED)
+
+
+def missing_pages(root: Path, lang: str) -> list[str]:
+    """The documents that have no `site/i18n/<lang>/<slug>.md`, in page order."""
+    raise NotImplementedError(NOT_IMPLEMENTED)
+
+
+def check_page(root: Path, lang: str, slug: str) -> list[str]:
+    """Every check of one translation against the English page of today (stale fingerprint, `translates`, identity, numbers, glossary,
+    approval and its record, `home.html` for `index`). Findings start with `<lang>/<slug>`. Raises I18nError for a file or slug that is not there."""
+    raise NotImplementedError(NOT_IMPLEMENTED)
+
+
+def _approvers(root: Path) -> list[str]:
+    """The names of `site/i18n/approvers.txt`, one per line, blank lines skipped; a missing file holds none."""
+    raise NotImplementedError(NOT_IMPLEMENTED)
+
+
+def translation_fingerprint(root: Path, lang: str, document: str) -> str:
+    """The SHA-256 of the translation as approved: the normalised bodies (header excluded) of `<document>.md` and, for `index`, `home.html`;
+    for the document `ui.json` the normalised text of the file. An empty string when a file cannot be read."""
+    raise NotImplementedError(NOT_IMPLEMENTED)
+
+
+def ui_source_fingerprint(root: Path) -> str:
+    """The English source fingerprint of every `ui.json` (`ui_fingerprint` of `site/i18n/en/ui.json` and the `groups` of `site/site.json`)."""
+    raise NotImplementedError(NOT_IMPLEMENTED)
+
+
+def check_approval(label: str, header: dict[str, str], records: list[dict], approvers: list[str]) -> list[str]:
+    """US2-AS5: for a header with `status: approved`, the record of the label's language and document must name an `approved_by` that
+    is in `approvers`; a finding starts with `label` and names the approver. A header that is not `approved` has no finding."""
+    raise NotImplementedError(NOT_IMPLEMENTED)
+
+
+def check_approval_record(label: str, header: dict[str, str], records: list[dict], own: str, current: str) -> list[str]:
+    """US2-AS5: a header with `status: approved` needs a record whose language and document are the label's, whose `source_fingerprint`
+    is `current` (the English fingerprint of today) and whose `translation_hash` is `own`; otherwise one finding that starts with `label`
+    and names `approvals.json`. A header that is not `approved` needs none."""
+    raise NotImplementedError(NOT_IMPLEMENTED)
+
+
+def approve(root: Path, lang: str, document: str, by: str, today: str) -> str:
+    """US2-AS9, FR-012, the only writer of an approval. Raises I18nError, writing nothing, when `sys.stdin` is not a terminal, when `by` is not
+    on `approvers.txt`, or when the line typed at the prompt is not `<lang>/<document>`. Otherwise sets `status: approved` in the header(s)
+    of the document and writes its record (`APPROVAL_KEYS`) into `approvals.json`, replacing the record of the same language and document;
+    returns the English fingerprint. `document` may be `ui.json`."""
+    raise NotImplementedError(NOT_IMPLEMENTED)
+
+
+def status(root: Path) -> dict[str, dict[str, int]]:
+    """FR-019, US3-AS6: for each language of `site/site.json` but `en`, the count of each word of `STATE_WORDS` over the documents, a document
+    in the first that applies: no file `missing`; a fingerprint that is not the English one of today `stale`; `approved` with a matching record
+    `approved`; otherwise `machine-drafted`. A missing `approvals.json` is no approval."""
+    raise NotImplementedError(NOT_IMPLEMENTED)
+
+
+def render_status(counts: dict[str, dict[str, int]]) -> str:
+    """One line per language: its code, then each word of `STATE_WORDS` in that order followed by its number."""
+    raise NotImplementedError(NOT_IMPLEMENTED)
+
+
+def check_enable_gate(root: Path, lang: str) -> list[str]:
+    """FR-024, US4-AS4, AS5: one finding per document of `lang` (`<lang>/<slug>: missing`, `: stale` or `: not approved`) and one for
+    `<lang>/ui.json: not approved` when its record is missing, stale or does not match the file. No finding when all are current and approved."""
+    raise NotImplementedError(NOT_IMPLEMENTED)
+
+
+def check_site(root: Path) -> list[str]:
+    """The findings of `check_page` for every translation file of every language folder, of `check_scope`, and, when `i18n.complete` is true,
+    `<lang>/<slug>: missing` for each missing document of each declared language. A missing document is no finding otherwise."""
+    raise NotImplementedError(NOT_IMPLEMENTED)
+
+
+def main(argv: list[str] | None = None, root: Path | None = None) -> int:
+    """`stamp <lang> <slug>`, `status`, `gate <lang>` (exit 1, findings on stderr, when the gate has any) and `approve <lang> <document>
+    --by <name>` (exit 2, nothing written, without a terminal). Dispatches through a table of subcommands."""
+    raise NotImplementedError(NOT_IMPLEMENTED)

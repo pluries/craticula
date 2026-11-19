@@ -23,6 +23,8 @@ from site_test_support import (  # noqa: E402
     LANG_ATTRIBUTES, LANG_MENU, LANGUAGE_CODES, LANGUAGE_NAMES, LEFTOVER, LINKED_PAGE, MARKS, OUTSIDE_LINK, PARTIAL, PIN_FILE, README_PAGE,
     ROOT, SCHEME, SEMANTICS_TARGET, SIBLING_PAGE, build_english_fixture, html_digests, language_build, make_repo, normalise_versions, site_pages,
     strip_added_fragments, ui_strings)
+from site_test_support import (  # noqa: E402
+    CODED_SAMPLE, DOCUMENT_COUNT, DRAFTED, UI_DOCUMENT, approve_documents, language_tree, stamp_documents, translation_file, write_tree)
 
 ENGLISH = "en"
 STYLE_NAME = "style.css"
@@ -693,6 +695,235 @@ class Stylesheet(unittest.TestCase):
         control = [(selector, body) for selector, body in blocks if "lang-menu" in selector or "lang-panel" in selector]
         self.assertTrue(control, "no rule styles the language control")
         self.assertTrue([selector for selector, body in control if "overflow-wrap" in body or "word-break" in body])
+
+
+
+# ---------------------------------------------------------------- T014b, T015: the build of a translation (US2-AS4, AS8, AS11, AS15, US4-AS4, AS5)
+
+FRENCH = LANGUAGE_CODES[0]
+EDITED_PAGE = "quickstart-csharp"
+EDITED_FILE = f"site/i18n/{FRENCH}/{EDITED_PAGE}.md"
+SCRIPT_SRC = re.compile(r'src="(?:\.\./)?(?:theme|site)\.js(?:\?v=[0-9a-f]{10})?"')
+SCRIPT_TAG = re.compile(r"<script\b[^>]*>")
+RESOURCE_TAG = re.compile(r"<(?:img|source|iframe|video|audio|embed|object|link)\b[^>]*>")
+REMOTE = re.compile(r'(?:src|href)="(?:https?:)?//')
+SELF_REFERENCE = re.compile(r'rel="(?:canonical|alternate)"')  # the language links of FR-004 name the site's own addresses
+ANCHOR_HREF = re.compile(r'<a\b[^>]*?\bhref="([^"]+)"')
+STATE_FINDING = re.compile(r"not approved|stale|: missing")
+SEARCH_NAME = "search-index.json"
+LONG_ANCHOR = "{#an-english-anchor-that-is-long-but-is-not-part-of-the-label}"
+SEARCH_SAMPLE = ('<script src="https://x.example/a.js"></script><script>inline()</script><img src="https://x.example/p.png">'
+                 '<link rel="stylesheet" href="https://x.example/s.css"><a href="../docs/notes.md">n</a>')
+SOURCE_FOLDERS = ("site/pages", "spec")
+DECLARED_HEADING = re.compile(r"^#{1,6}\s+.*\{#[^}]*\}\s*$", re.M)
+
+
+def foreign_requests(markup: str) -> list[str]:
+    """What a built page must not hold (FR-018, DSN-1, DSN-6): a script that is not the site's own file, a resource or link tag with a remote
+    address, an anchor into a private path."""
+    found = [tag for tag in SCRIPT_TAG.findall(markup) if not SCRIPT_SRC.search(tag)]
+    found += [tag for tag in RESOURCE_TAG.findall(markup) if REMOTE.search(tag) and not SELF_REFERENCE.search(tag)]
+    for target in ANCHOR_HREF.findall(markup):
+        path = target.partition("#")[0]
+        while path.startswith("../"):
+            path = path[3:]
+        if path and not SCHEME.match(path) and bs._is_private(path):
+            found.append(target)
+    return found
+
+
+def language_pages(out: Path, code: str) -> list[Path]:
+    return sorted((out / code).glob("*.html"))
+
+
+class Scratch(unittest.TestCase):
+    """A copy of the repository's sources with the fixture translations, edited by a test and built once in its own folder."""
+
+    def tree(self, omit: tuple[str, ...] = ()) -> Path:
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        self.out = tmp / "out"
+        return language_tree(tmp, omit)
+
+    def translate(self, root: Path, body: str, title: str = "T", description: str = "D") -> None:
+        write_tree(root, {EDITED_FILE: translation_file(EDITED_PAGE, title, description, body)})
+
+    def build(self, root: Path, preview: tuple[str, ...] = (FRENCH,)) -> list[str]:
+        return bs.build(root, self.out, None, preview=preview)
+
+    def edited(self, body: str, title: str = "T", description: str = "D") -> list[str]:
+        """The errors of a French build whose page `quickstart-csharp` has this text."""
+        root = self.tree()
+        self.translate(root, body, title, description)
+        return self.build(root)
+
+    def page_errors(self, errors: list[str]) -> list[str]:
+        return [error for error in errors if EDITED_PAGE in error]
+
+    def configure(self, root: Path, enable: bool) -> None:
+        path = root / "site" / "site.json"
+        config = json.loads(path.read_text(encoding=ENCODING))
+        config["languages"][FRENCH]["enabled"] = enable
+        path.write_text(json.dumps(config), encoding=ENCODING)
+
+
+class BuiltFolderScan(Scratch):
+    """T014b, US2-AS8, FR-018: the output scan runs over a built language folder, which the whole-site scans of the English tests do not read."""
+
+    def test_the_scan_finds_a_foreign_script_resource_link_and_private_anchor(self):
+        self.assertEqual(5, len(foreign_requests(SEARCH_SAMPLE)))
+
+    def test_US2_AS8_no_page_of_any_built_language_has_a_foreign_request_or_a_private_anchor(self):
+        full = language_build(FULL)
+        for code in LANGUAGE_CODES:
+            pages = language_pages(full.out, code)
+            self.assertEqual(DOCUMENT_COUNT, len(pages))
+            for page in pages:
+                with self.subTest(language=code, page=page.name):
+                    self.assertEqual([], foreign_requests(page.read_text(encoding=ENCODING)))
+
+    def test_US2_AS8_raw_html_and_a_remote_image_in_a_translation_are_escaped_and_make_no_request(self):
+        body = '# T {#t}\n\n<img src="https://evil.example/q.png"> ![x](https://evil.example/p.png)\n'
+        errors = self.edited(body)
+        self.assertEqual([], self.page_errors(errors))
+        markup = (self.out / FRENCH / f"{EDITED_PAGE}.html").read_text(encoding=ENCODING)
+        self.assertIn("&lt;img src=", markup)
+        self.assertEqual([], foreign_requests(markup))
+
+    def test_US2_AS8_a_script_or_an_event_handler_in_a_translation_is_refused_naming_the_file(self):
+        for name, body in {"script": "# T {#t}\n\n<script>alert(1)</script>\n", "handler": '# T {#t}\n\n<b onclick="x()">b</b>\n'}.items():
+            with self.subTest(markup=name):
+                errors = self.edited(body)
+                self.assertTrue(any(EDITED_FILE in error for error in errors), errors)
+
+    def test_US2_AS8_a_link_into_a_private_path_in_a_translation_is_refused(self):
+        errors = self.edited("# T {#t}\n\n[notes](../../docs/notes.md)\n")
+        self.assertTrue(any("private" in error and EDITED_PAGE in error for error in errors), errors)
+
+
+class DeclaredAnchors(Scratch):
+    """T014b, US2-AS11, FR-010: a translated heading declares the English anchor; the build fails when it does not."""
+
+    def test_US2_AS11_the_stub_translations_of_the_fixture_declare_their_anchors_and_the_build_has_no_error(self):
+        self.assertEqual([], language_build(FULL).errors)
+
+    def test_US2_AS11_a_heading_without_an_anchor_fails_the_build_naming_the_page_and_the_heading(self):
+        errors = self.edited("# T {#t}\n\n## Un titre\n\nTexte.\n")
+        self.assertTrue(any(EDITED_PAGE in error and "Un titre" in error for error in errors), errors)
+
+    def test_US2_AS11_a_page_whose_headings_all_declare_an_anchor_builds_without_error(self):
+        self.assertEqual([], self.page_errors(self.edited("# T {#t}\n\n## Un titre {#a-title}\n\nTexte.\n")))
+
+    def test_US2_AS11_a_duplicate_declared_anchor_in_one_page_fails_the_build(self):
+        errors = self.edited("# T {#same}\n\n## U {#same}\n\nTexte.\n")
+        self.assertTrue(any(EDITED_PAGE in error and "same" in error for error in errors), errors)
+
+    def test_US2_AS11_the_declared_anchor_is_the_id_of_the_heading_in_the_toc_and_in_the_search_entry(self):
+        errors = self.edited("# T {#t}\n\n## Abschnitt {#english-section}\n\nTexte.\n")
+        self.assertEqual([], self.page_errors(errors))
+        markup = (self.out / FRENCH / f"{EDITED_PAGE}.html").read_text(encoding=ENCODING)
+        self.assertIn('id="english-section"', markup)
+        self.assertIn('href="#english-section"', markup)
+        self.assertNotIn("{#english-section}", markup)
+        entries = json.loads((self.out / FRENCH / SEARCH_NAME).read_text(encoding=ENCODING))
+        entry = next(item for item in entries if item["slug"] == EDITED_PAGE)
+        self.assertEqual(["english-section"], [heading["anchor"] for heading in entry["headings"]])
+        self.assertEqual(["Abschnitt"], [heading["text"] for heading in entry["headings"]])
+
+    def test_US2_AS11_no_english_source_has_a_heading_that_ends_in_an_anchor_declaration(self):
+        sources = [*(ROOT / "site" / "pages").rglob("*.md"), ROOT / "README.md", *(ROOT / "spec").rglob("*.md")]
+        self.assertGreater(len(sources), DOCUMENT_COUNT)
+        self.assertEqual([], [path.relative_to(ROOT).as_posix() for path in sources if DECLARED_HEADING.search(path.read_text(encoding=ENCODING))])
+
+
+class TranslatedHeadingsAndReferences(Scratch):
+    """T014a, US2-AS15, FR-018: DS-9 (60 characters) and DS-19 (coded references) apply to translations."""
+
+    def test_US2_AS15_a_translated_level_2_heading_over_sixty_characters_fails_the_build(self):
+        errors = self.edited("# T {#t}\n\n## " + "x" * 61 + " {#long}\n\nTexte.\n")
+        self.assertTrue(any(EDITED_PAGE in error and "61" in error for error in errors), errors)
+
+    def test_US2_AS15_the_declared_anchor_does_not_count_towards_the_sixty_characters(self):
+        errors = self.edited("# T {#t}\n\n## " + "x" * 55 + f" {LONG_ANCHOR}\n\nTexte.\n")
+        self.assertEqual([], self.page_errors(errors))
+
+    def test_US2_AS15_a_coded_reference_in_a_translated_heading_fails_the_build(self):
+        errors = self.edited(f"# T {{#t}}\n\n## Voir {CODED_SAMPLE} {{#see}}\n\nTexte.\n")
+        self.assertTrue(any(EDITED_PAGE in error and "coded reference" in error for error in errors), errors)
+
+    def test_US2_AS15_a_coded_reference_in_a_translated_title_or_description_fails_the_build(self):
+        for name, title, description in (("title", f"Titre {CODED_SAMPLE}", "D"), ("description", "T", f"Voir {CODED_SAMPLE}")):
+            with self.subTest(field=name):
+                errors = self.edited("# T {#t}\n\nTexte.\n", title, description)
+                self.assertTrue(any(EDITED_PAGE in error and "coded reference" in error for error in errors), errors)
+
+    def test_US2_AS15_no_search_entry_of_a_built_language_holds_a_coded_reference(self):
+        full = language_build(FULL)
+        for code in LANGUAGE_CODES:
+            with self.subTest(language=code):
+                self.assertIsNone(bs.CODED_REFERENCE.search((full.out / code / SEARCH_NAME).read_text(encoding=ENCODING)))
+        errors = self.edited(f"# T {{#t}}\n\nTexte {CODED_SAMPLE}.\n")
+        text = (self.out / FRENCH / SEARCH_NAME).read_text(encoding=ENCODING)
+        self.assertEqual([], self.page_errors(errors))
+        self.assertIsNone(bs.CODED_REFERENCE.search(text))
+
+
+class DraftsHaveNoBanner(unittest.TestCase):
+    """T015, US2-AS4, FR-011: a machine-drafted page carries no banner; the status is the file's and the command's."""
+
+    def test_US2_AS4_the_pages_built_from_machine_drafted_files_show_no_draft_notice(self):
+        full = language_build(FULL)
+        header = (full.root / "site" / "i18n" / FRENCH / f"{EDITED_PAGE}.md").read_text(encoding=ENCODING)
+        self.assertIn(f"status: {DRAFTED}", header)
+        for code in LANGUAGE_CODES:
+            with self.subTest(language=code):
+                markup = read_page(full, code, EDITED_PAGE)
+                self.assertIsNone(re.search(r"(?i)draft|brouillon|banner|machine", markup))
+
+
+class EnableGateInTheBuild(Scratch):
+    """T015, US4-AS4, AS5, FR-024: the build refuses an enabled language that fails the gate, naming the document; a disabled one builds nothing."""
+
+    def enabled(self, approved: bool) -> Path:
+        root = self.tree()
+        self.configure(root, True)
+        stamp_documents(root, FRENCH)
+        if approved:
+            approve_documents(root, FRENCH, ui=True)
+        return root
+
+    def gate_errors(self, root: Path) -> list[str]:
+        return [error for error in self.build(root, ()) if STATE_FINDING.search(error)]
+
+    def test_US4_AS4_an_enabled_language_with_every_document_and_the_interface_approved_has_no_gate_error(self):
+        self.assertEqual([], self.gate_errors(self.enabled(True)))
+        self.assertTrue((self.out / FRENCH / "index.html").is_file())
+
+    def test_US4_AS4_an_enabled_language_with_documents_not_approved_is_refused_naming_each_document_and_the_interface_file(self):
+        errors = self.gate_errors(self.enabled(False))
+        for name in (f"fr/{EDITED_PAGE}", "fr/limits", f"fr/{UI_DOCUMENT}"):
+            self.assertTrue(any(name in error for error in errors), (name, errors[:3]))
+
+    def test_US4_AS4_a_document_missing_from_an_enabled_language_is_refused_by_name(self):
+        root = self.enabled(True)
+        (root / EDITED_FILE).unlink()
+        self.assertTrue(any(f"fr/{EDITED_PAGE}" in error and "missing" in error for error in self.gate_errors(root)))
+
+    def test_US4_AS5_an_english_change_makes_an_enabled_language_stale_and_it_is_refused_until_it_is_current_and_approved(self):
+        root = self.enabled(True)
+        page = root / "site" / "pages" / "limits.md"
+        page.write_text(page.read_text(encoding=ENCODING) + "\nA sentence the translation lacks.\n", encoding=ENCODING)
+        self.assertTrue(any("fr/limits" in error and "stale" in error for error in self.gate_errors(root)))
+
+    def test_US4_AS5_the_same_stale_language_disabled_builds_nothing_and_is_not_offered(self):
+        root = self.enabled(True)
+        self.configure(root, False)
+        page = root / "site" / "pages" / "limits.md"
+        page.write_text(page.read_text(encoding=ENCODING) + "\nA sentence the translation lacks.\n", encoding=ENCODING)
+        write_tree(self.out, {f"{FRENCH}/{LEFTOVER}": "old"})
+        self.assertEqual([], self.build(root, ()))
+        self.assertFalse((self.out / FRENCH).exists())
+        self.assertNotIn(f'hreflang="{FRENCH}"', (self.out / "index.html").read_text(encoding=ENCODING))
 
 
 if __name__ == "__main__":

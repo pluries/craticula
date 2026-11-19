@@ -130,6 +130,7 @@ class Rendered:
     links: list[tuple[int, str]] = field(default_factory=list)  # (source line, href)
     title: str = ""
     headings: list[tuple[int, str, str]] = field(default_factory=list)  # level, text and anchor of each heading, in order; FR-32, task #3474
+    undeclared: list[str] = field(default_factory=list)  # with `require_anchors`: the text of each heading that declares no `{#english-anchor}` (spec 004, US2-AS11)
 
 
 _INLINE_CODE = re.compile(r"(`+)(.+?)\1", re.S)
@@ -211,9 +212,12 @@ def _cells(row: str) -> list[str]:
     return [c.strip().replace("\\|", "|") for c in re.split(r"(?<!\\)\|", row)]
 
 
-def render_markdown(source: str, resolve=lambda href, image=False: href) -> Rendered:
+def render_markdown(source: str, resolve=lambda href, image=False: href, *, require_anchors: bool = False) -> Rendered:
     """Markdown to HTML for the subset the repository's documents use (headings, paragraphs, lists, tables, fenced code,
-    block quotes, rules, inline code, links, emphasis). Raw HTML in the source is escaped, never passed through."""
+    block quotes, rules, inline code, links, emphasis). Raw HTML in the source is escaped, never passed through.
+    `## Heading {#anchor}` declares the anchor (US2-AS11); with `require_anchors`, a heading without one goes to `Rendered.undeclared`."""
+    if require_anchors:
+        raise NotImplementedError("not implemented")
     source = source.replace("\x00", "\ufffd")  # NUL marks this converter's placeholders
     out = Rendered(html="")
     slugs = Slugger()

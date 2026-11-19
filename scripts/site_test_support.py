@@ -15,6 +15,7 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import build_site as bs  # noqa: E402
+import site_i18n as si  # noqa: E402
 from test_build_site import ROOT, make_repo  # noqa: E402
 from test_build_site_structure import CODED, TICKET  # noqa: E402
 
@@ -305,20 +306,25 @@ def translation_file(slug: str, title: str, description: str, body: str, as_comm
     return f"{opening}\n{header}{closing}\n{body}"
 
 
+def declared(title: str) -> str:
+    """A heading line's text with the English anchor it declares (spec 004, US2-AS11): the stub's anchor is its own slug."""
+    return f"{title} {{#{bs.slugify(title)}}}"
+
+
 def linked_body(code: str, title: str) -> str:
     """The first hand-written page: every kind of link the language build must leave alone or send to an English address."""
     links = (f"[rule]({SEMANTICS_LINK}) [spec](../../spec/README.md) [performance](performance.html) [index](../../spec/semantics.md) "
              f"[grid](grid-schema.html) [readme](../../README.md) [sibling](request-to-query.md) [own](#section-one) [outside]({OUTSIDE_LINK})")
-    return f"# {title}\n\n{HANDWRITTEN} {code}.\n\n## Section one\n\n{links}\n\n```html\n{CODE_SNIPPET}\n```\n"
+    return f"# {declared(title)}\n\n{HANDWRITTEN} {code}.\n\n## Section one {{#section-one}}\n\n{links}\n\n```html\n{CODE_SNIPPET}\n```\n"
 
 
 def overview_body(code: str, title: str) -> str:
     """The second hand-written page: a translation of the README, whose links are written from the repository root."""
-    return f"# {title}\n\n{HANDWRITTEN_OVERVIEW} {code}.\n\n[rule](spec/semantics.md#sem-1) [spec](spec/README.md) [performance](performance.html)\n"
+    return f"# {declared(title)}\n\n{HANDWRITTEN_OVERVIEW} {code}.\n\n[rule](spec/semantics.md#sem-1) [spec](spec/README.md) [performance](performance.html)\n"
 
 
 def index_body(title: str) -> str:
-    return f"# {title}\n\n- [quickstart](quickstart-csharp.md)\n- [spec](../../spec/README.md)\n- [semantics](../../spec/semantics.md)\n"
+    return f"# {declared(title)}\n\n- [quickstart](quickstart-csharp.md)\n- [spec](../../spec/README.md)\n- [semantics](../../spec/semantics.md)\n"
 
 
 def home_template(code: str, english_home: str) -> str:
@@ -332,7 +338,7 @@ def _body_of(code: str, slug: str, title: str) -> str:
         return linked_body(code, title)
     if slug == README_PAGE:
         return overview_body(code, title)
-    return index_body(title) if slug == INDEX_KEY else f"# {title}\n\n[{code}] a stub of {slug}.\n"
+    return index_body(title) if slug == INDEX_KEY else f"# {declared(title)}\n\n[{code}] a stub of {slug}.\n"
 
 
 def language_files(code: str, config: dict, english_home: str, omit: tuple[str, ...] = ()) -> dict[str, str]:
@@ -396,3 +402,73 @@ def language_build(name: str) -> SimpleNamespace:
         errors = bs.build(root, out, BASE_URL if full else None, preview=LANGUAGE_CODES if full else LANGUAGE_CODES[:1])
         _BUILDS[name] = SimpleNamespace(root=root, out=out, errors=errors, config=json.loads((root / "site" / "site.json").read_text(encoding=ENCODING)))
     return _BUILDS[name]
+
+
+# ---------------------------------------------------------------- spec 004-site-languages: checks and approvals (T014a to T015)
+
+DOCUMENT_COUNT = 20
+APPROVER = "Ada Tester"   # a synthetic name: the real approver is registered by the maker
+TODAY = "2026-11-19"
+APPROVALS_PATH = "site/i18n/approvals.json"
+APPROVERS_PATH = "site/i18n/approvers.txt"
+GLOSSARY_PATH = "site/i18n/glossary.json"
+APPROVED, DRAFTED = "approved", "machine-drafted"
+STATE_WORDS = ("missing", "stale", DRAFTED, APPROVED)
+UI_DOCUMENT = "ui.json"
+CODED_SAMPLE = "DS-19"
+ZERO_FINGERPRINT = "0" * 64
+
+
+def english_fingerprints(root: Path) -> dict[str, str]:
+    """The English fingerprint of each translated document of the repository `root`, from the generator's own `page_fingerprint`."""
+    english = bs.SiteBuild(root, bs.load_config(root), "")
+    return {page.slug: si.page_fingerprint(english, page) for page in english.pages if page.scope == SCOPES[0]}
+
+
+def _set_header(root: Path, lang: str, slug: str, values: dict[str, str]) -> None:
+    for path in si._page_files(root / I18N_DIR / lang, slug):
+        si._update_header(path, values)
+
+
+def stamp_documents(root: Path, lang: str, slugs: tuple[str, ...] | None = None) -> None:
+    """Gives each translation file of `lang` (all those that exist, or `slugs`) the English fingerprint of today and `machine-drafted`, as `stamp`
+    does, from one build of the English site."""
+    current = english_fingerprints(root)
+    for slug in slugs or tuple(current):
+        if (root / I18N_DIR / lang / f"{slug}.md").is_file():
+            _set_header(root, lang, slug, {si.FINGERPRINT: current[slug], si.STATUS: DRAFTED})
+
+
+def mark_approved(root: Path, lang: str, slug: str) -> None:
+    """Sets `status: approved` in the file(s) of a document and writes no record: a file the maker did not approve."""
+    _set_header(root, lang, slug, {si.STATUS: APPROVED})
+
+
+def _records(root: Path) -> list[dict]:
+    path = root / APPROVALS_PATH
+    return json.loads(path.read_text(encoding=ENCODING)) if path.is_file() else []
+
+
+def write_records(root: Path, records: list[dict]) -> None:
+    write_tree(root, {APPROVALS_PATH: json.dumps(records, indent=2) + "\n"})
+
+
+def approval_record(root: Path, lang: str, document: str, source: str, by: str = APPROVER) -> dict:
+    """The record `approve` writes, built by hand with the fingerprint `source` and the translation hash of today."""
+    return {"language": lang, "document": document, si.FINGERPRINT: source, "translation_hash": si.translation_fingerprint(root, lang, document),
+            "approved_by": by, "approved_on": TODAY}
+
+
+def approve_documents(root: Path, lang: str, slugs: tuple[str, ...] | None = None, ui: bool = False, by: str = APPROVER) -> None:
+    """Writes `site/i18n/approvers.txt` and, for each document of `lang` (all those that exist, or `slugs`) and for `ui.json` when `ui`, the
+    approved status and a matching record in `site/i18n/approvals.json`, as the `approve` command leaves them."""
+    current = english_fingerprints(root)
+    write_tree(root, {APPROVERS_PATH: by + "\n"})
+    records = _records(root)
+    for slug in slugs or tuple(current):
+        if (root / I18N_DIR / lang / f"{slug}.md").is_file():
+            mark_approved(root, lang, slug)
+            records.append(approval_record(root, lang, slug, current[slug], by))
+    if ui:
+        records.append(approval_record(root, lang, UI_DOCUMENT, si.ui_source_fingerprint(root), by))
+    write_records(root, records)
