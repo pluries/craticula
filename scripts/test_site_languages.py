@@ -5,6 +5,8 @@ generator does not have yet. The language fixture (a copy of this repository's s
 of the 20 documents, two of them hand-written) is built by `site_test_support.language_build`. Offline, standard library only.
 Run: python3 scripts/test_site_languages.py
 """
+import atexit
+import gzip
 import hashlib
 import html
 import json
@@ -13,8 +15,10 @@ import re
 import shutil
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import build_site as bs  # noqa: E402
@@ -69,7 +73,10 @@ STRIP_EXPECTED = ('<head><link rel="alternate" type="application/rss+xml" href="
                   '<body class="home"><nav class="pager"></nav></body>')
 SEARCH_ENGLISH_KEYS = ("search_english", "search_english_url")
 FOOTER_OPEN, FOOTER_CLOSE = "<footer", "</footer>"
-FOOTER_CAP_CHARS = 120   # provisional (English: 90); T039a sets it from the real German and Spanish footers
+# T039a: the longest footer text of the real five-language build (2026-11-19) is fr 73, de 73, it 69, es 74, zh 64 characters; each cap is
+# that maximum plus a margin of about 7 (English keeps its own cap of 90 in test_build_site_structure.py).
+FOOTER_CAPS = {"fr": 80, "de": 80, "it": 76, "es": 82, "zh": 70}
+FOOTER_CAP_CHARS = max(FOOTER_CAPS.values())   # the fixture build has no per-language wording: the largest cap applies
 LICENCE_NAME = "Apache-2.0"
 SCRIPT_OPENING = re.compile(r"<script\b")
 BLOB_LINK = re.compile(r"https://github\.com/[^/]+/[^/]+/(?:blob|tree|raw)/[^/]+/(.*)$")
@@ -740,6 +747,21 @@ def foreign_requests(markup: str) -> list[str]:
     return found
 
 
+_REAL = {}
+
+
+def real_build() -> SimpleNamespace:
+    """The repository's own tree built once per run with all five languages previewed (T039a, T039b); `seconds` is the build time."""
+    if not _REAL:
+        tmp = Path(tempfile.mkdtemp())
+        atexit.register(shutil.rmtree, tmp, True)
+        out = tmp / "out"
+        start = time.perf_counter()
+        errors = bs.build(ROOT, out, None, preview=LANGUAGE_CODES)
+        _REAL["build"] = SimpleNamespace(out=out, errors=errors, seconds=time.perf_counter() - start)
+    return _REAL["build"]
+
+
 def language_pages(out: Path, code: str) -> list[Path]:
     return sorted((out / code).glob(f"*{HTML_SUFFIX}"))
 
@@ -831,7 +853,25 @@ class FooterAndScripts(unittest.TestCase):
                 self.assertIn(LICENCE_NAME, plain)
                 self.assertIn(f"spec {version}", plain)
                 self.assertIn(repository, plain + " ".join(HREF.findall(foot)))
-                self.assertLessEqual(len(plain), FOOTER_CAP_CHARS)
+                self.assertLessEqual(len(plain), FOOTER_CAPS[code])
+
+    def test_FR_028_the_footer_of_every_page_of_the_real_tree_in_every_language_holds_the_licence_the_repository_and_the_spec_version_within_its_cap(self):
+        real = real_build()
+        version = (ROOT / "spec" / "VERSION").read_text(encoding=ENCODING).strip()
+        for code in LANGUAGE_CODES:
+            pages = language_pages(real.out, code)
+            self.assertEqual(DOCUMENT_COUNT, len(pages))
+            for page in pages:
+                with self.subTest(language=code, page=page.name):
+                    markup = page.read_text(encoding=ENCODING)
+                    start = markup.find(FOOTER_OPEN)
+                    self.assertGreaterEqual(start, 0)
+                    foot = markup[start:markup.find(FOOTER_CLOSE, start) + len(FOOTER_CLOSE)]
+                    plain = " ".join(re.sub(r"<[^>]+>", " ", foot).split())
+                    self.assertIn(LICENCE_NAME, plain)
+                    self.assertIn(f"spec {version}", plain)
+                    self.assertIn("github.com/pluries/craticula", plain + " ".join(HREF.findall(foot)))
+                    self.assertLessEqual(len(plain), FOOTER_CAPS[code])
 
     def test_FR_018_a_built_language_page_holds_only_the_two_own_scripts_and_no_inline_body(self):
         _, pages = self.pages()
@@ -1109,6 +1149,46 @@ class SiteScriptSearchEnglish(unittest.TestCase):
         self.assertTrue(lines)
         self.assertEqual([], [line for line in lines if "innerHTML" in line or "insertAdjacentHTML" in line])
         self.assertNotRegex(self.source, r"(?:innerHTML|insertAdjacentHTML)\s*[=(]")
+
+
+MEGABYTE, KILOBYTE = 1_000_000, 1024
+SC007_TOTAL_BYTES = 15 * MEGABYTE
+SC007_SECONDS = 30
+SC007_INDEX_GZIP_BYTES = 500 * KILOBYTE
+SC007_SCRIPT_GZIP_BYTES = 30 * KILOBYTE
+
+
+class SiteBudget(unittest.TestCase):
+    """SC-007: the real six-language build, made once, stays within the size and time budget (budget tests: green when written)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.real = real_build()
+
+    def test_SC_007_the_real_build_has_no_error(self):  # SC-007
+        self.assertEqual([], self.real.errors)
+
+    def test_SC_007_the_six_language_site_is_at_most_15_MB(self):  # SC-007
+        total = sum(path.stat().st_size for path in self.real.out.rglob("*") if path.is_file())
+        self.assertLessEqual(total, SC007_TOTAL_BYTES)
+
+    def test_SC_007_the_six_language_build_takes_at_most_30_seconds(self):  # SC-007
+        self.assertLessEqual(self.real.seconds, SC007_SECONDS)
+
+    def test_SC_007_each_search_index_is_at_most_500_KB_gzipped(self):  # SC-007
+        for code in ALL_CODES:
+            with self.subTest(language=code):
+                index = language_dir(self.real.out, code) / "search-index.json"
+                self.assertTrue(index.is_file())
+                self.assertLessEqual(len(gzip.compress(index.read_bytes())), SC007_INDEX_GZIP_BYTES)
+
+    def test_SC_007_the_script_with_its_interface_messages_is_at_most_30_KB_gzipped(self):  # SC-007
+        script = self.real.out / "site.js"
+        self.assertTrue(script.is_file())
+        self.assertLessEqual(len(gzip.compress(script.read_bytes())), SC007_SCRIPT_GZIP_BYTES)
+        for code in LANGUAGE_CODES:
+            page = read_page(self.real, code, INDEX_SLUG)
+            self.assertRegex(page, DATA_UI_ATTRIBUTE)   # the messages ride on the page, so the script serves every language unchanged
 
 
 class OutputFolderGuards(Scratch):
