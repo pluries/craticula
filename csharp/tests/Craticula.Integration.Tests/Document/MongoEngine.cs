@@ -124,6 +124,14 @@ internal static class MongoEngine
         return new EngineRows(columns, rows);
     }
 
+    /// <summary>Skeleton (T011): runs one compiled pipeline and maps a driver failure to <see cref="EngineRefusedException"/>.</summary>
+    internal static Task<List<BsonDocument>> AggregateAsync(IMongoCollection<BsonDocument> collection, MongoQuery query) =>
+        throw new NotImplementedException();
+
+    /// <summary>Skeleton (T011): the page path over an already prepared request.</summary>
+    public static Task<EngineRows> QueryAsync(IMongoCollection<BsonDocument> collection, ExecutionFixture fixture, PreparedRequest request) =>
+        throw new NotImplementedException();
+
     private static (MongoQuery Query, IReadOnlyList<string> Columns) Compile(PreparedRequest request)
     {
         try

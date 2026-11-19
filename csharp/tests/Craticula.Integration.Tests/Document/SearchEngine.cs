@@ -204,6 +204,15 @@ internal static class SearchEngine
         return Map(document.RootElement, request, compiled);
     }
 
+    /// <summary>Skeleton (T016): the page path over an already prepared request; <paramref name="inspect"/> sees the raw response before it is mapped.</summary>
+    public static Task<EngineRows> QueryAsync(
+        HttpClient http, string index, ExecutionFixture fixture, PreparedRequest request, Action<JsonElement>? inspect = null) =>
+        throw new NotImplementedException();
+
+    /// <summary>Skeleton (T016): posts <paramref name="body"/> to the index's <c>_search</c> and returns the response text.</summary>
+    internal static Task<string> SearchAsync(HttpClient http, string index, JsonObject body) =>
+        throw new NotImplementedException();
+
     private static SearchQuery Compile(PreparedRequest request)
     {
         try

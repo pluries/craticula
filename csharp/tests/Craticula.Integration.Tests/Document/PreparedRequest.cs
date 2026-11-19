@@ -43,7 +43,8 @@ internal sealed record PreparedRequest(
         return Parsed!.Export?.ProjectionColumns ?? Schema.FieldOrder;
     }
 
-    public static PreparedRequest For(ExecutionFixture fixture, GridSchema schema)
+    // Skeleton (T005): the page argument is accepted and ignored until T005 makes it replace the request's own window.
+    public static PreparedRequest For(ExecutionFixture fixture, GridSchema schema, PageSpec? page = null)
     {
         var requestJson = fixture.Request.GetRawText();
         var options = new AgGridParseOptions { Schema = schema, Clock = ClockFor(fixture.Request), AllowUnboundedRows = HarnessFlag(fixture.Request, "allowUnboundedRows") };
