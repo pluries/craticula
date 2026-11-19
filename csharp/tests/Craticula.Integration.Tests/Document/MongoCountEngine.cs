@@ -66,7 +66,7 @@ internal sealed class MongoCountEngine(IMongoClient client) : ICountParityEngine
     {
         var query = CompileCount(PreparedRequest.For(fixture, fixture.Schema, new NonePage()));
         var results = await MongoEngine.AggregateAsync(collection, query).ConfigureAwait(false);
-        return (MongoCountReader.Read(results), new JsonArray(query.Pipeline.Select(stage => stage.DeepClone()).ToArray()).ToJsonString());
+        return (MongoCountReader.Read(results), query.ToArtifact().ToJsonString());
     }
 
     private Task CleanUpAsync(string databaseName) => client.DropDatabaseAsync(databaseName);

@@ -9,6 +9,8 @@ public sealed class MongoCountParityTests(MongoEngineFixture engine)
 {
     public static TheoryData<string> Fixtures() => CountedFixtures.TheoryDataFor(EngineNames.Mongo, null);
 
+    // US1-AS1, US1-AS3 (grouped levels are in the data); US3-AS4: skipped with a reason when Docker is down ([DockerTheory]).
+
     [DockerTheory]
     [MemberData(nameof(Fixtures))]
     public Task Count_Equals_The_Unpaged_Rows_On_MongoDb(string name) =>

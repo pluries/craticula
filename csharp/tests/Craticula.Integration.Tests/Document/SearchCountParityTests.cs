@@ -15,6 +15,8 @@ public sealed class OpenSearchCountParityTests(OpenSearchEngineFixture engine)
 
     public static TheoryData<string> GroupedFixtures() => CountedFixtures.TheoryDataFor(EngineNames.Search, EngineNames.OpenSearch, grouped: true);
 
+    // US2-AS1, US2-AS8 (the export fixtures are counted like any other); US3-AS4 via [DockerTheory].
+
     [DockerTheory]
     [MemberData(nameof(Fixtures))]
     public Task Count_Equals_The_Unpaged_Rows_On_OpenSearch(string name) =>
@@ -32,6 +34,8 @@ public sealed class ElasticsearchCountParityTests(ElasticsearchEngineFixture eng
     public static TheoryData<string> Fixtures() => CountedFixtures.TheoryDataFor(EngineNames.Search, EngineNames.Elasticsearch, grouped: false);
 
     public static TheoryData<string> GroupedFixtures() => CountedFixtures.TheoryDataFor(EngineNames.Search, EngineNames.Elasticsearch, grouped: true);
+
+    // US2-AS2 (the same rule on Elasticsearch 8.17), US2-AS8; US3-AS4 via [DockerTheory].
 
     [DockerTheory]
     [MemberData(nameof(Fixtures))]
