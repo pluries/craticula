@@ -17,8 +17,9 @@ internal static class SearchCountReader
     private const string BucketCount = "bucket_count";
     private const string MissingGroupValues = "missing_group_values";
     private const string DocCount = "doc_count";
+    private const string Buckets = "buckets";
 
-    /// <summary>No cardinality-threshold check here: that belongs to the parked <see cref="AssertGroupWindowComplete"/> (D-006).</summary>
+    /// <summary>No cardinality-threshold check here: it lives in <see cref="AssertCardinalityBelowThreshold"/>, which the engine calls on the count response.</summary>
     public static long Read(JsonElement root, bool grouped) => grouped ? ReadGrouped(root) : ReadFlat(root);
 
     private static long ReadFlat(JsonElement root)
@@ -41,7 +42,37 @@ internal static class SearchCountReader
         return missing > 0 ? groups + 1 : groups;
     }
 
-    public static void AssertGroupWindowComplete(JsonElement root, string groupColumn, int window) => throw new NotImplementedException();
+    /// <summary>
+    /// US2-AS6, FR-007a: the group window must hold every group. The page response of a grouped level carries no
+    /// <c>bucket_count</c>, so the cardinality check runs here only when the response has one (the engine runs it on the
+    /// count response through <see cref="AssertCardinalityBelowThreshold"/>).
+    /// </summary>
+    public static void AssertGroupWindowComplete(JsonElement root, string groupColumn, int window)
+    {
+        var aggregations = root.GetProperty(Aggregations);
+        if (aggregations.TryGetProperty(BucketCount, out _))
+        {
+            AssertCardinalityBelowThreshold(root);
+        }
+
+        var returned = aggregations.GetProperty(groupColumn).GetProperty(Buckets).GetArrayLength();
+        if (returned >= window)
+        {
+            throw new InvalidOperationException(
+                $"The group window of {window} returned {returned} buckets for '{groupColumn}': further groups may not all have been read, so the unpaged rows are not a complete list (FR-007a).");
+        }
+    }
+
+    /// <summary>US2-AS6: a cardinality at the precision threshold is an estimate, not a count.</summary>
+    public static void AssertCardinalityBelowThreshold(JsonElement root)
+    {
+        var groups = root.GetProperty(Aggregations).GetProperty(BucketCount).GetProperty(Value).GetInt64();
+        if (groups >= CardinalityPrecisionThreshold)
+        {
+            throw new InvalidOperationException(
+                $"The group count {groups} reaches the cardinality precision threshold of {CardinalityPrecisionThreshold}: the engine's figure is no longer exact (US2-AS6).");
+        }
+    }
 }
 
 /// <summary>The compiled count body plus the exact-total member.</summary>

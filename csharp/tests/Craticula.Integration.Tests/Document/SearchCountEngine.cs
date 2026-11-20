@@ -12,6 +12,7 @@ namespace Craticula.Integration.Tests.Containers.Document;
 /// </summary>
 internal sealed class SearchCountEngine(HttpClient http, string engineName) : ICountParityEngine
 {
+    // ResourceLimits.MaxPageSize's default (SEC-3), the widest RangePage the compiler accepts; the library exposes it only as an instance property.
     internal const int GroupWindow = 1000;
 
     public string Backend => EngineNames.Search;
@@ -35,22 +36,13 @@ internal sealed class SearchCountEngine(HttpClient http, string engineName) : IC
         }
     }
 
-    /// <summary>PARKED (D-006, removed by T017a): a grouped Search level needs the unpaged window (OSE-11(d)).</summary>
-    internal static void RefuseGroupedUntilD006(PreparedRequest own)
-    {
-        ArgumentNullException.ThrowIfNull(own);
-        if (own.Plan is { GroupColumn: not null })
-        {
-            throw new InvalidOperationException(
-                "A grouped Search level cannot be read unpaged yet: it needs the group window (OSE-11(d)); see decisions.md D-006.");
-        }
-    }
-
-    // Flat only until T017a adds the grouped window.
+    /// <summary>FR-007a: a grouped level cannot compile without a window, so it is read through one of <see cref="GroupWindow"/> groups.</summary>
     internal static PageSpec UnpagedPageFor(PreparedRequest own)
     {
         ArgumentNullException.ThrowIfNull(own);
-        return new NonePage();
+        return own.Plan is { GroupColumn: not null }
+            ? new RangePage { StartRow = 0, EndRow = GroupWindow }
+            : new NonePage();
     }
 
     internal static SearchQuery CompileCount(PreparedRequest request)
@@ -76,10 +68,14 @@ internal sealed class SearchCountEngine(HttpClient http, string engineName) : IC
 
     private async Task<int> ReadUnpaged(ExecutionFixture fixture, string index)
     {
-        var own = PreparedRequest.For(fixture, fixture.Schema with { Source = index });
-        RefuseGroupedUntilD006(own);
-        var request = PreparedRequest.For(fixture, fixture.Schema with { Source = index }, UnpagedPageFor(own));
-        var rows = await SearchEngine.QueryAsync(http, index, fixture, request).ConfigureAwait(false);
+        var schema = fixture.Schema with { Source = index };
+        var own = PreparedRequest.For(fixture, schema);
+        var request = PreparedRequest.For(fixture, schema, UnpagedPageFor(own));
+        var groupColumn = own.Plan?.GroupColumn;
+        Action<JsonElement>? inspect = groupColumn is null
+            ? null
+            : root => SearchCountReader.AssertGroupWindowComplete(root, groupColumn, GroupWindow);
+        var rows = await SearchEngine.QueryAsync(http, index, fixture, request, inspect).ConfigureAwait(false);
         return rows.Rows.Count;
     }
 
@@ -90,6 +86,11 @@ internal sealed class SearchCountEngine(HttpClient http, string engineName) : IC
         var response = await SearchEngine.SearchAsync(http, index, body).ConfigureAwait(false);
         using var document = JsonDocument.Parse(response);
         var grouped = prepared.Plan is { GroupColumn: not null };
+        if (grouped)
+        {
+            SearchCountReader.AssertCardinalityBelowThreshold(document.RootElement);
+        }
+
         return (SearchCountReader.Read(document.RootElement, grouped), body.ToJsonString());
     }
 
