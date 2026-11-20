@@ -1,4 +1,5 @@
 using Craticula.Core.Ir;
+using Craticula.Core.Schema;
 using Craticula.Integration.Tests.Containers.Document;
 using Craticula.Integration.Tests.Oracle;
 
@@ -18,6 +19,13 @@ public sealed class SearchCountUnpagedPageTests
         var range = Assert.IsType<RangePage>(page);
         Assert.Equal(0, range.StartRow);
         Assert.Equal(SearchCountEngine.GroupWindow, range.EndRow);
+    }
+
+    // FR-007a: N is ResourceLimits.MaxPageSize; the harness constant must not drift from it
+    [Fact]
+    public void The_Group_Window_Equals_The_Largest_Window_The_Pipeline_Accepts()
+    {
+        Assert.Equal(SearchCountEngine.GroupWindow, new ResourceLimits().MaxPageSize);
     }
 
     // FR-007: a flat level is read whole

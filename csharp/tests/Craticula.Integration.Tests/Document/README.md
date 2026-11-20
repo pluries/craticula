@@ -94,7 +94,7 @@ Count mode (CNT-1..CNT-8) says a count and the page agree about which rows match
 
 - **What is compared.** For every *counted fixture* (an execution-tier row fetch that the engine is not declared to refuse; a
   distinct-values request has no count), the fixture's request is compiled in count mode (`BuildCount`) and run on the seeded
-  data, and the number it returns must equal the number of rows the same request returns with its window removed (`NonePage`,
+  data, and the number it returns must equal the number of rows the same request returns with its window removed (`NonePage`; for a Search grouped level the 1,000-group window above,
   CNT-3). A MongoDB `$count` over no document returns no document, which is read as 0.
 - **Where.** `CountParity/` holds the engine-independent part (`CountComparison`, `CountedFixtures`, the readers, `EngineNames`).
   The live theories are `MongoCountParityTests` and `OpenSearchCountParityTests` / `ElasticsearchCountParityTests` in this folder.
@@ -102,9 +102,10 @@ Count mode (CNT-1..CNT-8) says a count and the page agree about which rows match
   prints the number per engine and its grouped and flat split.
 - **Search exact total.** The harness adds `track_total_hits: true` to the compiled count body, so the total is exact
   (`relation: eq`); a lower bound (`gte`) fails the check. This is harness code: the compiler leaves the total to the host (OSE-16).
-- **Grouped Search levels are not compared yet.** A Search grouped level cannot compile without a window (OSE-11(d)). The check
-  for it waits for the owner's wording of US2-AS6 and FR-007a (`docs/specs/003-count-parity-document-engines/decisions.md`, D-006):
-  each Search class has one skipped test carrying that reason.
+- **Grouped Search levels.** A Search grouped level cannot compile without a window (OSE-11(d)), so its unpaged groups are read
+  through a first-page window of 1,000 (`ResourceLimits.MaxPageSize`). The check fails if the engine returns 1,000 buckets or
+  more (the groups may not all have been read) or if the group count reaches the `cardinality` precision threshold of 3,000
+  (FR-007a). The datasets are far below both limits.
 - **Running it.** `dotnet test csharp/tests/Craticula.Integration.Tests --filter "FullyQualifiedName~CountParity"` (Docker
   needed). Without a Docker daemon the live theories are skipped with the reason, as the rest of this tier is.
 - **A mismatch is a finding.** A count that differs from its unpaged rows is a bug in the compiler or the adapter, not in the
