@@ -357,8 +357,9 @@ class _BlockParser:
             return False
         # (line, indent, ordered, parts): a part is a list of text lines or an HTML string for a fenced block, in source order
         items: list[tuple[int, int, bool, list]] = []
-        while self.i < len(self.lines) and self._list_step(items):
-            pass
+        while self.i < len(self.lines):
+            if not self._list_step(items):
+                break
         self.body.append(_render_list(items, self.inline))
         return True
 

@@ -282,7 +282,7 @@ html[data-theme="light"] .theme-button .i-light, html[data-theme="dark"] .theme-
 .prose h2, .prose h3, .prose h4 { position: relative; }
 .anchor { margin-left: 0.4em; color: var(--faint); text-decoration: none; font-weight: 400; opacity: 0; }
 .prose h2:hover .anchor, .prose h3:hover .anchor, .prose h4:hover .anchor, .anchor:focus-visible { opacity: 1; }
-.prose pre { position: relative; }
+.prose pre { position: relative; overflow-wrap: normal; }
 .copy-button { position: absolute; top: 8px; right: 8px; min-height: 32px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; font-size: 0.8125rem; cursor: pointer; opacity: 0; }
 .prose pre:hover .copy-button, .copy-button:focus-visible, .copy-button[data-state="copied"] { opacity: 1; }
 .search-overlay { position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-start; justify-content: center; padding: 12vh 16px 16px; background: var(--scrim); }
@@ -339,4 +339,3 @@ a.card:hover { border-color: var(--accent); }
 
 /* Long German words and unspaced lines wrap in the page text */
 body, .prose, .card, .foot { overflow-wrap: anywhere; }
-.prose pre { overflow-wrap: normal; }
