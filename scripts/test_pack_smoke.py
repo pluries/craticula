@@ -127,8 +127,8 @@ class PackSmokeInspection(unittest.TestCase):
     def test_wrong_adapter_range_fails(self):
         good_feed(self.feed)
         write_package(self.feed, "Craticula.MongoDB.Driver",
-                      dependencies={"Craticula.Core": VERSION, "MongoDB.Driver": "3.13.0"})
-        self.assert_defect("Craticula.MongoDB.Driver", "expected exactly [3.13.0,4.0.0)")
+                      dependencies={"Craticula.Core": VERSION, "MongoDB.Driver": "3.14.0"})
+        self.assert_defect("Craticula.MongoDB.Driver", "expected exactly [3.14.0,4.0.0)")
 
     def test_range_spelled_with_spaces_or_short_upper_bound_passes(self):
         good_feed(self.feed)

@@ -2,9 +2,9 @@
 translates: search-adapters
 title: MongoDB 与 OpenSearch 适配器
 description: 使用可选适配器运行编译出的 MongoDB 和 OpenSearch 查询，包括深度分页。
-source_fingerprint: 48d257e31e0add276e9f93959d7b0b4c8302bb0209dc059498cdbe72961005ce
+source_fingerprint: 618600df4a1917b0cc73ce2d38c6271b34127199cecf4189a7fd45355ccb2ac7
 drafter: claude
-drafted_on: 2026-11-19
+drafted_on: 2026-11-20
 status: machine-drafted
 ---
 # MongoDB 与 OpenSearch 适配器 {#mongodb-and-opensearch-adapters}
@@ -24,7 +24,7 @@ status: machine-drafted
 
 ## MongoDB {#mongodb}
 
-`Craticula.MongoDB.Driver` 使用 `Craticula.Mongo` 编译，并通过官方 MongoDB 驱动运行管道，驱动版本范围为 `[3.13.0, 4.0)`。
+`Craticula.MongoDB.Driver` 使用 `Craticula.Mongo` 编译，并通过官方 MongoDB 驱动运行管道，驱动版本范围为 `[3.14.0, 4.0)`。
 
 ```csharp
 MongoGridPage result = await MongoGridQuery.FetchPageAsync(
