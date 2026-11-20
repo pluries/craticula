@@ -36,4 +36,47 @@ public sealed class SearchCountReaderTests
 
         Assert.Equal(expected, SearchCountReader.Read(response.RootElement, grouped: true));
     }
+
+    private const string GroupColumn = "category";
+    private const int Window = 1000;
+
+    private static string GroupedResponse(int cardinality, int buckets)
+    {
+        var items = string.Join(",", Enumerable.Range(0, buckets).Select(i => "{\"key\":{\"g\":" + i.ToString(CultureInfo.InvariantCulture) + "},\"doc_count\":1}"));
+        return "{\"aggregations\":{\"bucket_count\":{\"value\":" + cardinality.ToString(CultureInfo.InvariantCulture)
+            + "},\"" + GroupColumn + "\":{\"buckets\":[" + items + "]}}}";
+    }
+
+    // US2-AS6: a cardinality at the precision threshold (3000) is no longer exact, so it fails; one below passes
+    [Fact]
+    public void A_Cardinality_At_The_Threshold_Fails()
+    {
+        using var atThreshold = JsonDocument.Parse(GroupedResponse(SearchCountReader.CardinalityPrecisionThreshold, buckets: 3));
+        using var below = JsonDocument.Parse(GroupedResponse(SearchCountReader.CardinalityPrecisionThreshold - 1, buckets: 3));
+
+        var refusal = Assert.Throws<InvalidOperationException>(() =>
+            SearchCountReader.AssertGroupWindowComplete(atThreshold.RootElement, GroupColumn, Window));
+        Assert.Contains("precision threshold", refusal.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Null(Record.Exception(() => SearchCountReader.AssertGroupWindowComplete(below.RootElement, GroupColumn, Window)));
+    }
+
+    // FR-007a: as many buckets as the window may hide further groups, so it fails
+    [Fact]
+    public void A_Full_Group_Window_Fails()
+    {
+        using var response = JsonDocument.Parse(GroupedResponse(cardinality: 1000, buckets: Window));
+
+        var refusal = Assert.Throws<InvalidOperationException>(() =>
+            SearchCountReader.AssertGroupWindowComplete(response.RootElement, GroupColumn, Window));
+        Assert.Contains("may not all have been read", refusal.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // FR-007a: fewer buckets than the window means every group was read
+    [Fact]
+    public void A_Short_Window_Passes()
+    {
+        using var response = JsonDocument.Parse(GroupedResponse(cardinality: Window - 1, buckets: Window - 1));
+
+        Assert.Null(Record.Exception(() => SearchCountReader.AssertGroupWindowComplete(response.RootElement, GroupColumn, Window)));
+    }
 }
