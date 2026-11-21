@@ -1,0 +1,103 @@
+{
+  "verbatim": [
+    "Craticula",
+    "GridSchema",
+    "AG Grid",
+    "Server-Side Row Model",
+    "SSRM",
+    "SQL",
+    "SQL Server",
+    "PostgreSQL",
+    "MySQL",
+    "MariaDB",
+    "SQLite",
+    "Oracle",
+    "MongoDB",
+    "OpenSearch",
+    "Elasticsearch",
+    "OData",
+    "NuGet",
+    "Dapper",
+    "Entity Framework",
+    "JSON",
+    "CSV",
+    "Craticula.Core",
+    "Craticula.AgGrid",
+    "Craticula.Sql",
+    "Craticula.Mongo",
+    "Craticula.Search",
+    "Craticula.Export.Csv",
+    "Craticula.Dapper",
+    "Craticula.EntityFrameworkCore",
+    "Craticula.MongoDB.Driver",
+    "Craticula.OpenSearch.Client"
+  ],
+  "forbidden": {
+    "fr": {
+      "GridSchema": [
+        "schéma de grille",
+        "schéma de la grille"
+      ],
+      "AG Grid": [
+        "AG-Grid",
+        "grille AG"
+      ],
+      "Server-Side Row Model": [
+        "modèle de lignes côté serveur"
+      ]
+    },
+    "de": {
+      "GridSchema": [
+        "Gitterschema",
+        "Rasterschema"
+      ],
+      "AG Grid": [
+        "AG-Grid",
+        "AG-Gitter"
+      ],
+      "Server-Side Row Model": [
+        "serverseitiges Zeilenmodell"
+      ]
+    },
+    "it": {
+      "GridSchema": [
+        "schema della griglia",
+        "schema di griglia"
+      ],
+      "AG Grid": [
+        "AG-Grid",
+        "griglia AG"
+      ],
+      "Server-Side Row Model": [
+        "modello di righe lato server"
+      ]
+    },
+    "es": {
+      "GridSchema": [
+        "esquema de cuadrícula",
+        "esquema de la cuadrícula"
+      ],
+      "AG Grid": [
+        "AG-Grid",
+        "cuadrícula AG"
+      ],
+      "Server-Side Row Model": [
+        "modelo de filas del lado del servidor"
+      ]
+    },
+    "zh": {
+      "GridSchema": [
+        "网格模式",
+        "网格架构",
+        "网格方案"
+      ],
+      "AG Grid": [
+        "AG-Grid",
+        "AG 网格"
+      ],
+      "Server-Side Row Model": [
+        "服务器端行模型"
+      ]
+    }
+  }
+}

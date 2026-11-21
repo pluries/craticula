@@ -1,0 +1,55 @@
+{
+  "skip": "Aller au contenu",
+  "nav_docs": "Documentation",
+  "nav_reference": "Référence",
+  "menu_button": "Menu",
+  "menu_aria": "Ouvrir le menu de la page",
+  "pager_label": "Page précédente et suivante",
+  "previous": "Précédent",
+  "next": "Suivant",
+  "on_this_page": "Sur cette page",
+  "github_aria": "Dépôt GitHub",
+  "language_label": "Langue",
+  "english_mark": "(anglais)",
+  "english_only": "Cette page n'existe qu'en anglais",
+  "llms_home": "Accueil",
+  "llms_english_source": "Source anglaise",
+  "search_english": "Rechercher sur le site anglais",
+  "search_english_url": "index.html",
+  "copy": "Copier",
+  "copied": "Copié",
+  "copy_failed": "Échec de la copie",
+  "copy_aria": "Copier ce code",
+  "search_aria": "Rechercher dans la documentation (Ctrl+K)",
+  "search_label": "Rechercher dans la documentation",
+  "search_placeholder": "Rechercher",
+  "search_empty": "Saisissez un terme pour rechercher dans la documentation.",
+  "search_none": "Aucun résultat pour cette recherche.",
+  "search_loading": "Chargement de l'index de recherche...",
+  "search_unavailable": "La recherche n'est pas disponible pour le moment. Utilisez la barre latérale pour parcourir les pages.",
+  "result_one": "résultat",
+  "result_other": "résultats",
+  "theme_aria": "Thème : {name}. Changer de thème",
+  "theme_title": "Thème : {name}",
+  "theme_names": {
+    "auto": "Auto",
+    "light": "Clair",
+    "dark": "Sombre"
+  },
+  "group_names": {
+    "Concepts": "Concepts",
+    "Guides": "Guides",
+    "Configuration": "Configuration",
+    "Reference": "Référence"
+  },
+  "subgroups": {
+    "Semantics": "Sémantique",
+    "Quickstarts": "Démarrages rapides"
+  },
+  "groups": {
+    "Concepts": "Ce qu'est Craticula, comment une requête devient une requête de base de données, les modes Strict et Lenient, et le modèle de sécurité.",
+    "Guides": "Démarrages rapides, conseils d'indexation et migration depuis OData.",
+    "Configuration": "Le GridSchema, les limites, ainsi que les dialectes et fournisseurs.",
+    "Reference": "La spécification, une page par règle de comportement des requêtes, et les deux schémas."
+  }
+}

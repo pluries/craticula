@@ -1,0 +1,49 @@
+{
+  "skip": "Skip to content",
+  "nav_docs": "Docs",
+  "nav_reference": "Reference",
+  "menu_button": "Menu",
+  "menu_aria": "Open the page menu",
+  "pager_label": "Previous and next",
+  "previous": "Previous",
+  "next": "Next",
+  "on_this_page": "On this page",
+  "github_aria": "GitHub repository",
+  "language_label": "Language",
+  "english_mark": "(English)",
+  "english_only": "This page is English only",
+  "llms_home": "Home",
+  "llms_english_source": "English source",
+  "search_english": "Search the English site",
+  "search_english_url": "index.html",
+  "copy": "Copy",
+  "copied": "Copied",
+  "copy_failed": "Copy failed",
+  "copy_aria": "Copy this code",
+  "search_aria": "Search the documentation (Ctrl+K)",
+  "search_label": "Search the documentation",
+  "search_placeholder": "Search",
+  "search_empty": "Type to search the documentation.",
+  "search_none": "Nothing matches that search.",
+  "search_loading": "Loading the search index...",
+  "search_unavailable": "Search is not available right now. Use the sidebar to browse the pages.",
+  "result_one": "result",
+  "result_other": "results",
+  "theme_aria": "Theme: {name}. Change theme",
+  "theme_title": "Theme: {name}",
+  "theme_names": {
+    "auto": "Auto",
+    "light": "Light",
+    "dark": "Dark"
+  },
+  "group_names": {
+    "Concepts": "Concepts",
+    "Guides": "Guides",
+    "Configuration": "Configuration",
+    "Reference": "Reference"
+  },
+  "subgroups": {
+    "Semantics": "Semantics",
+    "Quickstarts": "Quickstarts"
+  }
+}

@@ -45,7 +45,7 @@ Docs site v2 contract (story #3554, task #3555; spec `docs/spec/docs-site-v2.md`
     (a word boundary, 2 to 5 capitals, a hyphen and digits, or `#` and three digits) in a title, sidebar label, TOC label, description or summary (DS-19).
   * A link to `semantics.html#<anchor>` or to the source file `semantics.md#<anchor>` resolves to the split page that holds the anchor.
 
-    python3 scripts/build_site.py [--out DIR] [--root DIR]
+    python3 scripts/build_site.py [--out DIR] [--root DIR] [--base-url URL] [--preview-languages fr,de]
 
 Exit codes: 0 built and every link resolves, 1 a link is dead or private, 2 bad usage or an unreadable configuration.
 """
@@ -67,6 +67,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+import site_i18n
+
 # The private paths of scripts/publish-github.sh (its PRIVATE array): what the public mirror does not carry, so a link to one is
 # dead there. test_build_site.py pins this tuple to the real array where that script exists (the private repository).
 PRIVATE_PATHS = ("docs", ".claude", "CLAUDE.md", ".mcp.json", ".githooks", ".azuredevops", ".sonarlint", ".vscode",
@@ -83,6 +85,16 @@ ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 MAX_TOC_LABEL = 60  # DS-9
 ADDENDUM = "Addendum — "
 SPLIT_SUBGROUP = "Semantics"
+LLMS_NAME, LLMS_FULL_NAME = "llms.txt", "llms-full.txt"
+I18N_DIR = "site/i18n"
+
+
+def language_file(code: str, name: str) -> str:
+    """The repository path of a file of a language's translation folder."""
+    return f"{I18N_DIR}/{code}/{name}"
+
+
+GROUP_NAMES, SUBGROUPS = "group_names", "subgroups"  # the tables of the interface text that name the groups and the subgroups
 
 
 class BuildError(Exception):
@@ -106,6 +118,13 @@ class Slugger:
         self.used: set[str] = set()
         self.counts: dict[str, int] = {}
 
+    def declare(self, anchor: str) -> str:
+        """A heading's own anchor (`{#anchor}`): it takes the place of the generated one, and no later heading can generate it."""
+        if anchor in self.used:
+            raise BuildError(f"the anchor '{anchor}' is declared or generated twice on the page")
+        self.used.add(anchor)
+        return anchor
+
     def __call__(self, text: str) -> str:
         base = slugify(text)
         candidate = base
@@ -126,6 +145,7 @@ class Rendered:
     links: list[tuple[int, str]] = field(default_factory=list)  # (source line, href)
     title: str = ""
     headings: list[tuple[int, str, str]] = field(default_factory=list)  # level, text and anchor of each heading, in order; FR-32, task #3474
+    undeclared: list[str] = field(default_factory=list)  # with `require_anchors`: the text of each heading that declares no `{#english-anchor}` (spec 004, US2-AS11)
 
 
 _INLINE_CODE = re.compile(r"(`+)(.+?)\1", re.S)
@@ -207,151 +227,207 @@ def _cells(row: str) -> list[str]:
     return [c.strip().replace("\\|", "|") for c in re.split(r"(?<!\\)\|", row)]
 
 
-def render_markdown(source: str, resolve=lambda href, image=False: href) -> Rendered:
-    """Markdown to HTML for the subset the repository's documents use (headings, paragraphs, lists, tables, fenced code,
-    block quotes, rules, inline code, links, emphasis). Raw HTML in the source is escaped, never passed through."""
-    source = source.replace("\x00", "\ufffd")  # NUL marks this converter's placeholders
-    out = Rendered(html="")
-    slugs = Slugger()
-    body: list[str] = []
-    lines = source.replace("\r\n", "\n").split("\n")
-    i = 0
+_DECLARED_ANCHOR = re.compile(r"^(.*?)\s*\{#([\w-]+)\}$")
 
-    def inline(text: str, number: int) -> str:
-        return _inline(text, number, out, resolve)
 
-    while i < len(lines):
-        line = lines[i]
-        number = i + 1
+def _split_declaration(text: str) -> tuple[str, str]:
+    """A heading's text without its `{#anchor}` declaration, and the anchor ('' when it declares none)."""
+    match = _DECLARED_ANCHOR.match(text)
+    return (match.group(1), match.group(2)) if match else (text, "")
 
-        if not line.strip():
-            i += 1
-            continue
 
+_INDENTED = (" ", "\t")
+
+
+class _BlockParser:
+    """One pass over the lines of a document: each block kind has its own method, tried in a fixed order; a line none of them
+    takes starts a paragraph. Reads and advances `self.i` (the index of the next line)."""
+
+    def __init__(self, source: str, resolve, require_anchors: bool) -> None:
+        self.resolve = resolve
+        self.require_anchors = require_anchors
+        self.out = Rendered(html="")
+        self.slugs = Slugger()
+        self.body: list[str] = []
+        self.lines = source.replace("\r\n", "\n").split("\n")
+        self.i = 0
+
+    def inline(self, text: str, number: int) -> str:
+        return _inline(text, number, self.out, self.resolve)
+
+    def parse(self) -> Rendered:
+        blocks = (self._fence, self._heading, self._hrule, self._quote, self._table, self._list)
+        while self.i < len(self.lines):
+            line = self.lines[self.i]
+            if not line.strip():
+                self.i += 1
+            elif not any(block(line, self.i + 1) for block in blocks):
+                self._paragraph(line, self.i + 1)
+        self.out.html = "\n".join(self.body)
+        return self.out
+
+    def _read_fence(self, opener: re.Match) -> str:
+        """The `<pre>` of the fenced block whose opening line is `self.lines[self.i]`; leaves `self.i` after the closing line."""
+        marker, language, indent = opener.group(2), opener.group(3), len(opener.group(1))
+        closing = re.compile(rf"^\s*{re.escape(marker[0])}{{{len(marker)},}}\s*$")
+        self.i += 1
+        code: list[str] = []
+        while self.i < len(self.lines) and not closing.match(self.lines[self.i]):
+            text = self.lines[self.i]
+            code.append(text[indent:] if text[:indent].strip() == "" else text)
+            self.i += 1
+        self.i += 1
+        cls = f' class="language-{html.escape(language)}"' if language else ""
+        return f"<pre><code{cls}>{html.escape(chr(10).join(code), quote=False)}</code></pre>"
+
+    def _fence(self, line: str, number: int) -> bool:
         fence = _FENCE.match(line)
         if fence:
-            marker, language = fence.group(2), fence.group(3)
-            indent = len(fence.group(1))
-            i += 1
-            code: list[str] = []
-            while i < len(lines) and not re.match(rf"^\s*{re.escape(marker[0])}{{{len(marker)},}}\s*$", lines[i]):
-                code.append(lines[i][indent:] if lines[i][:indent].strip() == "" else lines[i])
-                i += 1
-            i += 1
-            cls = f' class="language-{html.escape(language)}"' if language else ""
-            body.append(f"<pre><code{cls}>{html.escape(chr(10).join(code), quote=False)}</code></pre>")
-            continue
+            self.body.append(self._read_fence(fence))
+        return bool(fence)
 
+    def _heading(self, line: str, number: int) -> bool:
         heading = _HEADING.match(line)
-        if heading:
-            level, text = len(heading.group(1)), heading.group(2)
-            plain = re.sub(r"[`*]", "", re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text))
-            anchor = slugs(plain)
-            out.anchors.add(anchor)
-            out.headings.append((level, plain, anchor))
-            alias = ""
-            rule = _RULE_HEADING.match(text)
-            if rule:  # `## SEM-1. Case sensitivity` is also reachable as `#sem-1`
-                anchor_id = rule_anchor(rule.group(1))
-                out.anchors.add(anchor_id)
-                alias = f'<a id="{anchor_id}"></a>'
-            if level == 1 and not out.title:
-                out.title = re.sub(r"[`*]", "", text)
-            body.append(f'<h{level} id="{anchor}">{alias}{inline(text, number)}</h{level}>')
-            i += 1
-            continue
+        if not heading:
+            return False
+        out = self.out
+        level, (text, declared) = len(heading.group(1)), _split_declaration(heading.group(2))
+        plain = re.sub(r"[`*]", "", re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text))
+        anchor = self.slugs.declare(declared) if declared else self.slugs(plain)
+        if self.require_anchors and not declared:
+            out.undeclared.append(plain)
+        out.anchors.add(anchor)
+        out.headings.append((level, plain, anchor))
+        alias = self._rule_alias(text)
+        if level == 1 and not out.title:
+            out.title = re.sub(r"[`*]", "", text)
+        self.body.append(f'<h{level} id="{anchor}">{alias}{self.inline(text, number)}</h{level}>')
+        self.i += 1
+        return True
 
+    def _rule_alias(self, text: str) -> str:
+        """`## SEM-1. Case sensitivity` is also reachable as `#sem-1`: the empty anchor element that carries it, or ''."""
+        rule = _RULE_HEADING.match(text)
+        if not rule:
+            return ""
+        anchor_id = rule_anchor(rule.group(1))
+        self.out.anchors.add(anchor_id)
+        return f'<a id="{anchor_id}"></a>'
+
+    def _hrule(self, line: str, number: int) -> bool:
         if _RULE.match(line):
-            body.append("<hr>")
-            i += 1
-            continue
+            self.body.append("<hr>")
+            self.i += 1
+            return True
+        return False
 
-        if line.lstrip().startswith(">"):
-            quote: list[str] = []
-            start = i
-            while i < len(lines) and lines[i].lstrip().startswith(">"):
-                quote.append(re.sub(r"^\s*>\s?", "", lines[i]))
-                i += 1
-            inner = render_markdown("\n".join(quote), resolve)
-            out.links.extend((start + n, href) for n, href in inner.links)
-            out.anchors.update(inner.anchors)
-            body.append(f"<blockquote>{inner.html}</blockquote>")
-            continue
+    def _quote(self, line: str, number: int) -> bool:
+        if not line.lstrip().startswith(">"):
+            return False
+        quote: list[str] = []
+        start = self.i
+        while self.i < len(self.lines) and self.lines[self.i].lstrip().startswith(">"):
+            quote.append(re.sub(r"^\s*>\s?", "", self.lines[self.i]))
+            self.i += 1
+        inner = render_markdown("\n".join(quote), self.resolve)
+        self.out.links.extend((start + n, href) for n, href in inner.links)
+        self.out.anchors.update(inner.anchors)
+        self.body.append(f"<blockquote>{inner.html}</blockquote>")
+        return True
 
-        if "|" in line and i + 1 < len(lines) and _TABLE_SEP.match(lines[i + 1]) and "|" in lines[i + 1]:
-            head = _cells(line)
-            i += 2
-            rows: list[tuple[int, list[str]]] = []
-            while i < len(lines) and lines[i].strip() and "|" in lines[i]:
-                rows.append((i + 1, _cells(lines[i])))
-                i += 1
-            parts = ["<table><thead><tr>" + "".join(f"<th>{inline(c, number)}</th>" for c in head) + "</tr></thead><tbody>"]
-            for row_number, cells in rows:
-                parts.append("<tr>" + "".join(f"<td>{inline(c, row_number)}</td>" for c in cells) + "</tr>")
-            parts.append("</tbody></table>")
-            body.append("".join(parts))
-            continue
+    def _table(self, line: str, number: int) -> bool:
+        lines, i = self.lines, self.i
+        if not ("|" in line and i + 1 < len(lines) and _TABLE_SEP.match(lines[i + 1]) and "|" in lines[i + 1]):
+            return False
+        head = _cells(line)
+        self.i += 2
+        rows: list[tuple[int, list[str]]] = []
+        while self.i < len(lines) and lines[self.i].strip() and "|" in lines[self.i]:
+            rows.append((self.i + 1, _cells(lines[self.i])))
+            self.i += 1
+        parts = ["<table><thead><tr>" + "".join(f"<th>{self.inline(c, number)}</th>" for c in head) + "</tr></thead><tbody>"]
+        for row_number, cells in rows:
+            parts.append("<tr>" + "".join(f"<td>{self.inline(c, row_number)}</td>" for c in cells) + "</tr>")
+        parts.append("</tbody></table>")
+        self.body.append("".join(parts))
+        return True
 
-        if _LIST.match(line):
-            # (line, indent, ordered, parts): a part is a list of text lines or an HTML string for a fenced block, in source order
-            items: list[tuple[int, int, bool, list]] = []
-            while i < len(lines):
-                m = _LIST.match(lines[i])
-                if m:
-                    items.append((i + 1, len(m.group(1).expandtabs(4)), m.group(2)[0].isdigit(), [[m.group(3)]]))
-                    i += 1
-                elif not lines[i].strip():
-                    # A blank line stays inside the list only when an indented list item or fenced block follows it.
-                    j = i
-                    while j < len(lines) and not lines[j].strip():
-                        j += 1
-                    if items and j < len(lines) and lines[j].startswith(("  ", "\t")) and (_FENCE.match(lines[j]) or _LIST.match(lines[j])):
-                        i = j
-                    else:
-                        break
-                elif items and lines[i].startswith((" ", "\t")) and _FENCE.match(lines[i]):
-                    opener = _FENCE.match(lines[i])
-                    marker, language, indent = opener.group(2), opener.group(3), len(opener.group(1))
-                    i += 1
-                    code = []
-                    while i < len(lines) and not re.match(rf"^\s*{re.escape(marker[0])}{{{len(marker)},}}\s*$", lines[i]):
-                        code.append(lines[i][indent:] if lines[i][:indent].strip() == "" else lines[i])
-                        i += 1
-                    i += 1
-                    cls = f' class="language-{html.escape(language)}"' if language else ""
-                    items[-1][3].append(f"<pre><code{cls}>{html.escape(chr(10).join(code), quote=False)}</code></pre>")
-                elif lines[i].strip() and lines[i].startswith((" ", "\t")) and items:
-                    if isinstance(items[-1][3][-1], str):  # text after a fenced block is a new paragraph of the item
-                        items[-1][3].append([])
-                    items[-1][3][-1].append(lines[i].strip())
-                    i += 1
-                else:
-                    break
-            body.append(_render_list(items, inline))
-            continue
+    def _list(self, line: str, number: int) -> bool:
+        if not _LIST.match(line):
+            return False
+        # (line, indent, ordered, parts): a part is a list of text lines or an HTML string for a fenced block, in source order
+        items: list[tuple[int, int, bool, list]] = []
+        while self.i < len(self.lines):
+            if not self._list_step(items):
+                break
+        self.body.append(_render_list(items, self.inline))
+        return True
 
+    def _list_step(self, items: list) -> bool:
+        """Consume the list's next line (an item, a continuation, a nested fenced block, a blank inside it); False when the list ends."""
+        text = self.lines[self.i]
+        match = _LIST.match(text)
+        if match:
+            items.append((self.i + 1, len(match.group(1).expandtabs(4)), match.group(2)[0].isdigit(), [[match.group(3)]]))
+            self.i += 1
+            return True
+        if not text.strip():
+            return self._list_blank(items)
+        if not (items and text.startswith(_INDENTED)):
+            return False
+        opener = _FENCE.match(text)
+        if opener:
+            items[-1][3].append(self._read_fence(opener))
+            return True
+        if isinstance(items[-1][3][-1], str):  # text after a fenced block is a new paragraph of the item
+            items[-1][3].append([])
+        items[-1][3][-1].append(text.strip())
+        self.i += 1
+        return True
+
+    def _list_blank(self, items: list) -> bool:
+        """A blank line stays inside the list only when an indented list item or fenced block follows it."""
+        j = self.i
+        while j < len(self.lines) and not self.lines[j].strip():
+            j += 1
+        if items and j < len(self.lines) and self.lines[j].startswith(("  ", "\t")) and (_FENCE.match(self.lines[j]) or _LIST.match(self.lines[j])):
+            self.i = j
+            return True
+        return False
+
+    def _ends_paragraph(self, index: int) -> bool:
+        lines = self.lines
+        text = lines[index]
+        return bool(
+            not text.strip()
+            or _HEADING.match(text) or _FENCE.match(text) or _LIST.match(text)
+            or text.lstrip().startswith(">") or _RULE.match(text)
+            or ("|" in text and index + 1 < len(lines) and _TABLE_SEP.match(lines[index + 1]))
+        )
+
+    def _paragraph(self, line: str, number: int) -> None:
         paragraph = [line.strip()]
-        start = number
-        i += 1
-        while i < len(lines) and lines[i].strip() and not (
-            _HEADING.match(lines[i]) or _FENCE.match(lines[i]) or _LIST.match(lines[i])
-            or lines[i].lstrip().startswith(">") or _RULE.match(lines[i])
-            or ("|" in lines[i] and i + 1 < len(lines) and _TABLE_SEP.match(lines[i + 1]))
-        ):
-            paragraph.append(lines[i].strip())
-            i += 1
+        self.i += 1
+        while self.i < len(self.lines) and not self._ends_paragraph(self.i):
+            paragraph.append(self.lines[self.i].strip())
+            self.i += 1
         joined = " ".join(paragraph)
         opener = _RULE_OPENER.match(joined)
         attribute = ""
         if opener:  # `**GRP-7. A ...**` opens a rule: give the paragraph the anchor `#grp-7`
             anchor_id = rule_anchor(opener.group(1))
-            if anchor_id not in out.anchors:
-                out.anchors.add(anchor_id)
+            if anchor_id not in self.out.anchors:
+                self.out.anchors.add(anchor_id)
                 attribute = f' id="{anchor_id}"'
-        body.append(f"<p{attribute}>{inline(joined, start)}</p>")
+        self.body.append(f"<p{attribute}>{self.inline(joined, number)}</p>")
 
-    out.html = "\n".join(body)
-    return out
+
+def render_markdown(source: str, resolve=lambda href, image=False: href, *, require_anchors: bool = False) -> Rendered:
+    """Markdown to HTML for the subset the repository's documents use (headings, paragraphs, lists, tables, fenced code,
+    block quotes, rules, inline code, links, emphasis). Raw HTML in the source is escaped, never passed through.
+    `## Heading {#anchor}` declares the anchor (US2-AS11); with `require_anchors`, a heading without one goes to `Rendered.undeclared`."""
+    source = source.replace("\x00", "\ufffd")  # NUL marks this converter's placeholders
+    return _BlockParser(source, resolve, require_anchors).parse()
 
 
 def _render_list(items, inline) -> str:
@@ -398,6 +474,7 @@ class Page:
     reviewed: str | None = None  # #3555, DS-24: ISO date of the review of an authored page
     summary: str = ""  # #3555, DS-10: the lead paragraph of a split semantics page
     alias: str = ""  # #3555: the rule anchor (`sem-1`) a split page keeps next to its title
+    scope: str = "translated"  # spec 004-site-languages FR-027: "translated" or "english", read from the page entry of site.json
 
 
 def _layout(pages: list["Page"]) -> dict[str, list]:
@@ -428,12 +505,22 @@ def ordered_pages(pages: list["Page"]) -> list["Page"]:
     return flat
 
 
+def _ui(ui: dict | None) -> dict:
+    """The interface text a render function uses: the one it is given, else the English one (spec 004-site-languages, FR-003)."""
+    return ui if ui is not None else site_i18n.default_ui()
+
+
+def _label(ui: dict | None, table: str, name: str) -> str:
+    """The shown name of a group or subgroup; the key itself when the interface text has no entry for it."""
+    return _ui(ui)[table].get(name, name)
+
+
 def _side_link(page: "Page", current_slug: str) -> str:
     current = ' aria-current="page"' if page.slug == current_slug else ""
     return f'<li><a href="{html.escape(page.slug)}.html"{current}>{html.escape(page.title)}</a></li>'
 
 
-def _sidebar_item(entry, current_slug: str) -> tuple[str, bool]:
+def _sidebar_item(entry, current_slug: str, ui: dict | None) -> tuple[str, bool]:
     """The list item of one entry of a group (a page, or a subgroup and its pages) and whether it holds the current page."""
     if not isinstance(entry, tuple):
         return _side_link(entry, current_slug), entry.slug == current_slug
@@ -441,10 +528,11 @@ def _sidebar_item(entry, current_slug: str) -> tuple[str, bool]:
     sub_open = any(member.slug == current_slug for member in members)
     open_attribute = " open" if sub_open else ""
     links = "".join(_side_link(member, current_slug) for member in members)
-    return f'<li class="side-sub"><details{open_attribute}><summary>{html.escape(sub_name)}</summary><ul>{links}</ul></details></li>', sub_open
+    return (f'<li class="side-sub"><details{open_attribute}><summary>{html.escape(_label(ui, SUBGROUPS, sub_name))}</summary>'
+            f'<ul>{links}</ul></details></li>'), sub_open
 
 
-def render_sidebar(pages: list["Page"], current_slug: str) -> str:
+def render_sidebar(pages: list["Page"], current_slug: str, ui: dict | None = None) -> str:
     """DS-2: the groups in their fixed order (empty ones left out) as native collapsible blocks; a subgroup nests one level
     deeper; the group and subgroup that hold the current page are open, and the current page is marked aria-current."""
     layout = _layout(pages)
@@ -452,37 +540,38 @@ def render_sidebar(pages: list["Page"], current_slug: str) -> str:
     for name in GROUPS:
         if not layout[name]:
             continue
-        rendered = [_sidebar_item(entry, current_slug) for entry in layout[name]]
+        rendered = [_sidebar_item(entry, current_slug, ui) for entry in layout[name]]
         open_attribute = " open" if any(holds for _, holds in rendered) else ""
         items = "".join(item for item, _ in rendered)
-        blocks.append(f'<div class="side-group"><details{open_attribute}><summary>{html.escape(name)}</summary><ul>{items}</ul></details></div>')
+        blocks.append(f'<div class="side-group"><details{open_attribute}><summary>{html.escape(_label(ui, GROUP_NAMES, name))}</summary><ul>{items}</ul></details></div>')
     return "".join(blocks)
 
 
-def render_pager(pages: list["Page"], current_slug: str) -> str:
+def render_pager(pages: list["Page"], current_slug: str, ui: dict | None = None) -> str:
     """DS-8: links to the previous and the next page in sidebar order; empty for a page that is not in the sidebar (the home page)."""
     order = ordered_pages(pages)
     slugs = [page.slug for page in order]
     if current_slug not in slugs:
         return ""
+    words = _ui(ui)
     position = slugs.index(current_slug)
     links = []
     if position > 0:
         before = order[position - 1]
-        links.append(f'<a class="pager-prev" rel="prev" href="{html.escape(before.slug)}.html"><span>Previous</span><strong>{html.escape(before.title)}</strong></a>')
+        links.append(f'<a class="pager-prev" rel="prev" href="{html.escape(before.slug)}.html"><span>{html.escape(words["previous"])}</span><strong>{html.escape(before.title)}</strong></a>')
     if position + 1 < len(order):
         after = order[position + 1]
-        links.append(f'<a class="pager-next" rel="next" href="{html.escape(after.slug)}.html"><span>Next</span><strong>{html.escape(after.title)}</strong></a>')
-    return f'<nav class="pager" aria-label="Previous and next">{"".join(links)}</nav>'
+        links.append(f'<a class="pager-next" rel="next" href="{html.escape(after.slug)}.html"><span>{html.escape(words["next"])}</span><strong>{html.escape(after.title)}</strong></a>')
+    return f'<nav class="pager" aria-label="{html.escape(words["pager_label"])}">{"".join(links)}</nav>'
 
 
-def render_toc(rendered: Rendered) -> str:
+def render_toc(rendered: Rendered, ui: dict | None = None) -> str:
     """FR-32, task #3474: the 'On this page' block of the level-2 headings, or '' when there are none."""
     links = "".join(f'<li><a href="#{html.escape(anchor)}">{html.escape(text)}</a></li>' for level, text, anchor in rendered.headings if level == 2)
-    return f'<p class="side-title">On this page</p><ul>{links}</ul>' if links else ""
+    return f'<p class="side-title">{html.escape(_ui(ui)["on_this_page"])}</p><ul>{links}</ul>' if links else ""
 
 
-GROUPS = ("Concepts", "Guides", "Configuration", "Reference")  # #3555, DS-2: the sidebar's fixed order
+GROUPS = tuple(site_i18n.default_ui()[GROUP_NAMES])  # #3555, DS-2: the sidebar's fixed order, the order of `group_names` in site/i18n/en/ui.json
 GENERATORS = ("schema-reference", "semantics-split")
 
 
@@ -623,7 +712,7 @@ def diagram_figure(svg: str, alt: str) -> str:
 
 # ---------------------------------------------------------------- asset versions (#3841)
 
-VERSIONED_ASSET = re.compile(r'\b(href|src)="(style\.css|theme\.js|site\.js)"')
+VERSIONED_ASSET = re.compile(r'\b(href|src)="((?:\.\./)?)(style\.css|theme\.js|site\.js)"')  # `../` in a language folder
 
 
 def asset_versions(out_dir: Path) -> dict[str, str]:
@@ -635,8 +724,8 @@ def asset_versions(out_dir: Path) -> dict[str, str]:
 
 def version_assets(page_html: str, versions: dict[str, str]) -> str:
     def swap(match: re.Match) -> str:
-        version = versions.get(match.group(2))
-        return f'{match.group(1)}="{match.group(2)}?v={version}"' if version else match.group(0)
+        version = versions.get(match.group(3))
+        return f'{match.group(1)}="{match.group(2)}{match.group(3)}?v={version}"' if version else match.group(0)
     return VERSIONED_ASSET.sub(swap, page_html)
 
 
@@ -697,14 +786,22 @@ def favicon_ico() -> bytes:
     return struct.pack("<HHH", 0, 1, 1) + struct.pack("<BBBBHHII", 32, 32, 0, 0, 1, 32, len(image), 22) + image
 
 
-HEAD_LINKS = ('<link rel="icon" type="image/svg+xml" href="favicon.svg"><link rel="icon" href="favicon.ico" sizes="32x32">'
-              '<link rel="apple-touch-icon" href="apple-touch-icon.png">')
+def head_links(assets: str = "") -> str:
+    """The icon links of the page head; `assets` is the prefix that reaches the shared files from the page (empty, or `../` in a language folder)."""
+    return (f'<link rel="icon" type="image/svg+xml" href="{assets}favicon.svg"><link rel="icon" href="{assets}favicon.ico" sizes="32x32">'
+            f'<link rel="apple-touch-icon" href="{assets}apple-touch-icon.png">')
 
 
 # ---------------------------------------------------------------- page features (#3556)
 
 SCRIPTS = ("theme.js", "site.js")
-SCRIPT_TAGS = '<script src="theme.js"></script><script src="site.js" defer></script>'
+TEMPLATE_UI_KEYS = ("skip", "on_this_page")  # the `{{ui_<key>}}` values of the page templates
+
+
+def script_tags(assets: str = "") -> str:
+    return f'<script src="{assets}theme.js"></script><script src="{assets}site.js" defer></script>'
+
+
 REGISTRY_NAMES = {"nuget": "NuGet", "npm": "npm", "pypi": "PyPI", "go": "Go"}
 _ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{}</svg>'
 ICON_GITHUB = ('<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7'
@@ -728,8 +825,9 @@ _HEADING_OPEN = re.compile(r'<h([234]) id="([^"]+)">(.*?)</h\1>', re.S)
 _TAG = re.compile(r"</?[A-Za-z][^>]*>")
 
 
-def render_topbar(config: dict, pages: list["Page"]) -> str:
-    """DS-1: the top bar of every page: logo, Docs and Reference, the repository and the published registries, search and theme."""
+def render_topbar(config: dict, pages: list["Page"], ui: dict | None = None, language_menu: str = "") -> str:
+    """DS-1: the top bar of every page: logo, Docs and Reference, the language control (empty while one language is built), the repository and the published registries, search and theme."""
+    words = _ui(ui)
     order = ordered_pages(pages)
     docs = order[0].slug if order else "index"
     reference = next((p.slug for p in order if p.group == "Reference"), docs)
@@ -737,16 +835,16 @@ def render_topbar(config: dict, pages: list["Page"]) -> str:
         f'<a class="icon-btn" href="{html.escape(url, quote=True)}" aria-label="{html.escape(REGISTRY_NAMES.get(key, key))} package">{REGISTRY_ICONS.get(key, ICON_PACKAGE)}</a>'
         for key, url in config.get("packages", {}).items())
     return (f'<header class="top"><div class="wrap-wide"><a class="brand" href="index.html">{LOGO}{html.escape(config["title"])}</a>'
-            f'<nav class="top-nav" aria-label="Main"><a href="{html.escape(docs)}.html">Docs</a><a href="{html.escape(reference)}.html">Reference</a></nav>'
-            f'<div class="top-actions"><a class="icon-btn" href="{html.escape(config["repo"], quote=True)}" aria-label="GitHub repository">{ICON_GITHUB}</a>{registries}'
-            f'<button type="button" class="icon-btn search-button" aria-label="Search the documentation (Ctrl+K)">{ICON_SEARCH}</button>'
-            f'<button type="button" class="icon-btn theme-button" aria-label="Theme: Auto. Change theme">{ICON_THEME}</button></div></div></header>')
+            f'<nav class="top-nav" aria-label="Main"><a href="{html.escape(docs)}.html">{html.escape(words["nav_docs"])}</a><a href="{html.escape(reference)}.html">{html.escape(words["nav_reference"])}</a></nav>'
+            f'<div class="top-actions">{language_menu}<a class="icon-btn" href="{html.escape(config["repo"], quote=True)}" aria-label="{html.escape(words["github_aria"])}">{ICON_GITHUB}</a>{registries}'
+            f'<button type="button" class="icon-btn search-button" aria-label="{html.escape(words["search_aria"])}">{ICON_SEARCH}</button>'
+            f'<button type="button" class="icon-btn theme-button" aria-label="{html.escape(words["theme_aria"].format(name=words["theme_names"]["auto"]))}">{ICON_THEME}</button></div></div></header>')
 
 
-def render_group_cards(config: dict, pages: list["Page"]) -> str:
+def render_group_cards(config: dict, pages: list["Page"], ui: dict | None = None) -> str:
     """DS-3: one card per group that has pages, linking its first page; empty without a `groups` key in site.json. A group that has pages
     and no description fails the build."""
-    groups = config.get("groups")
+    groups = config.get("groups") if ui is None else ui.get("groups")
     if groups is None:
         return ""
     order = ordered_pages(pages)
@@ -758,15 +856,17 @@ def render_group_cards(config: dict, pages: list["Page"]) -> str:
         description = groups.get(name)
         if not isinstance(description, str) or not description.strip():
             raise BuildError(f"site/site.json: the group '{name}' has pages and needs a one-sentence description under 'groups'")
-        cards.append(f'<a class="card" href="{html.escape(first.slug)}.html"><h3>{html.escape(name)}</h3><p>{html.escape(description)}</p></a>')
+        cards.append(f'<a class="card" href="{html.escape(first.slug)}.html"><h3>{html.escape(_label(ui, GROUP_NAMES, name))}</h3><p>{html.escape(description)}</p></a>')
     return f'<div class="cards group-cards">{"".join(cards)}</div>'
 
 
-def render_menu_button(slug: str) -> str:
+def render_menu_button(slug: str, ui: dict | None = None) -> str:
     """DS-15: the button that opens the sidebar on a phone; the home page has no sidebar."""
     if slug == "index":
         return ""
-    return f'<button type="button" class="menu-toggle" aria-controls="sidebar" aria-expanded="false" aria-label="Open the page menu">{ICON_MENU}<span>Menu</span></button>'
+    words = _ui(ui)
+    return (f'<button type="button" class="menu-toggle" aria-controls="sidebar" aria-expanded="false" aria-label="{html.escape(words["menu_aria"])}">'
+            f'{ICON_MENU}<span>{html.escape(words["menu_button"])}</span></button>')
 
 
 def add_anchors(page_html: str) -> str:
@@ -781,11 +881,11 @@ def plain_text(page_html: str) -> str:
     return " ".join(CODED_REFERENCE.sub("", text).split())
 
 
-def search_entry(page: "Page") -> dict:
+def search_entry(page: "Page", ui: dict | None = None) -> dict:
     """DS-4, DS-12: the search index entry of a page (the headings keep their text; coded references never reach the index)."""
     rendered = page.rendered
     headings = [{"text": " ".join(CODED_REFERENCE.sub("", text).split()), "anchor": anchor} for level, text, anchor in rendered.headings if 2 <= level <= 4]
-    return {"slug": page.slug, "title": page.title, "description": page.description, "group": "" if page.slug == "index" else (page.group or ""), "headings": headings,
+    return {"slug": page.slug, "title": page.title, "description": page.description, "group": "" if page.slug == "index" or not page.group else _label(ui, GROUP_NAMES, page.group), "headings": headings,
             "text": plain_text(rendered.html)}
 
 
@@ -803,31 +903,35 @@ def normalise_base_url(value: object, where: str) -> str:
     return address
 
 
-def render_llms_txt(config: dict, pages: list["Page"], base: str) -> str:
-    """DS-13: `llms.txt` in the llmstxt.org shape: title, summary, then the home page and one section per sidebar group."""
+def render_llms_txt(config: dict, pages: list["Page"], base: str, ui: dict | None = None, locate: Callable[["Page"], str] | None = None,
+                    note: str = "", summary: str = "") -> str:
+    """DS-13: `llms.txt` in the llmstxt.org shape: title, summary, then the home page and one section per sidebar group. A language's file
+    passes its interface text, `locate` (the address prefix of a page's source file) and `note` (the line that names the English source)."""
     home = next((p for p in pages if p.slug == "index"), None)
-    summary = config.get("summary") or (home.description if home else "")
+    summary = summary or config.get("summary") or (home.description if home else "")
     prefix = f"{base}/" if base else ""
 
     def line(page: "Page") -> str:
-        return f"- [{page.title}]({prefix}{page.slug}.md): {page.description}"
+        return f"- [{page.title}]({locate(page) if locate else prefix}{page.slug}.md): {page.description}"
 
-    sections = [f"# {config['title']}\n\n> {summary}"]
+    head = f"# {config['title']}\n\n> {summary}" + (f"\n\n{note}" if note else "")
+    sections = [head]
     if home:
-        sections.append("## Home\n\n" + line(home))
+        sections.append(f"## {_ui(ui)['llms_home']}\n\n" + line(home))
     layout = _layout(pages)
     for name in GROUPS:
         members = [p for p in ordered_pages(pages) if p.group == name]
         if layout[name]:
-            sections.append(f"## {name}\n\n" + "\n".join(line(p) for p in members))
+            sections.append(f"## {_label(ui, GROUP_NAMES, name)}\n\n" + "\n".join(line(p) for p in members))
     return "\n\n".join(sections) + "\n"
 
 
-def render_llms_full(pages: list["Page"], texts: dict[str, str]) -> str:
-    """DS-13: `llms-full.txt`: the home page, then every other page in sidebar order, each as a titled block."""
+def render_llms_full(pages: list["Page"], texts: dict[str, str], note: str = "") -> str:
+    """DS-13: `llms-full.txt`: the home page, then every other page in sidebar order, each as a titled block; a language's file opens with
+    `note`, the line that names the English source."""
     home = [p for p in pages if p.slug == "index"]
     blocks = [f"==== {p.title} | {p.slug}.md ====\n\n{texts[p.slug].rstrip(chr(10))}" for p in [*home, *ordered_pages(pages)] if p.slug in texts]
-    return "\n\n".join(blocks) + "\n"
+    return "\n\n".join(([note] if note else []) + blocks) + "\n"
 
 
 def load_config(root: Path) -> dict:
@@ -916,6 +1020,9 @@ def load_config(root: Path) -> dict:
     slugs = [p["slug"] for p in config["pages"]]
     if len(set(slugs)) != len(slugs) or "index" not in slugs:
         raise BuildError(f"{path}: page slugs must be unique and include 'index'")
+    problem = site_i18n.config_problem(config, slugs)
+    if problem:
+        raise BuildError(f"{path}: {problem}")
     if not isinstance(config["ruleIdPrefixes"], list) or not all(isinstance(x, str) and re.fullmatch(r"[A-Z]{2,5}", x) for x in config["ruleIdPrefixes"]):
         raise BuildError(f"{path}: 'ruleIdPrefixes' must be a list of upper-case prefixes such as \"SEM\"")
     if config["ruleIdPrefixes"] and not config["ruleSource"]:
@@ -1191,6 +1298,41 @@ class SplitLinks:
     owner: Callable[[str], "tuple[str, bool] | None"]
 
 
+# A link to a page the language folder does not hold: an anchor whose href is `<slug>.html` or `<slug>.html#fragment` (spec 004-site-languages, FR-026).
+ENGLISH_LINK = re.compile(r'<a\b([^>]*?)(?<![\w-])href="([a-z0-9][a-z0-9-]*)\.html(#[^"]*)?"([^>]*)>(.*?)</a>', re.S)
+ENGLISH_MARK_CLASS = "en-mark"
+
+
+def english_links(page_html: str, pages_by_slug: dict[str, "Page"], built: set[str], mark: str) -> str:
+    """The one pass over a language page's final HTML: each link to a known page that is English only, or that this build has no file for,
+    goes to the English address (`../<slug>.html`, the fragment kept) and is followed by the localized mark. Only an anchor's `href` of the
+    form `<slug>.html` matches, so a rewritten link, a fragment-only link, an asset, an external address and an escaped code sample are left alone."""
+    shown = html.escape(mark)
+
+    def swap(match: re.Match) -> str:
+        slug = match.group(2)
+        page = pages_by_slug.get(slug)
+        if page is None or (page.scope != "english" and slug in built):
+            return match.group(0)
+        return (f'<a{match.group(1)}href="../{slug}.html{match.group(3) or ""}"{match.group(4)}>{match.group(5)}</a> '
+                f'<span class="{ENGLISH_MARK_CLASS}">{shown}</span>')
+    return ENGLISH_LINK.sub(swap, page_html)
+
+
+@dataclass
+class LanguageContext:
+    """What the build of one translated language has beyond the English build it follows: its interface text, the translated copy of each
+    translated-scope page that has a file, the text of each (its `{{include}}` lines expanded) and the errors found reading the files."""
+    code: str
+    english: "SiteBuild"
+    ui: dict
+    translations: site_i18n.Translations
+    pages: dict[str, "Page"] = field(default_factory=dict)
+    bodies: dict[str, str] = field(default_factory=dict)
+    templates: dict[str, str] = field(default_factory=dict)
+    errors: list[str] = field(default_factory=list)
+
+
 def fill_template(template: str, values: dict[str, str]) -> str:
     """One pass: a value that itself contains {{...}} (page content may) is never substituted again."""
     return re.sub(r"\{\{(\w+)\}\}", lambda m: values.get(m.group(1), m.group(0)), template)
@@ -1200,8 +1342,16 @@ class SiteBuild:
     """One build of the site: the pages (with the split ones), what each links to, and the files written. Kept as methods so that no single
     function carries the whole build."""
 
-    def __init__(self, root: Path, config: dict, base: str) -> None:
+    def __init__(self, root: Path, config: dict, base: str, language: LanguageContext | None = None) -> None:
         self.root, self.config, self.base = root, config, base
+        self.language = language
+        self.code = language.code if language else site_i18n.ENGLISH
+        self.ui = language.ui if language else None
+        self.langset = language.english.langset if language else site_i18n.LanguageSet(base=base)
+        self.path = site_i18n.language_path(config, self.code)
+        self.scripts_ready = False
+        self.versions: dict[str, str] = {}
+        self.translated: set[str] = set()
         self.pages: list[Page] = []
         self.errors: list[str] = []
         self.text_cache: dict[str, str] = {}
@@ -1214,6 +1364,8 @@ class SiteBuild:
         self.splits: dict[str, SplitLinks] = {}
         self.own_split_of: dict[str, SplitLinks] = {}
         self.load_pages()
+        if language:
+            self.use_translations(language)
         self.pages_by_slug = {p.slug: p for p in self.pages}
         if len(self.pages_by_slug) != len(self.pages):
             raise BuildError("page names are not unique once the split pages are added")
@@ -1225,10 +1377,25 @@ class SiteBuild:
     def read(self, rel: str) -> str:
         return (self.root / rel).read_text(encoding="utf-8")
 
+    def use_translations(self, language: LanguageContext) -> None:
+        """A language build keeps the English page list (the sidebar shows every page) with the translated copy and text of each page it has a file for."""
+        self.errors = list(language.errors)
+        self.pages = [language.pages.get(page.slug, page) for page in self.pages]
+        self.text_cache.update(language.bodies)
+        self.translated = set(language.pages)
+
+    def built(self) -> list[Page]:
+        """The pages this build writes: all of them in English, the translated ones in a language."""
+        return [page for page in self.pages if self.language is None or page.slug in self.translated]
+
+    def source_label(self, page: Page) -> str:
+        return language_file(self.code, f"{page.slug}.md") if page.slug in self.translated else page.source
+
     def load_pages(self) -> None:
         for entry in self.config["pages"]:
             page = Page(entry["slug"], entry["title"], entry["source"], entry.get("generator"), group=entry.get("group"), template=entry.get("template"),
-                        description=entry["description"], subgroup=entry.get("subgroup"), authored=entry.get("authored") is True, reviewed=entry.get("reviewed"))
+                        description=entry["description"], subgroup=entry.get("subgroup"), authored=entry.get("authored") is True, reviewed=entry.get("reviewed"),
+                        scope=entry["scope"])
             self.pages.append(page)
             if page.generator == "semantics-split":
                 self.expand_split(page, entry["summaries"])
@@ -1248,7 +1415,7 @@ class SiteBuild:
                 if CODED_REFERENCE.search(value):
                     self.errors.append(f"site/site.json: page '{part.slug}' ('{part.title}'): the {label} holds a coded reference")
             member = Page(part.slug, part.title, page.source, "semantics-part", group="Reference", subgroup=SPLIT_SUBGROUP,
-                          description=part.description, summary=part.summary, alias=part.alias)
+                          description=part.description, summary=part.summary, alias=part.alias, scope=page.scope)
             self.text_cache[member.slug] = part.markdown
             self.member_original[member.slug] = part.original
             self.pages.append(member)
@@ -1314,7 +1481,7 @@ class SiteBuild:
         """The files every page shares: stylesheet, scripts, favicons, fonts. A file removed from the sources must not linger in the output.
         Returns whether both scripts exist."""
         out_dir.mkdir(parents=True, exist_ok=True)
-        for pattern in ("*.html", "*.md", "llms.txt", "llms-full.txt"):
+        for pattern in ("*.html", "*.md", LLMS_NAME, LLMS_FULL_NAME):
             for stale in out_dir.glob(pattern):
                 stale.unlink()
         (out_dir / "style.css").write_text(self.read("site/style.css"), encoding="utf-8")
@@ -1350,7 +1517,7 @@ class SiteBuild:
             summaries = self.split_summaries[page.slug]
             sources = [(page.source, self.read(page.source)), (summaries, self.read(summaries))]
         elif page.generator is None:
-            sources = [(page.source, text)]
+            sources = [(self.source_label(page), text)]
         for name, value in sources:
             problem = unsafe_markup(value)
             if problem:
@@ -1395,9 +1562,11 @@ class SiteBuild:
         """The page's HTML body: links resolved against what the site builds, an alias anchor and the heading anchors added."""
         link_errors: list[str] = []
         text, figures = self.draw_diagrams(page, text)
-        first = render_markdown(text, resolve=lambda href, image=False: href)
+        required = self.language is not None and page.slug in self.translated
+        first = render_markdown(text, resolve=lambda href, image=False: href, require_anchors=required)
         # Second pass with the real resolver, now that the page's own anchors are known; the line of each link comes from the first pass.
-        rendered = render_markdown(text, resolve=self.resolver_for(page, self.page_anchors(page.slug), link_errors, iter(line for line, _ in first.links)))
+        rendered = render_markdown(text, resolve=self.resolver_for(page, self.page_anchors(page.slug), link_errors, iter(line for line, _ in first.links)),
+                                   require_anchors=required)
         self.errors.extend(link_errors)
         for key, figure in figures.items():
             rendered.html = rendered.html.replace(f"<p>{key}</p>", figure)
@@ -1408,6 +1577,8 @@ class SiteBuild:
         return rendered
 
     def check_headings(self, page: Page, rendered: Rendered) -> None:
+        for heading in rendered.undeclared:
+            self.errors.append(f"page '{page.slug}': the heading '{heading[:60]}' declares no English anchor; end it with {{#english-anchor}}")
         for level, heading, _ in rendered.headings:
             if level != 2:
                 continue
@@ -1416,62 +1587,143 @@ class SiteBuild:
             if CODED_REFERENCE.search(heading):
                 self.errors.append(f"page '{page.slug}': the heading '{heading[:60]}' holds a coded reference, and it is a label of the page's contents")
 
+    def prepare_output(self, out_dir: Path) -> Path:
+        """The folder this build writes its pages into. English writes the shared files at the root and clears the folder of every language;
+        a language takes the root's versions of the shared files and writes nothing else of them (FR-023)."""
+        if self.language is not None:
+            english = self.language.english
+            self.scripts_ready, self.versions = english.scripts_ready, english.versions
+            folder = out_dir / self.path
+            folder.mkdir(parents=True, exist_ok=True)
+            return folder
+        self.scripts_ready = self.write_assets(out_dir)
+        try:
+            site_i18n.clear_language_folders(out_dir, self.config)
+        except site_i18n.I18nError as error:
+            raise BuildError(str(error)) from error
+        self.versions = asset_versions(out_dir)
+        return out_dir
+
+    def spec_version(self) -> str:
+        try:
+            return self.read("spec/VERSION").strip()
+        except (OSError, UnicodeDecodeError):
+            return ""
+
+    def shared_values(self) -> dict[str, str]:
+        """What every page of this build has alike; the interface text is a value too, `ui_<key>` for each key the templates use."""
+        assets = self.langset.prefix(self.code)
+        return {
+            "site_title": html.escape(self.config["title"]),
+            "head_links": head_links(assets),
+            "lang": html.escape(site_i18n.language_attribute(self.config, self.code)),
+            "assets": assets,
+            "data_ui": self.data_ui(),
+            "spec_version": html.escape(self.spec_version()),
+            "nav": "".join(f'<li><a href="{html.escape(p.slug)}.html">{html.escape(p.title)}</a></li>' for p in self.pages if p.generator != "semantics-part"),
+            "group_cards": render_group_cards(self.config, self.pages, self.ui),
+            "scripts": script_tags(assets) if self.scripts_ready else "",
+            **{f"ui_{key}": html.escape(_ui(self.ui)[key]) for key in TEMPLATE_UI_KEYS},
+        }
+
+    def template_of(self, page: Page, templates: dict[str, str]) -> str:
+        """The template of a page; a translated home page uses its language's `home.html` when the language has one."""
+        rel = page.template or "site/template.html"
+        if self.language is not None:
+            return self.language.templates.get(rel, templates[rel])
+        return templates[rel]
+
+    def finish(self, page_html: str) -> str:
+        """Versions the shared assets and, in a language, sends the links to pages it does not hold to the English ones."""
+        page_html = version_assets(page_html, self.versions)
+        if self.language is None:
+            return page_html
+        return english_links(page_html, self.pages_by_slug, self.translated, _ui(self.ui)["english_mark"])
+
+    def build_page(self, page: Page, target: Path, shared: dict[str, str], templates: dict[str, str]) -> tuple[str, dict] | None:
+        """Writes one page and its source copy; returns its text and search entry, or None when the source cannot be read."""
+        try:
+            text = self.page_text(page)
+        except (OSError, UnicodeDecodeError) as error:
+            self.errors.append(f"site/site.json: page '{page.slug}': cannot read {page.source}: {error}")
+            return None
+        self.check_markup(page, text)
+        try:
+            rendered = self.render(page, text)
+        except BuildError as error:
+            self.errors.append(f"page '{page.slug}': {error}")
+            return None
+        entry = search_entry(page, self.ui)
+        rendered.html = add_anchors(rendered.html)
+        self.check_headings(page, rendered)
+        values = {**shared, **self.page_values(page, rendered)}
+        (target / f"{page.slug}.html").write_text(self.finish(fill_template(self.template_of(page, templates), values)), encoding="utf-8")
+        (target / f"{page.slug}.md").write_text(text, encoding="utf-8")
+        return text, entry
+
     def run(self, out_dir: Path) -> list[str]:
         templates = {rel: self.read(rel) for rel in {"site/template.html", *(p.template for p in self.pages if p.template)}}
-        try:
-            spec_version = self.read("spec/VERSION").strip()
-        except (OSError, UnicodeDecodeError):
-            spec_version = ""
-        scripts_ready = self.write_assets(out_dir)
-        versions = asset_versions(out_dir)
-        shared = {
-            "site_title": html.escape(self.config["title"]),
-            "head_links": HEAD_LINKS,
-            "spec_version": html.escape(spec_version),
-            "nav": "".join(f'<li><a href="{html.escape(p.slug)}.html">{html.escape(p.title)}</a></li>' for p in self.pages if p.generator != "semantics-part"),
-            "topbar": render_topbar(self.config, self.pages),
-            "group_cards": render_group_cards(self.config, self.pages),
-            "scripts": SCRIPT_TAGS if scripts_ready else "",
-        }
+        target = self.prepare_output(out_dir)
+        shared = self.shared_values()
         texts: dict[str, str] = {}
         page_texts: dict[str, str] = {}
         index_entries: list[dict] = []
-        for page in self.pages:
-            try:
-                text = self.page_text(page)
-            except (OSError, UnicodeDecodeError) as error:
-                self.errors.append(f"site/site.json: page '{page.slug}': cannot read {page.source}: {error}")
+        for page in self.built():
+            made = self.build_page(page, target, shared, templates)
+            if made is None:
                 continue
-            texts[f"{page.source} (page '{page.slug}')" if page.generator is not None else page.source] = text
-            self.check_markup(page, text)
-            rendered = self.render(page, text)
-            index_entries.append(search_entry(page))
-            rendered.html = add_anchors(rendered.html)
-            self.check_headings(page, rendered)
-            values = {**shared, **self.page_values(page, rendered)}
-            (out_dir / f"{page.slug}.html").write_text(version_assets(fill_template(templates[page.template or "site/template.html"], values), versions), encoding="utf-8")
-            (out_dir / f"{page.slug}.md").write_text(text, encoding="utf-8")
-            page_texts[page.slug] = text
-        self.write_listings(out_dir, page_texts, index_entries)
+            page_texts[page.slug] = made[0]
+            texts[f"{page.source} (page '{page.slug}')" if page.generator is not None else self.source_label(page)] = made[0]
+            index_entries.append(made[1])
+        self.write_listings(target, page_texts, index_entries)
         self.check_rule_source(texts)
         return self.errors
 
+    def data_ui(self) -> str:
+        """The `data-ui` attribute of `<body>` with the messages of `site.js`; empty for English, where the script's own strings stand."""
+        if self.ui is None:
+            return ""
+        handed = {**self.ui, "search_english_url": self.langset.prefix(self.code) + "index.html"}
+        return f' data-ui="{html.escape(site_i18n.script_ui(handed), quote=True)}"'
+
     def page_values(self, page: Page, rendered: Rendered) -> dict[str, str]:
+        menu = self.langset.menu(self.code, page.slug, _ui(self.ui)["language_label"])
         return {
             "page_title": html.escape(page.title),
             "description": html.escape(page.description, quote=True),
-            "sidebar": render_sidebar(self.pages, page.slug),
-            "toc": render_toc(rendered),
-            "prev_next": render_pager(self.pages, page.slug),
-            "menu_button": render_menu_button(page.slug),
+            "alternates": self.langset.alternates(self.code, page.slug),
+            "topbar": render_topbar(self.config, self.pages, self.ui, menu),
+            "sidebar": render_sidebar(self.pages, page.slug, self.ui),
+            "toc": render_toc(rendered, self.ui),
+            "prev_next": render_pager(self.pages, page.slug, self.ui),
+            "menu_button": render_menu_button(page.slug, self.ui),
             "content": rendered.html,
             "source": html.escape(page.source),
             "source_url": html.escape(f"{self.config['repo'].rstrip('/')}/blob/{self.config['branch']}/{page.source}"),
         }
 
+    def english_address(self, name: str) -> str:
+        """Where the English file `name` is, as a language's `llms` files name it: the public address, or `../<name>` without a base address."""
+        return f"{self.base}/{name}" if self.base else f"../{name}"
+
+    def llms_prefix(self, page: Page) -> str:
+        """The address prefix of a page's source file in a language's `llms.txt`: its own folder for a translated page, the English root otherwise."""
+        own_folder = page.slug in self.translated
+        if self.base:
+            return f"{self.base}/{self.path}/" if own_folder else f"{self.base}/"
+        return "" if own_folder else "../"
+
     def write_listings(self, out_dir: Path, page_texts: dict[str, str], index_entries: list[dict]) -> None:
-        (out_dir / "llms.txt").write_text(render_llms_txt(self.config, self.pages, self.base), encoding="utf-8")
-        (out_dir / "llms-full.txt").write_text(render_llms_full(self.pages, page_texts), encoding="utf-8")
+        if self.language is None:
+            llms, full = render_llms_txt(self.config, self.pages, self.base), render_llms_full(self.pages, page_texts)
+        else:
+            words = _ui(self.ui)
+            note = f"{words['llms_english_source']}: {self.english_address(LLMS_NAME)}"
+            summary = next((p.description for p in self.pages if p.slug == "index"), "")
+            llms = render_llms_txt(self.config, self.pages, self.base, self.ui, self.llms_prefix, note, summary)
+            full = render_llms_full(self.pages, page_texts, f"{words['llms_english_source']}: {self.english_address(LLMS_FULL_NAME)}")
+        (out_dir / LLMS_NAME).write_text(llms, encoding="utf-8")
+        (out_dir / LLMS_FULL_NAME).write_text(full, encoding="utf-8")
         (out_dir / "search-index.json").write_text(json.dumps(index_entries, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
 
     def check_rule_source(self, texts: dict[str, str]) -> None:
@@ -1483,11 +1735,84 @@ class SiteBuild:
             self.errors.append(f"site/site.json: cannot read the rule source {self.config['ruleSource']}: {error}")
 
 
-def build(root: Path, out_dir: Path, base_url: str | None = None) -> list[str]:
-    """Build the site; returns the list of errors (empty when every link resolves and every rule id exists)."""
+def coded_reference_errors(code: str, page: "Page") -> list[str]:
+    """DS-19 on the title and the description of a translated page."""
+    return [f"{language_file(code, f'{page.slug}.md')}: page '{page.slug}': the {label} holds a coded reference"
+            for label, value in (("title", page.title), ("description", page.description)) if CODED_REFERENCE.search(value)]
+
+
+def add_translation(context: LanguageContext, page: Page) -> None:
+    """Adds the translated copy and text of `page` to the context, and its template (`home.html`): raw HTML that gets the DS-21 check
+    English sources get. Raises I18nError for a file that is missing or cannot be read."""
+    code, translations = context.code, context.translations
+    mine = translations.page(code, page.slug)
+    if mine is None:
+        return
+    body = expand_includes(translations.body(code, page.slug), context.english.root, language_file(code, f"{page.slug}.md"))
+    if page.template:
+        name = Path(page.template).name
+        own = translations.template(code, page.template)
+        if own is None:
+            raise site_i18n.I18nError(f"{language_file(code, name)} does not exist; the document '{page.slug}' needs it")
+        problem = unsafe_markup(own)
+        if problem:
+            context.errors.append(f"{language_file(code, name)}: page '{page.slug}' holds {problem}, which the site never publishes")
+        context.templates[page.template] = own
+    context.bodies[page.slug] = body
+    context.pages[page.slug] = mine
+    context.errors.extend(coded_reference_errors(code, mine))
+
+
+def language_context(english: SiteBuild, code: str, translations: site_i18n.Translations, ui: dict) -> LanguageContext:
+    """The translated copy and text of each translated-scope page the language has a file for; a file that cannot be read is an error and
+    the page counts as not translated."""
+    context = LanguageContext(code, english, ui, translations)
+    for page in english.pages:
+        if page.scope != "translated":
+            continue
+        try:
+            add_translation(context, page)
+        except site_i18n.I18nError as error:
+            context.errors.append(str(error))
+            context.pages.pop(page.slug, None)
+            context.bodies.pop(page.slug, None)
+    return context
+
+
+def language_contexts(root: Path, english: SiteBuild, codes: list[str]) -> list[LanguageContext]:
+    """The context of each language of `codes`; an interface file that is missing or lacks a key of the English one is a configuration error."""
+    if not codes:
+        return []
+    translations = site_i18n.Translations(root, english.pages_by_slug)
+    try:
+        reference = site_i18n.load_ui(root, site_i18n.ENGLISH)
+        return [language_context(english, code, translations, site_i18n.load_ui(root, code, reference)) for code in codes]
+    except site_i18n.I18nError as error:
+        raise BuildError(str(error)) from error
+
+
+def build(root: Path, out_dir: Path, base_url: str | None = None, preview: tuple[str, ...] = ()) -> list[str]:
+    """Build the English site, then each enabled language (and each of `preview`, which may be disabled) into `<out_dir>/<path>/`; returns the
+    list of errors (empty when every link resolves and every rule id exists), those of a language prefixed with its code (spec
+    004-site-languages, FR-024). A language that is not built is cleared from the output."""
     config = load_config(root)
     base = normalise_base_url(base_url, "--base-url") if base_url is not None else config.get("baseUrl", "")
-    return SiteBuild(root, config, base).run(out_dir)
+    english = SiteBuild(root, config, base)
+    try:
+        codes = site_i18n.languages_to_build(config, tuple(preview))
+    except site_i18n.I18nError as error:
+        raise BuildError(str(error)) from error
+    contexts = language_contexts(root, english, codes)
+    if contexts:
+        notes = {context.code: context.ui["english_only"] for context in contexts}
+        english.langset = site_i18n.language_set(config, base, codes, site_i18n.Translations(root, english.pages_by_slug), notes)
+        english.langset.translated = {context.code: set(context.pages) for context in contexts}
+    errors = english.run(out_dir)
+    for code in site_i18n.enabled_languages(config):
+        errors += site_i18n.check_enable_gate(root, code)
+    for context in contexts:
+        errors += [f"[{context.code}] {error}" for error in SiteBuild(root, config, base, context).run(out_dir)]
+    return errors
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1496,12 +1821,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--root", type=Path, default=default_root, help="repository root (default: this checkout)")
     parser.add_argument("--out", type=Path, default=None, help="output folder (default: <root>/site/_build)")
     parser.add_argument("--base-url", default=None, help="the https address the llms files link to (default: baseUrl of site/site.json; none = relative links)")
+    parser.add_argument("--preview-languages", default="", help="comma-separated codes of disabled languages to build as well, to read their drafts (never for the published site)")
     args = parser.parse_args(argv)
 
     root = args.root.resolve()
     out_dir = (args.out or root / "site" / "_build").resolve()
     try:
-        errors = build(root, out_dir, args.base_url)
+        errors = build(root, out_dir, args.base_url, tuple(code for code in args.preview_languages.split(",") if code))
     except BuildError as error:
         print(f"build_site: {error}", file=sys.stderr)
         return 2

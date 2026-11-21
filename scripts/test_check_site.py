@@ -22,6 +22,14 @@ SCRIPT = HERE / "check-site.sh"
 PRIMARY = "craticula.pluries.dev"
 REDIRECTORS = ("pluries.dev", "www.pluries.dev")
 COOKIE_VALUE = "s3cr3t-cookie-value"
+LANGUAGE_ENV = "CHECK_SITE_LANGUAGES"
+LANG_VALUES = {"fr": "fr", "de": "de", "zh": "zh-Hans"}   # the url prefix and the `lang` value of each language (spec FR-001)
+ACCEPT_GERMAN = "de"
+UNKNOWN_PREFIX = "xx"
+SEARCH_INDEX, LLMS, LLMS_FULL = "search-index.json", "llms.txt", "llms-full.txt"
+NOSNIFF = ("X-Content-Type-Options", "nosniff")
+REFERRER = ("Referrer-Policy", "strict-origin-when-cross-origin")
+URL = r"https://craticula\.pluries\.dev:\d+"   # a live address as the script prints it against the stub
 
 
 def _has_gnu_date():
@@ -72,8 +80,84 @@ class Stub(BaseHTTPRequestHandler):
         self.end_headers()
 
     def _answer(self):
-        status, location = self._decide(self.headers.get("Host", ""), self._target())
+        host, target = self.headers.get("Host", ""), self._target()
+        if host.split(":")[0] == PRIMARY and not self.server.plain and self.server.mode == "good":
+            self._serve_site(target.split("?")[0])
+            return
+        status, location = self._decide(host, target)
         self._send(status, location)
+
+    def _home(self, code, lang_value):
+        """A home page: its lang, and the hreflang alternates of every language served (none while only English is served)."""
+        base = f"https://{PRIMARY}:{self.server.https_port}"
+        entries = [("en", "")] + [(LANG_VALUES[c], c + "/") for c in self.server.languages]
+        links = "" if len(entries) < 2 or "no_hreflang" in self.server.defects else "".join(
+            f'<link rel="alternate" hreflang="{lang}" href="{base}/{folder}index.html">' for lang, folder in entries)
+        links += f'<link rel="alternate" hreflang="x-default" href="{base}/index.html">' if links else ""
+        return f'<!doctype html><html lang="{lang_value}"><head>{links}</head><body></body></html>'
+
+    def _lang_file(self, code, name):
+        base = f"https://{PRIMARY}:{self.server.https_port}"
+        if code == "en" or f"no_source_{name}" in self.server.defects:
+            return "# Craticula\n"
+        return f"# Craticula\n\nSource: {base}/{name}\n"
+
+    def _split_language(self, path):
+        """The language prefix and the rest of a path: a path without a served prefix belongs to English."""
+        parts = path.strip("/").split("/", 1)
+        if parts[0] not in (*self.server.languages, UNKNOWN_PREFIX):
+            return "en", path.lstrip("/")
+        rest = parts[1] if len(parts) > 1 else ""
+        return parts[0], rest
+
+    def _site_routes(self, path, accept):
+        """Returns (status, content type, body) for a path of the good site, or None when the stub has no such page."""
+        defects = self.server.defects
+        if path in ("/", "/index.html"):
+            if accept == ACCEPT_GERMAN and "negotiate_content" in defects:
+                return 200, "text/html", self._home("de", "de")
+            return 200, "text/html", self._home("en", "en")
+        code, rest = self._split_language(path)
+        if code == UNKNOWN_PREFIX:
+            return (200, "text/html", self._home("en", "en")) if "unknown_language_200" in defects else None
+        if code != "en" and rest == "":
+            return 200, "text/html", self._home(code, "en" if "wrong_lang" in defects else LANG_VALUES[code])
+        missing = {SEARCH_INDEX: "no_search_index", LLMS: "no_llms", LLMS_FULL: "no_llms_full"}
+        if rest in missing and not (code != "en" and missing[rest] in defects):
+            return 200, "text/plain", "[]" if rest == SEARCH_INDEX else self._lang_file(code, rest)
+        return None
+
+    def _send_security_headers(self):
+        defects = self.server.defects
+        for header, defect in ((NOSNIFF, "no_nosniff"), (REFERRER, "no_referrer")):
+            if defect not in defects:
+                self.send_header(*header)
+
+    def _serve_site(self, path):
+        """A site that behaves as the spec says; server.defects switches single faults on (read per test)."""
+        accept = self.headers.get("Accept-Language", "")
+        self.server.requests.append((path, accept))
+        defects = self.server.defects
+        found = self._site_routes(path, accept)
+        if accept == ACCEPT_GERMAN and "redirect_negotiation" in defects and path == "/":
+            self.send_response(302)
+            self.send_header("Location", f"/{ACCEPT_GERMAN}/")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        status, content_type, text = found or (404, "text/plain", "Not found\n")
+        body = text.encode()
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self._send_security_headers()
+        if "vary" in defects and path == "/":
+            self.send_header("Vary", "Accept-Language")
+        if accept and "language_cookie" in defects:
+            self.send_header("Set-Cookie", f"lang={COOKIE_VALUE}; Path=/")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
 
     do_GET = do_HEAD = do_POST = _answer
 
@@ -97,7 +181,7 @@ class CheckSiteTests(unittest.TestCase):
     def tearDownClass(cls):
         shutil.rmtree(cls.tmp, ignore_errors=True)
 
-    def start(self, mode="good", cookie=False, days=90):
+    def start(self, mode="good", cookie=False, days=90, languages=(), defects=()):
         cert, key = self.certs[days]
         plain = ThreadingHTTPServer(("127.0.0.1", 0), Stub)
         secure = ThreadingHTTPServer(("127.0.0.1", 0), Stub)
@@ -107,11 +191,13 @@ class CheckSiteTests(unittest.TestCase):
         secure.socket = context.wrap_socket(secure.socket, server_side=True)
         for server, is_plain in ((plain, True), (secure, False)):
             server.mode, server.cookie, server.plain = mode, cookie, is_plain
+            server.languages, server.defects, server.requests = tuple(languages), set(defects), []
             server.https_port = secure.server_address[1]
             threading.Thread(target=server.serve_forever, daemon=True).start()
             self.addCleanup(server.server_close)
             self.addCleanup(server.shutdown)
         self.ports = (plain.server_address[1], secure.server_address[1])
+        self.secure = secure
         self.cert = cert
         return self.ports
 
@@ -188,6 +274,91 @@ class CheckSiteTests(unittest.TestCase):
                 result = self.run_script(path=self._tools_without(tool))
                 self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
                 self.assertIn(f"{tool} is not installed", result.stderr)
+                self.assertNotIn("passed", result.stdout)
+
+    # --- per-language live checks (spec 004, US4-AS1, US4-AS3, FR-016, FR-022) ---
+    # Contract: CHECK_SITE_LANGUAGES = the enabled language codes, space separated, default empty (English only). English is always
+    # checked; the Accept-Language, unknown-prefix and header checks run whatever the value.
+
+    def _requested(self):
+        return {path for path, _ in self.secure.requests}
+
+    def test_US4_AS1_every_enabled_language_is_probed_and_a_good_site_exits_0(self):  # US4-AS1
+        self.start(languages=("fr", "de", "zh"))
+        result = self.run_script(**{LANGUAGE_ENV: "fr de zh"})
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn("FAIL", result.stdout)
+        wanted = {f"/{c}/{name}" for c in LANG_VALUES for name in (SEARCH_INDEX, LLMS, LLMS_FULL)}
+        wanted |= {f"/{c}/" for c in LANG_VALUES} | {"/", f"/{UNKNOWN_PREFIX}/", f"/{LLMS}", f"/{LLMS_FULL}", f"/{SEARCH_INDEX}"}
+        self.assertEqual(wanted - self._requested(), set())
+
+    def test_US4_AS1_without_languages_only_english_and_the_unknown_prefix_are_probed(self):  # US4-AS1
+        self.start()
+        result = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        requested = self._requested()
+        self.assertLessEqual({"/", f"/{UNKNOWN_PREFIX}/", f"/{LLMS}"}, requested, requested)
+        self.assertFalse([p for p in requested if p.startswith(("/fr/", "/de/", "/zh/"))], requested)
+
+    def test_US4_AS1_a_request_with_accept_language_de_is_sent_to_the_english_address(self):  # US4-AS1
+        self.start(languages=("de",))
+        self.run_script(**{LANGUAGE_ENV: "de"})
+        self.assertIn(("/", ACCEPT_GERMAN), self.secure.requests)
+
+    def test_US4_AS1_each_per_language_fault_exits_1_and_names_the_url(self):  # US4-AS1
+        cases = (
+            ("no_search_index", rf"FAIL {URL}/fr/search-index\.json: expected status 200, got 404"),
+            ("no_llms", rf"FAIL {URL}/fr/llms\.txt: expected status 200, got 404"),
+            ("no_llms_full", rf"FAIL {URL}/fr/llms-full\.txt: expected status 200, got 404"),
+            ("wrong_lang", rf'FAIL {URL}/fr/: expected <html lang="fr">'),
+            ("no_hreflang", rf"FAIL {URL}/fr/: missing hreflang link for fr"),
+            ("unknown_language_200", rf"FAIL {URL}/xx/: expected status 404, got 200"),
+            ("no_nosniff", rf"FAIL {URL}/: missing header X-Content-Type-Options: nosniff"),
+            ("no_referrer", rf"FAIL {URL}/: missing header Referrer-Policy: strict-origin-when-cross-origin"),
+        )
+        for defect, pattern in cases:
+            with self.subTest(defect=defect):
+                self.start(languages=("fr",), defects=(defect,))
+                result = self.run_script(**{LANGUAGE_ENV: "fr"})
+                self.assertEqual(result.returncode, 1, result.stdout)
+                self.assertRegex(result.stdout, pattern)
+
+    def test_US4_AS1_a_chinese_home_must_carry_lang_zh_hans(self):  # US4-AS1
+        self.start(languages=("zh",), defects=("wrong_lang",))
+        result = self.run_script(**{LANGUAGE_ENV: "zh"})
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertRegex(result.stdout, rf'FAIL {URL}/zh/: expected <html lang="zh-Hans">')
+
+    def test_US4_AS1_accept_language_must_not_redirect_negotiate_vary_or_set_a_cookie(self):  # US4-AS1
+        cases = (
+            ("redirect_negotiation", r"\(Accept-Language: de\): expected status 200, got 302"),
+            ("negotiate_content", r'\(Accept-Language: de\): expected <html lang="en">'),
+            ("vary", r"\(Accept-Language: de\): the Vary header names Accept-Language"),
+            ("language_cookie", r"sets a cookie"),
+        )
+        for defect, pattern in cases:
+            with self.subTest(defect=defect):
+                self.start(languages=("de",), defects=(defect,))
+                result = self.run_script(**{LANGUAGE_ENV: "de"})
+                self.assertEqual(result.returncode, 1, result.stdout)
+                self.assertRegex(result.stdout, rf"FAIL {URL}/.*{pattern}")
+                self.assertNotIn(COOKIE_VALUE, result.stdout + result.stderr)
+
+    def test_US4_AS3_a_language_llms_file_must_name_the_english_source(self):  # US4-AS3
+        for name in (LLMS, LLMS_FULL):
+            with self.subTest(file=name):
+                self.start(languages=("fr",), defects=(f"no_source_{name}",))
+                result = self.run_script(**{LANGUAGE_ENV: "fr"})
+                self.assertEqual(result.returncode, 1, result.stdout)
+                self.assertRegex(result.stdout, rf"FAIL {URL}/fr/{name.replace('.', chr(92) + '.')}: does not name the English source {URL}/{name.replace('.', chr(92) + '.')}")
+
+    def test_US4_AS1_a_bad_language_list_exits_2_and_names_the_variable(self):  # US4-AS1
+        self.start()
+        for value in ("en", "fr ../x", "FR", "fr;ls"):
+            with self.subTest(value=value):
+                result = self.run_script(**{LANGUAGE_ENV: value})
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertIn(LANGUAGE_ENV, result.stderr)
                 self.assertNotIn("passed", result.stdout)
 
 

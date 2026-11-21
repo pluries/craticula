@@ -1,0 +1,55 @@
+{
+  "skip": "Saltar al contenido",
+  "nav_docs": "Documentación",
+  "nav_reference": "Referencia",
+  "menu_button": "Menú",
+  "menu_aria": "Abrir el menú de la página",
+  "pager_label": "Página anterior y siguiente",
+  "previous": "Anterior",
+  "next": "Siguiente",
+  "on_this_page": "En esta página",
+  "github_aria": "Repositorio de GitHub",
+  "language_label": "Idioma",
+  "english_mark": "(inglés)",
+  "english_only": "Esta página solo está disponible en inglés",
+  "llms_home": "Inicio",
+  "llms_english_source": "Fuente en inglés",
+  "search_english": "Buscar en el sitio en inglés",
+  "search_english_url": "index.html",
+  "copy": "Copiar",
+  "copied": "Copiado",
+  "copy_failed": "Error al copiar",
+  "copy_aria": "Copiar este código",
+  "search_aria": "Buscar en la documentación (Ctrl+K)",
+  "search_label": "Buscar en la documentación",
+  "search_placeholder": "Buscar",
+  "search_empty": "Escriba un término para buscar en la documentación.",
+  "search_none": "Ningún resultado coincide con esa búsqueda.",
+  "search_loading": "Cargando el índice de búsqueda...",
+  "search_unavailable": "La búsqueda no está disponible en este momento. Use la barra lateral para explorar las páginas.",
+  "result_one": "resultado",
+  "result_other": "resultados",
+  "theme_aria": "Tema: {name}. Cambiar de tema",
+  "theme_title": "Tema: {name}",
+  "theme_names": {
+    "auto": "Automático",
+    "light": "Claro",
+    "dark": "Oscuro"
+  },
+  "group_names": {
+    "Concepts": "Conceptos",
+    "Guides": "Guías",
+    "Configuration": "Configuración",
+    "Reference": "Referencia"
+  },
+  "subgroups": {
+    "Semantics": "Semántica",
+    "Quickstarts": "Inicios rápidos"
+  },
+  "groups": {
+    "Concepts": "Qué es Craticula, cómo una solicitud se convierte en una consulta de base de datos, los modos Strict y Lenient, y el modelo de seguridad.",
+    "Guides": "Inicios rápidos, recomendaciones de indexación y migración desde OData.",
+    "Configuration": "El GridSchema, los límites, y los dialectos y proveedores.",
+    "Reference": "La especificación, una página por cada regla de comportamiento de las consultas, y los dos esquemas."
+  }
+}

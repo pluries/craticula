@@ -397,6 +397,10 @@ class RealWorkflowTests(unittest.TestCase):
     def test_docs_site_job_runs_the_generator_tests_and_builds_into_the_folder_the_artifact_reads(self):
         text = self.docs_text()
         self.assertRegex(text, r"(?m)^        run: python3 scripts/test_build_site\.py$")
+        for script in ("test_site_i18n", "test_site_i18n_content", "test_site_languages"):
+            self.assertRegex(text, rf"(?m)^        run: python3 scripts/{script}\.py$")
+        self.assertLess(text.index("scripts/test_build_site.py"), text.index("scripts/test_site_i18n.py"))
+        self.assertLess(text.index("scripts/test_site_languages.py"), text.index("scripts/build_site.py --out"))
         self.assertRegex(text, r"(?m)^        run: python3 scripts/build_site\.py --out site/_build$")
         self.assertNotIn("|| true", text)
         self.assertNotIn("continue-on-error", text)

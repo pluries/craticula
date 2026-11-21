@@ -1,0 +1,55 @@
+{
+  "skip": "跳到正文",
+  "nav_docs": "文档",
+  "nav_reference": "参考",
+  "menu_button": "菜单",
+  "menu_aria": "打开页面菜单",
+  "pager_label": "上一页和下一页",
+  "previous": "上一页",
+  "next": "下一页",
+  "on_this_page": "本页内容",
+  "github_aria": "GitHub 仓库",
+  "language_label": "语言",
+  "english_mark": "(英文)",
+  "english_only": "此页面仅提供英文版",
+  "llms_home": "首页",
+  "llms_english_source": "英文原文",
+  "search_english": "搜索英文站点",
+  "search_english_url": "index.html",
+  "copy": "复制",
+  "copied": "已复制",
+  "copy_failed": "复制失败",
+  "copy_aria": "复制此代码",
+  "search_aria": "搜索文档 (Ctrl+K)",
+  "search_label": "搜索文档",
+  "search_placeholder": "搜索",
+  "search_empty": "输入关键词以搜索文档。",
+  "search_none": "没有与该搜索匹配的结果。",
+  "search_loading": "正在加载搜索索引...",
+  "search_unavailable": "搜索目前不可用。请使用侧边栏浏览页面。",
+  "result_one": "条结果",
+  "result_other": "条结果",
+  "theme_aria": "主题：{name}。切换主题",
+  "theme_title": "主题：{name}",
+  "theme_names": {
+    "auto": "自动",
+    "light": "浅色",
+    "dark": "深色"
+  },
+  "group_names": {
+    "Concepts": "概念",
+    "Guides": "指南",
+    "Configuration": "配置",
+    "Reference": "参考"
+  },
+  "subgroups": {
+    "Semantics": "语义",
+    "Quickstarts": "快速入门"
+  },
+  "groups": {
+    "Concepts": "Craticula 是什么，一个请求如何变成数据库查询，Strict 与 Lenient 模式，以及安全模型。",
+    "Guides": "快速入门、索引建议，以及从 OData 迁移。",
+    "Configuration": "GridSchema、各项限制，以及方言与提供程序。",
+    "Reference": "规范、每条查询行为规则各占一页，以及两个模式文件。"
+  }
+}

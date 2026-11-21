@@ -118,11 +118,14 @@ class LiveRedirectTests(unittest.TestCase):
         cls.site = tempfile.mkdtemp(prefix="site-redirect-")
         Path(cls.site, "index.html").write_text("<h1>site</h1>\n")
         Path(cls.site, "style.css").write_text("body{}\n")
+        Path(cls.site, "fr").mkdir()
+        Path(cls.site, "fr", "index.html").write_text("<h1>fr</h1>\n")
         Path(cls.site, "fonts").mkdir()
         Path(cls.site, "fonts", "x.woff2").write_bytes(b"wOF2")
         Path(cls.site).chmod(0o755)
         Path(cls.site, "fonts").chmod(0o755)
-        for name in ("index.html", "style.css", "fonts/x.woff2"):
+        Path(cls.site, "fr").chmod(0o755)
+        for name in ("index.html", "style.css", "fonts/x.woff2", "fr/index.html"):
             Path(cls.site, name).chmod(0o644)
         run = subprocess.run(
             ["docker", "run", "-d", "--rm", "-p", f"127.0.0.1:{cls.port}:8080",
@@ -187,6 +190,22 @@ class LiveRedirectTests(unittest.TestCase):
 
     def test_unknown_path_on_the_primary_is_404(self):
         self.assertEqual(self._get(PRIMARY, "/nope")[0], 404)
+
+    def test_US4_a_language_folder_without_its_slash_redirects_to_a_relative_location(self):
+        status, location, _ = self._get(PRIMARY, "/fr")
+        self.assertIn(status, (301, 302))
+        self.assertEqual(location, "/fr/")
+
+    def test_US4_a_language_page_is_served_and_an_unknown_language_is_404(self):
+        status, location, body = self._get(PRIMARY, "/fr/")
+        self.assertEqual((status, location), (200, None))
+        self.assertIn(b"fr", body)
+        self.assertEqual(self._get(PRIMARY, "/xx/")[0], 404)
+
+    def test_US4_the_shared_assets_keep_their_cache_headers_beside_a_language_page(self):
+        self.assertEqual(self._headers("/fr/")[0], 200)
+        self.assertEqual(self._headers("/style.css")[1].get("Cache-Control"), "public, max-age=3600")
+        self.assertEqual(self._headers("/fonts/x.woff2")[1].get("Cache-Control"), "public, max-age=31536000, immutable")
 
     def test_an_unknown_host_gets_the_site_not_a_redirect(self):
         status, location, _ = self._get("unknown.example", "/")

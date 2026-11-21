@@ -25,11 +25,14 @@ TEMPLATE = "<html><title>{{page_title}}</title><nav>{{nav}}</nav>{{content}}<a h
 def make_repo(files: dict[str, str], pages: list[dict], default_group: bool = True, default_description: bool = True, **extra) -> Path:
     """A scratch repository: the site files, the given pages' sources and any other file. Docs site v2 (#3555): `group` is one of
     the four group names and `description` is required, so a page without the key gets "Guides" and a one-sentence description
-    unless the caller opts out with `default_group=False` or `default_description=False` (the refusal tests)."""
+    unless the caller opts out with `default_group=False` or `default_description=False` (the refusal tests). Spec 004-site-languages (FR-027): every
+    page gets `scope: translated` unless one of them already names a `scope`, which is how the scope tests keep a page without one."""
     if default_group:
         pages = [p if not isinstance(p, dict) or "group" in p else {**p, "group": "Guides"} for p in pages]
     if default_description:
         pages = [p if not isinstance(p, dict) or "description" in p else {**p, "description": "A page of the test site."} for p in pages]
+    if not any(isinstance(p, dict) and "scope" in p for p in pages):
+        pages = [p if not isinstance(p, dict) else {**p, "scope": "translated"} for p in pages]
     root = Path(tempfile.mkdtemp())
     config = {"title": "T", "repo": "https://example.test/r", "branch": "main", "pages": pages, **extra}
     everything = {"site/site.json": json.dumps(config), "site/template.html": TEMPLATE, "site/style.css": "body{}", **files}
@@ -41,6 +44,8 @@ def make_repo(files: dict[str, str], pages: list[dict], default_group: bool = Tr
 
 
 INDEX = {"slug": "index", "title": "Home", "source": "index.md", "group": "Guides", "description": "The home page."}
+SCOPE_KEY = "scope"
+SCOPED_INDEX = {**INDEX, SCOPE_KEY: "translated"}
 
 
 def run_build(files: dict[str, str], pages: list[dict], **extra):
@@ -482,7 +487,7 @@ class LinkCheck(unittest.TestCase):
         bs.build(root, out)
         self.assertTrue((out / "two.html").exists())
         config = json.loads((root / "site" / "site.json").read_text(encoding="utf-8"))
-        config["pages"] = [INDEX]
+        config["pages"] = [SCOPED_INDEX]
         (root / "site" / "site.json").write_text(json.dumps(config), encoding="utf-8")
         bs.build(root, out)
         self.assertFalse((out / "two.html").exists())
@@ -1145,6 +1150,49 @@ class AssetVersions(unittest.TestCase):
         link = re.compile(r'style\.css\?v=[0-9a-f]{10}')
         self.assertEqual(link.search((self.build() / "index.html").read_text(encoding="utf-8")).group(0),
                          link.search((self.build() / "index.html").read_text(encoding="utf-8")).group(0))
+
+
+GUIDE = {"slug": "guide", "title": "Guide", "source": "guide.md", "group": "Guides", "description": "A guide."}
+SCOPE_FILES = {"index.md": "# Home\n", "guide.md": "# Guide\n"}
+
+
+class PageScope(unittest.TestCase):
+    """Spec 004-site-languages, T001 (FR-027): every page entry declares its scope; `Page.scope` carries it."""
+
+    def load(self, *entries: dict) -> dict:
+        return bs.load_config(make_repo(SCOPE_FILES, [SCOPED_INDEX, *entries]))
+
+    def test_both_scopes_are_accepted(self):
+        for scope in ("translated", "english"):
+            with self.subTest(scope=scope):
+                config = self.load({**GUIDE, SCOPE_KEY: scope})
+                self.assertEqual(scope, config["pages"][1][SCOPE_KEY])
+
+    def test_a_page_without_scope_is_refused_and_named(self):
+        with self.assertRaisesRegex(bs.BuildError, "guide.*scope|scope.*guide"):
+            self.load(GUIDE)
+
+    def test_an_invalid_scope_is_refused_and_named(self):
+        for value in ("both", "", "English", None, 5):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(bs.BuildError, "guide.*scope|scope.*guide"):
+                    self.load({**GUIDE, SCOPE_KEY: value})
+
+    def test_a_page_whose_slug_is_a_language_prefix_is_refused(self):
+        root = make_repo(SCOPE_FILES, [SCOPED_INDEX, {**GUIDE, "slug": "fr", SCOPE_KEY: "translated"}],
+                         languages={"fr": {"name": "Francais", "path": "fr", "lang": "fr", "enabled": False}})
+        with self.assertRaisesRegex(bs.BuildError, "fr"):
+            bs.load_config(root)
+
+    def test_page_scope_carries_the_entry_value(self):
+        root = make_repo(SCOPE_FILES, [SCOPED_INDEX, {**GUIDE, SCOPE_KEY: "english"}])
+        site = bs.SiteBuild(root, bs.load_config(root), "")
+        self.assertEqual("english", site.pages_by_slug["guide"].scope)
+        self.assertEqual("translated", site.pages_by_slug["index"].scope)
+
+    def test_page_has_a_scope_field_that_defaults_to_translated(self):
+        self.assertEqual("english", bs.Page("x", "X", "x.md", scope="english").scope)
+        self.assertEqual("translated", bs.Page("x", "X", "x.md").scope)
 
 
 class ThisRepository(unittest.TestCase):

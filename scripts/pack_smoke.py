@@ -55,7 +55,7 @@ CORE_PACKAGES = (
 # Third-party ranges the nuspec of each adapter must carry, exactly (TRD OS-3; the csproj VersionOverride).
 EXPECTED_RANGES: dict[str, dict[str, str]] = {
     "Craticula.Dapper": {"Dapper": "[2.1.89,3.0.0)"},
-    "Craticula.MongoDB.Driver": {"MongoDB.Driver": "[3.13.0,4.0.0)"},
+    "Craticula.MongoDB.Driver": {"MongoDB.Driver": "[3.14.0,4.0.0)"},
     "Craticula.OpenSearch.Client": {"OpenSearch.Client": "[2.2.0,3.0.0)"},
     "Craticula.EntityFrameworkCore": {"Microsoft.EntityFrameworkCore.Relational": "[10.0.12,11.0.0)"},
 }

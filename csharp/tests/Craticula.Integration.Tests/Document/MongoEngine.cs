@@ -90,26 +90,15 @@ internal static class MongoEngine
     }
 
     /// <summary>Compiles the fixture's request, runs it against an already seeded collection and maps the documents onto the logical columns.</summary>
-    public static async Task<EngineRows> QueryAsync(IMongoCollection<BsonDocument> collection, ExecutionFixture fixture)
+    public static Task<EngineRows> QueryAsync(IMongoCollection<BsonDocument> collection, ExecutionFixture fixture) =>
+        QueryAsync(collection, fixture, PreparedRequest.For(fixture, fixture.Schema));
+
+    /// <summary>The page path over an already prepared request (the count check prepares its own, unpaged one).</summary>
+    public static async Task<EngineRows> QueryAsync(IMongoCollection<BsonDocument> collection, ExecutionFixture fixture, PreparedRequest request)
     {
-        var schema = fixture.Schema;
-        var request = PreparedRequest.For(fixture, schema);
+        ArgumentNullException.ThrowIfNull(fixture);
         var (query, columns) = Compile(request);
-
-        var stages = query.Pipeline.Select(stage => BsonDocument.Parse(stage.ToJsonString())).ToList();
-        var options = query.Collation is null
-            ? null
-            : new AggregateOptions { Collation = Collation.FromBsonDocument(BsonDocument.Parse(query.Collation.ToJsonString())) };
-
-        List<BsonDocument> results;
-        try
-        {
-            results = await collection.Aggregate<BsonDocument>(stages, options).ToListAsync().ConfigureAwait(false);
-        }
-        catch (MongoException exception)
-        {
-            throw new EngineRefusedException($"MongoDB rejected the pipeline: {exception.Message}", exception);
-        }
+        var results = await AggregateAsync(collection, query).ConfigureAwait(false);
 
         // XEQ-3: map onto the LOGICAL columns, dropping _id (kept only where it IS the group key / BM-3 value).
         var plan = request.Plan;
@@ -122,6 +111,24 @@ internal static class MongoEngine
                 .ToList())
             .ToList();
         return new EngineRows(columns, rows);
+    }
+
+    /// <summary>Runs one compiled pipeline (with its query-level collation) and maps a driver failure to <see cref="EngineRefusedException"/>.</summary>
+    internal static async Task<List<BsonDocument>> AggregateAsync(IMongoCollection<BsonDocument> collection, MongoQuery query)
+    {
+        var stages = query.Pipeline.Select(stage => BsonDocument.Parse(stage.ToJsonString())).ToList();
+        var options = query.Collation is null
+            ? null
+            : new AggregateOptions { Collation = Collation.FromBsonDocument(BsonDocument.Parse(query.Collation.ToJsonString())) };
+
+        try
+        {
+            return await collection.Aggregate<BsonDocument>(stages, options).ToListAsync().ConfigureAwait(false);
+        }
+        catch (MongoException exception)
+        {
+            throw new EngineRefusedException($"MongoDB rejected the pipeline: {exception.Message}", exception);
+        }
     }
 
     private static (MongoQuery Query, IReadOnlyList<string> Columns) Compile(PreparedRequest request)

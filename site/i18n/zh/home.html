@@ -1,0 +1,87 @@
+<!--
+translates: index
+title: 首页
+description: Craticula 把服务器端的 AG Grid 请求转换为安全的原生查询。
+source_fingerprint: f272b4e25325a7883ba81c3752956f48f267c02f44dc873e6ec19779ef6f5638
+drafter: claude
+drafted_on: 2026-11-19
+status: approved
+-->
+<!doctype html>
+<html lang="{{lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{site_title}}：AG Grid 请求进，安全查询出</title>
+<meta name="description" content="{{description}}">
+{{head_links}}{{alternates}}
+{{scripts}}
+<link rel="stylesheet" href="{{assets}}style.css">
+</head>
+<body class="home"{{data_ui}}>
+<a class="skip" href="#main">{{ui_skip}}</a>
+{{topbar}}
+
+<main id="main">
+<section class="hero"><div class="wrap-wide hero-inner">
+<p class="eyebrow">AG Grid Server-Side Row Model，编译而成</p>
+<h1>AG Grid 请求进。<br><span class="accent">安全查询出。</span></h1>
+<p class="lead">Craticula 把 AG Grid 请求编译为原生的 SQL、MongoDB 和 OpenSearch 查询。它绝不执行这些查询，并且每个值都是绑定参数。</p>
+<div class="cta">
+<a class="btn" href="quickstart-csharp.html">从快速入门开始</a>
+<a class="btn-ghost" href="overview.html">阅读概览</a>
+</div>
+<ul class="get">
+<li><span class="get-label">安装</span><code>dotnet add package Craticula.Core</code><a class="chip" href="https://www.nuget.org/packages/Craticula.Core">nuget.org</a></li>
+<li><span class="get-label">在线试用</span><a class="chip" href="https://craticula-pg.pluries.dev">PostgreSQL</a><a class="chip" href="https://craticula-mongo.pluries.dev">MongoDB</a></li>
+</ul>
+<p class="fine">Apache-2.0 · .NET 10</p>
+<div class="demo">
+<div class="panel"><div class="panel-title">AG Grid 请求</div>
+<pre><code><span class="p">{</span>
+  "startRow": <span class="n">0</span>, "endRow": <span class="n">50</span>,
+  "filterModel": <span class="p">{</span>
+    "customer": <span class="p">{</span> "type": <span class="s">"contains"</span>, "filter": <span class="s">"acme"</span> <span class="p">}</span>,
+    "amount": <span class="p">{</span> "type": <span class="s">"greaterThan"</span>, "filter": <span class="n">100</span> <span class="p">}</span>
+  <span class="p">}</span>,
+  "sortModel": [ <span class="p">{</span> "colId": <span class="s">"amount"</span>, "sort": <span class="s">"desc"</span> <span class="p">}</span> ]
+<span class="p">}</span></code></pre></div>
+<div class="panel"><div class="panel-title">编译后的语句和参数</div>
+<pre><code><span class="k">SELECT</span> * <span class="k">FROM</span> "orders"
+<span class="k">WHERE</span> ("customer" <span class="k">ILIKE</span> <span class="s">'%'</span> || <span class="n">$1</span> || <span class="s">'%'</span> <span class="k">ESCAPE</span> <span class="s">'\'</span>
+   <span class="k">AND</span> "amount" &gt; <span class="n">$2</span>::numeric)
+<span class="k">ORDER BY</span> "amount" <span class="k">DESC NULLS FIRST</span>, "id" <span class="k">ASC NULLS LAST</span>
+<span class="k">LIMIT</span> <span class="n">$3</span> <span class="k">OFFSET</span> <span class="n">$4</span>
+
+<span class="c">-- parameters:</span> <span class="s">'acme'</span>, <span class="s">'100'</span>, <span class="n">50</span>, <span class="n">0</span></code></pre></div>
+</div>
+</div></section>
+
+<section class="band wrap-wide">
+<h2>找到你的入口</h2>
+{{group_cards}}
+</section>
+
+<section class="band wrap-wide">
+<h2>从安装到你的第一个查询</h2>
+<ol class="path">
+<li><span class="step">第 1 步</span><h3><a href="quickstart-csharp.html">安装</a></h3><p>从源代码构建该库，并引用与你的引擎对应的项目。</p></li>
+<li><span class="step">第 2 步</span><h3><a href="grid-schema.html">声明 GridSchema</a></h3><p>列出表格可以访问的字段，因为其他一切都会被拒绝。</p></li>
+<li><span class="step">第 3 步</span><h3><a href="quickstart-csharp.html">编译请求</a></h3><p>传入 AG Grid 请求，得到一条语句及其参数。</p></li>
+<li><span class="step">第 4 步</span><h3><a href="index-guidance.html">执行</a></h3><p>使用你自己的连接来执行，或者交给适配器来做。</p></li>
+</ol>
+</section>
+
+<section class="band wrap-wide home-about" id="about">
+<h2>谁在维护</h2>
+<p>Craticula 是基于 Apache-2.0 许可的开源项目，由 Christian Stephan 维护 （<a href="https://cstephan.dev">cstephan.dev</a>、<a href="https://www.linkedin.com/in/christian-stephan">LinkedIn</a>、<a href="https://github.com/cstephan-dev">GitHub</a>）。源代码位于  <a href="https://github.com/pluries/craticula">github.com/pluries/craticula</a>。</p>
+</section>
+
+<section class="band wrap-wide home-docs">
+{{content}}
+</section>
+</main>
+
+<footer class="foot"><div class="wrap-wide"><span>Craticula · Apache-2.0 · spec {{spec_version}}</span><a href="https://github.com/pluries/craticula">github.com/pluries/craticula</a></div></footer>
+</body>
+</html>

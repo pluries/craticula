@@ -43,7 +43,8 @@ internal sealed record PreparedRequest(
         return Parsed!.Export?.ProjectionColumns ?? Schema.FieldOrder;
     }
 
-    public static PreparedRequest For(ExecutionFixture fixture, GridSchema schema)
+    // A given page replaces the request's own window (FR-007: the count check prepares both queries unpaged); null keeps the request's own.
+    public static PreparedRequest For(ExecutionFixture fixture, GridSchema schema, PageSpec? page = null)
     {
         var requestJson = fixture.Request.GetRawText();
         var options = new AgGridParseOptions { Schema = schema, Clock = ClockFor(fixture.Request), AllowUnboundedRows = HarnessFlag(fixture.Request, "allowUnboundedRows") };
@@ -59,7 +60,8 @@ internal sealed record PreparedRequest(
                 ResourceLimitsValidator.ResolveSetValuesLimit(parsed.SetValues.Limit, limits));
         }
 
-        var row = AgGridRequestParser.Parse(requestJson, options);
+        var parsedRow = AgGridRequestParser.Parse(requestJson, options);
+        var row = page is null ? parsedRow : parsedRow with { Page = page };
         var rowFilter = GridFilterPipeline.Process(
             row.NativeFilter, row.CustomFilters, row.Page, schema, limits, row.Group, row.Aggregations);
         return new PreparedRequest(schema, false, row, rowFilter, null, 0);

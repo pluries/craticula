@@ -1,0 +1,55 @@
+{
+  "skip": "Zum Inhalt springen",
+  "nav_docs": "Dokumentation",
+  "nav_reference": "Referenz",
+  "menu_button": "Menü",
+  "menu_aria": "Seitenmenü öffnen",
+  "pager_label": "Vorherige und nächste Seite",
+  "previous": "Zurück",
+  "next": "Weiter",
+  "on_this_page": "Auf dieser Seite",
+  "github_aria": "GitHub-Repository",
+  "language_label": "Sprache",
+  "english_mark": "(Englisch)",
+  "english_only": "Diese Seite gibt es nur auf Englisch",
+  "llms_home": "Startseite",
+  "llms_english_source": "Englische Quelle",
+  "search_english": "Die englische Website durchsuchen",
+  "search_english_url": "index.html",
+  "copy": "Kopieren",
+  "copied": "Kopiert",
+  "copy_failed": "Kopieren fehlgeschlagen",
+  "copy_aria": "Diesen Code kopieren",
+  "search_aria": "Die Dokumentation durchsuchen (Strg+K)",
+  "search_label": "Die Dokumentation durchsuchen",
+  "search_placeholder": "Suchen",
+  "search_empty": "Geben Sie einen Suchbegriff ein, um die Dokumentation zu durchsuchen.",
+  "search_none": "Zu dieser Suche gibt es keine Treffer.",
+  "search_loading": "Suchindex wird geladen...",
+  "search_unavailable": "Die Suche ist derzeit nicht verfügbar. Nutzen Sie die Seitenleiste, um die Seiten zu durchsuchen.",
+  "result_one": "Treffer",
+  "result_other": "Treffer",
+  "theme_aria": "Design: {name}. Design wechseln",
+  "theme_title": "Design: {name}",
+  "theme_names": {
+    "auto": "Automatisch",
+    "light": "Hell",
+    "dark": "Dunkel"
+  },
+  "group_names": {
+    "Concepts": "Konzepte",
+    "Guides": "Anleitungen",
+    "Configuration": "Konfiguration",
+    "Reference": "Referenz"
+  },
+  "subgroups": {
+    "Semantics": "Semantik",
+    "Quickstarts": "Schnellstarts"
+  },
+  "groups": {
+    "Concepts": "Was Craticula ist, wie aus einer Anfrage eine Datenbankabfrage wird, die Modi Strict und Lenient und das Sicherheitsmodell.",
+    "Guides": "Schnellstarts, Hinweise zur Indizierung und die Migration von OData.",
+    "Configuration": "Das GridSchema, die Limits sowie Dialekte und Provider.",
+    "Reference": "Die Spezifikation, eine Seite je Regel des Abfrageverhaltens und die beiden Schemas."
+  }
+}

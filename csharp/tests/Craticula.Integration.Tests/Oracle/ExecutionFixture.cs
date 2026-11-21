@@ -99,7 +99,13 @@ public sealed class ExecutionFixture
     /// directory behind them and no expectation, because the property compares engines with each other, not with an oracle.
     /// <see cref="Load"/> is the only way a fixture reads files; nothing here touches the disk.
     /// </summary>
-    public static ExecutionFixture FromMemory(string name, GridSchema schema, string requestJson, IReadOnlyList<SeedRow> seed) =>
+    public static ExecutionFixture FromMemory(
+        string name,
+        GridSchema schema,
+        string requestJson,
+        IReadOnlyList<SeedRow> seed,
+        ExpectedResult? expected = null,
+        IReadOnlyList<Divergence>? divergences = null) =>
         new()
         {
             Name = name,
@@ -107,8 +113,8 @@ public sealed class ExecutionFixture
             Schema = schema,
             Request = Parse(requestJson, isText: true).RootElement.Clone(),
             Seed = seed,
-            Expected = new ExpectedResult([], []),
-            Divergences = [],
+            Expected = expected ?? new ExpectedResult([], []),
+            Divergences = divergences ?? [],
             Backends = []
         };
 
