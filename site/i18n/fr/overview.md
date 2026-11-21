@@ -5,7 +5,7 @@ description: Ce qu'est Craticula, ce qu'il compile et où il en est.
 source_fingerprint: 3929869b5367531388935cc42945f515177b84bf6d3ffe925cbccd06c8cf38e0
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 # Craticula {#craticula}
 

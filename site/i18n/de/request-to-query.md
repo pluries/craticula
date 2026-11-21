@@ -5,7 +5,7 @@ description: Der Weg von einer Anfrage von AG Grid zu einer Anweisung mit Parame
 source_fingerprint: 6c0315a52de692dbf39fc149aa86390474630dd3c2eb2282d8985f93da818dc0
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 # Wie aus einer Anfrage eine Abfrage wird {#how-a-request-becomes-a-query}
 

@@ -5,7 +5,7 @@ description: Che cosa compila Craticula, che cosa non fa mai e a che punto si tr
 source_fingerprint: e8f756cfd41d5e8621dce7f0e9a10a459e2c9061e1f4434abe57c82e8adc1664
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 # Che cos'è Craticula {#what-craticula-is}
 

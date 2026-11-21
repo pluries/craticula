@@ -5,7 +5,7 @@ description: Eine Grid-Anfrage aus C# in SQL und MongoDB kompilieren.
 source_fingerprint: b1a5412bec8769ab8737adfd5828f36a3502b6b49ca68c2ba7f883125d5e6756
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 # Schnellstart: C# {#quickstart-c}
 

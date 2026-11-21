@@ -5,7 +5,7 @@ description: Trasmettere in streaming le righe di una griglia in CSV con lo stes
 source_fingerprint: fa1523a098455aba885855279c19504be3084b49be415b2a066c79e11c573ace
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 # Esportazione CSV {#csv-export}
 

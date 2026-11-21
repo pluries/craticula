@@ -5,7 +5,7 @@ description: Le schéma qui énumère ce qu'une grille peut toucher, et lesquels
 source_fingerprint: cdf6e47e0fa6a2ef7b974c3b2ac02ea7892b7f9a31ffa33a18595708e80d8a45
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 # Le GridSchema {#the-gridschema}
 

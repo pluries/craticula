@@ -5,7 +5,7 @@ description: 分组网格如何一次请求一层，以及聚合的行为方式�
 source_fingerprint: 10e3bdf6eb7dc0f59a4e20738237bb2f9f7ebac06181756626f1c01f952450a5
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 # 分组与聚合 {#grouping-and-aggregation}
 

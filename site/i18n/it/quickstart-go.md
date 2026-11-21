@@ -5,7 +5,7 @@ description: Che cosa seguirà un port Go.
 source_fingerprint: 99c3a5a56c06d2a70375387b75d972430756a414510521cfe4542daa3fea3e3a
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 # Guida rapida: Go {#quickstart-go}
 

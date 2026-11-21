@@ -5,7 +5,7 @@ description: Diffusez les lignes d'une grille vers un fichier CSV avec le même 
 source_fingerprint: fa1523a098455aba885855279c19504be3084b49be415b2a066c79e11c573ace
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 # Export CSV {#csv-export}
 

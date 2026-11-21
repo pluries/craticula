@@ -5,7 +5,7 @@ description: Wie Zeilen in Fenster gelegt und geordnet werden und warum das Pagi
 source_fingerprint: c01a09b912527d1a95923a5776c7b4abb3290f980e8c9111c4751565b710b445
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 # Paging und Sortierung {#paging-and-sorting}
 

@@ -5,7 +5,7 @@ description: Come le righe vengono finestrate e ordinate e perché la paginazion
 source_fingerprint: c01a09b912527d1a95923a5776c7b4abb3290f980e8c9111c4751565b710b445
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 # Paginazione e ordinamento {#paging-and-sorting}
 

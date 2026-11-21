@@ -5,7 +5,7 @@ description: Wie sich die Datenbank-Engines bei Quoting, Paging, Null-Reihenfolg
 source_fingerprint: e3cadc85fee286141cd8091c6103e2780064d51e19a1428afa783d8f20b83081
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 # Dialekte und Provider {#dialects-and-providers}
 

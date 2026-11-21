@@ -5,7 +5,7 @@ description: 用 C# 把网格请求编译为 SQL 和 MongoDB 查询。
 source_fingerprint: b1a5412bec8769ab8737adfd5828f36a3502b6b49ca68c2ba7f883125d5e6756
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 # 快速入门：C# {#quickstart-c}
 

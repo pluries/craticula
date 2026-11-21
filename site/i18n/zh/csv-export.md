@@ -5,7 +5,7 @@ description: 使用同一套请求模型和同样的检查，把表格的行以�
 source_fingerprint: fa1523a098455aba885855279c19504be3084b49be415b2a066c79e11c573ace
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 # CSV 导出 {#csv-export}
 

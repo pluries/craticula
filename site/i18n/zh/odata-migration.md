@@ -5,7 +5,7 @@ description: 把网格从 OData 迁移到编译查询，并了解哪些地方会
 source_fingerprint: fd82735ea37c07ef6fc24c75d469d2a95817109d4cb1345e8240e4df38b66ee0
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 # 从 OData 迁移 {#migrating-from-odata}
 

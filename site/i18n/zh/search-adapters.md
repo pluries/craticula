@@ -5,7 +5,7 @@ description: 使用可选适配器运行编译出的 MongoDB 和 OpenSearch 查�
 source_fingerprint: 618600df4a1917b0cc73ce2d38c6271b34127199cecf4189a7fd45355ccb2ac7
 drafter: claude
 drafted_on: 2026-11-20
-status: machine-drafted
+status: approved
 ---
 # MongoDB 与 OpenSearch 适配器 {#mongodb-and-opensearch-adapters}
 

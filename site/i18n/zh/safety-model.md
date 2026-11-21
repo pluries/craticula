@@ -5,7 +5,7 @@ description: 值、标识符和限制如何保证编译出的查询安全，以�
 source_fingerprint: cad40472e319059d27fe5a7517ac79ed14efb07866e1630c2883f9c7419a959c
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 # 安全模型 {#the-safety-model}
 

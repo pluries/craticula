@@ -5,7 +5,7 @@ description: Ce que suivra un portage TypeScript.
 source_fingerprint: 072ec77c552dd32b4086a7e68bb381e3e721e82ea24a817d6929470d27629ac2
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 # Démarrage rapide : TypeScript {#quickstart-typescript}
 

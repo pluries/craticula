@@ -5,7 +5,7 @@ description: Ce que suivra un portage Python.
 source_fingerprint: 1a16c930083a5f86f8097b39f7a061a955f53e1df4f9037186cd267905f2c2ba
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 # Démarrage rapide : Python {#quickstart-python}
 
