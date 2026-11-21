@@ -376,7 +376,9 @@ def language_tree(tmp: Path, omit: tuple[str, ...] = (), keep_base: bool = True)
     config = json.loads(config_path.read_text(encoding=ENCODING))
     if not keep_base:
         config.pop("baseUrl")
-        config_path.write_text(json.dumps(config), encoding=ENCODING)
+    for code in LANGUAGE_CODES:
+        config["languages"][code]["enabled"] = False   # the copy starts disabled whatever the committed file says; a test enables what it needs
+    config_path.write_text(json.dumps(config), encoding=ENCODING)
     english_home = (root / "site" / "home.html").read_text(encoding=ENCODING)
     write_tree(root, {"site/i18n/en/ui.json": json.dumps(ENGLISH_UI, ensure_ascii=False)})
     for code in LANGUAGE_CODES:

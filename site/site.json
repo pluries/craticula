@@ -22,31 +22,31 @@
       "name": "Français",
       "path": "fr",
       "lang": "fr",
-      "enabled": false
+      "enabled": true
     },
     "de": {
       "name": "Deutsch",
       "path": "de",
       "lang": "de",
-      "enabled": false
+      "enabled": true
     },
     "it": {
       "name": "Italiano",
       "path": "it",
       "lang": "it",
-      "enabled": false
+      "enabled": true
     },
     "es": {
       "name": "Español",
       "path": "es",
       "lang": "es",
-      "enabled": false
+      "enabled": true
     },
     "zh": {
       "name": "中文",
       "path": "zh",
       "lang": "zh-Hans",
-      "enabled": false
+      "enabled": true
     }
   },
   "i18n": {
