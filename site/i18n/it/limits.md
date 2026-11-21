@@ -5,7 +5,7 @@ description: I limiti di risorse predefiniti, che cosa fa ciascuno e come modifi
 source_fingerprint: 4ebb0479bf2bf034db02fbe9221ed719f6f737678d26a8c1dee647b249dba066
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 # Limiti {#limits}
 

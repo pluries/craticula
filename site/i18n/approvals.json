@@ -38,5 +38,805 @@
     "translation_hash": "f04d47e462df8e148bd99900b2e2a4681c884a068401f7967779387ab32689c5",
     "approved_by": "Christian Stephan",
     "approved_on": "2026-11-19"
+  },
+  {
+    "language": "fr",
+    "document": "what-is-craticula",
+    "source_fingerprint": "e8f756cfd41d5e8621dce7f0e9a10a459e2c9061e1f4434abe57c82e8adc1664",
+    "translation_hash": "e7065bf48383455c64f4eda9f2019be5b9368eb885f442d2a0cc7df9aa90dba2",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "fr",
+    "document": "request-to-query",
+    "source_fingerprint": "6c0315a52de692dbf39fc149aa86390474630dd3c2eb2282d8985f93da818dc0",
+    "translation_hash": "266ace1457b3dc2556381af18b507b81982309242e0f7a98c5e598de09b8b9f4",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "fr",
+    "document": "strict-and-lenient",
+    "source_fingerprint": "20ab3fa199820cb9e052565112f509257cd8428bafaf7eced343e56e4ea4c25a",
+    "translation_hash": "7268a6ed082fd20367b4b48e2d6807a90e8ade14c76d2d0de2128f57909e59be",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "fr",
+    "document": "safety-model",
+    "source_fingerprint": "cad40472e319059d27fe5a7517ac79ed14efb07866e1630c2883f9c7419a959c",
+    "translation_hash": "faf03290e272c9aebc773c5ab87232d6906ef2ccc7af5f9caa9d34dce787f45c",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "fr",
+    "document": "quickstart-csharp",
+    "source_fingerprint": "b1a5412bec8769ab8737adfd5828f36a3502b6b49ca68c2ba7f883125d5e6756",
+    "translation_hash": "6234497eda568d6242ae5bb5bf4d6c4b89a662ae298b07d0dfae418136c5d9fa",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "fr",
+    "document": "quickstart-typescript",
+    "source_fingerprint": "072ec77c552dd32b4086a7e68bb381e3e721e82ea24a817d6929470d27629ac2",
+    "translation_hash": "badb3937cd99b892cf5b936819adc34aec4c839bab87b989d4bf60e39d9a6467",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "fr",
+    "document": "quickstart-python",
+    "source_fingerprint": "1a16c930083a5f86f8097b39f7a061a955f53e1df4f9037186cd267905f2c2ba",
+    "translation_hash": "ba936b0c6c16edca4d81107491b137d72a5419b3b48add08a19d3a6fcd2d20da",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "fr",
+    "document": "quickstart-go",
+    "source_fingerprint": "99c3a5a56c06d2a70375387b75d972430756a414510521cfe4542daa3fea3e3a",
+    "translation_hash": "742135ee6affb50be4813d191b5079ec99827edee2af2d23ccf05663d04bb4dd",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "fr",
+    "document": "index-guidance",
+    "source_fingerprint": "3d3bf891b84587e5732e82a2bb52c06b0c2ee549efb1865d1fc2d889fe36ebf5",
+    "translation_hash": "d1e0711c4c362f4ff89bbc4701ecc6cec4df751f6d39b6dc99220279bffe22f0",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "fr",
+    "document": "odata-migration",
+    "source_fingerprint": "fd82735ea37c07ef6fc24c75d469d2a95817109d4cb1345e8240e4df38b66ee0",
+    "translation_hash": "e23cfa8cc0244f4eed7dde54d10aa2a66b8ec27e85924262136280ca3f7cbc56",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "fr",
+    "document": "paging-and-sorting",
+    "source_fingerprint": "c01a09b912527d1a95923a5776c7b4abb3290f980e8c9111c4751565b710b445",
+    "translation_hash": "acff6452da8ed0b61ac1d8c1a12e64d5719b81a13ec850db7bf357508eae7ed2",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "fr",
+    "document": "grouping-and-aggregation",
+    "source_fingerprint": "10e3bdf6eb7dc0f59a4e20738237bb2f9f7ebac06181756626f1c01f952450a5",
+    "translation_hash": "7d235f8f2eef3377ed7856098bf641b52d2ca950f667743927760618b6302906",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "fr",
+    "document": "csv-export",
+    "source_fingerprint": "fa1523a098455aba885855279c19504be3084b49be415b2a066c79e11c573ace",
+    "translation_hash": "629539c8b77d2cae25b6250a00496cbfbce4ee747ed2fb509d9d1c78ae077acd",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "fr",
+    "document": "relational-adapters",
+    "source_fingerprint": "c7c6226b52fe85563de296ccf30f4b6133346e53ef471b90257c33696e64481f",
+    "translation_hash": "bc9d4312b4a0c1a07e80ad5d681c31d99cf136b750bafc8aa67e713e741c0df9",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "fr",
+    "document": "search-adapters",
+    "source_fingerprint": "618600df4a1917b0cc73ce2d38c6271b34127199cecf4189a7fd45355ccb2ac7",
+    "translation_hash": "bec4b82d14ff08daf8e8f8c01e5c064c4c0058734129e0c9c3605f0566cb1fbf",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "fr",
+    "document": "the-gridschema",
+    "source_fingerprint": "cdf6e47e0fa6a2ef7b974c3b2ac02ea7892b7f9a31ffa33a18595708e80d8a45",
+    "translation_hash": "bd4edb5c7a87ea5c576f744a38d29ea37a41b3003a9a2caea5dcf5849d3a593e",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "fr",
+    "document": "limits",
+    "source_fingerprint": "4ebb0479bf2bf034db02fbe9221ed719f6f737678d26a8c1dee647b249dba066",
+    "translation_hash": "daf47d8add79d55d936c1fa9de0e764430c3cd4b8a891844bb9cc622ad384843",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "fr",
+    "document": "dialects-and-providers",
+    "source_fingerprint": "e3cadc85fee286141cd8091c6103e2780064d51e19a1428afa783d8f20b83081",
+    "translation_hash": "22797483ea520d3afcd8a058713e858584fbc6a590f40a27dd8cd2acfc22f1d0",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "fr",
+    "document": "overview",
+    "source_fingerprint": "3929869b5367531388935cc42945f515177b84bf6d3ffe925cbccd06c8cf38e0",
+    "translation_hash": "ac61d84eeb98f4c8eb5dde88fdb34f3c5a9506b7ca33256ad44cd4ec383b154e",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "fr",
+    "document": "ui.json",
+    "source_fingerprint": "8cd68a818e684c4cab6f771abf6096acbf889af5796c5118c40bd4d44cbf7f20",
+    "translation_hash": "2c49aaebcdc72748dd5cb4e44a60ebda9b7983f6ae3a54784cd36f308e94cf8b",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "de",
+    "document": "what-is-craticula",
+    "source_fingerprint": "e8f756cfd41d5e8621dce7f0e9a10a459e2c9061e1f4434abe57c82e8adc1664",
+    "translation_hash": "ee397472af3cb22baebfcda3e4184980c5f20a9ffd9e456a0edc885444de1ec2",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "de",
+    "document": "request-to-query",
+    "source_fingerprint": "6c0315a52de692dbf39fc149aa86390474630dd3c2eb2282d8985f93da818dc0",
+    "translation_hash": "5e911e7d6a1a98a6966bce8871f52f44264de299d10b35b23d8b47811c17853f",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "de",
+    "document": "strict-and-lenient",
+    "source_fingerprint": "20ab3fa199820cb9e052565112f509257cd8428bafaf7eced343e56e4ea4c25a",
+    "translation_hash": "8c17d7962814d365cc0b2a0c181ad430b2979783a71d0d425ed20667d2cd2264",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "de",
+    "document": "safety-model",
+    "source_fingerprint": "cad40472e319059d27fe5a7517ac79ed14efb07866e1630c2883f9c7419a959c",
+    "translation_hash": "85759c93b67105d161c6a0655c20c4b40214dee3901fa2e2230c0a62b7ec40fa",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "de",
+    "document": "quickstart-csharp",
+    "source_fingerprint": "b1a5412bec8769ab8737adfd5828f36a3502b6b49ca68c2ba7f883125d5e6756",
+    "translation_hash": "8deca5c63956d17e1fbeaf92b6180ff2df1e1a1b4e2decd26b96041bd441dc1a",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "de",
+    "document": "quickstart-typescript",
+    "source_fingerprint": "072ec77c552dd32b4086a7e68bb381e3e721e82ea24a817d6929470d27629ac2",
+    "translation_hash": "feb88c3c52bca6fc146d71f00f6c97f9bb358a77a7a128275637f5023520840b",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "de",
+    "document": "quickstart-python",
+    "source_fingerprint": "1a16c930083a5f86f8097b39f7a061a955f53e1df4f9037186cd267905f2c2ba",
+    "translation_hash": "bcc82ec8b82f8ca2be37d03b2340ebbe69184bbddf3a5ead51bf818aae1cecf9",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "de",
+    "document": "quickstart-go",
+    "source_fingerprint": "99c3a5a56c06d2a70375387b75d972430756a414510521cfe4542daa3fea3e3a",
+    "translation_hash": "5b723639a085569e98cb25037e2fb2e2218906d3af9d7c5e8d481352b85d85b8",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "de",
+    "document": "index-guidance",
+    "source_fingerprint": "3d3bf891b84587e5732e82a2bb52c06b0c2ee549efb1865d1fc2d889fe36ebf5",
+    "translation_hash": "600fabce575a4d3c33531437766cea0a5e977673a5987384cc501c952df17f89",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "de",
+    "document": "odata-migration",
+    "source_fingerprint": "fd82735ea37c07ef6fc24c75d469d2a95817109d4cb1345e8240e4df38b66ee0",
+    "translation_hash": "7200fef77312482ad4c7c95b76be6eb6ba96acdddba0c8829d8ea3a2407c174e",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "de",
+    "document": "paging-and-sorting",
+    "source_fingerprint": "c01a09b912527d1a95923a5776c7b4abb3290f980e8c9111c4751565b710b445",
+    "translation_hash": "8863665e236223fbb3b67bdcbd197bb0c963fa7c7514d9c2ba0d27d7ea80921e",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "de",
+    "document": "grouping-and-aggregation",
+    "source_fingerprint": "10e3bdf6eb7dc0f59a4e20738237bb2f9f7ebac06181756626f1c01f952450a5",
+    "translation_hash": "970f21fb24afcbd466e611767b6d707ca1e29db6bc1fda746ce88fd370a1a385",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "de",
+    "document": "csv-export",
+    "source_fingerprint": "fa1523a098455aba885855279c19504be3084b49be415b2a066c79e11c573ace",
+    "translation_hash": "81247687a17df07d5b97a79888c63db74825bf4d485c476590578cb3be8a41c8",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "de",
+    "document": "relational-adapters",
+    "source_fingerprint": "c7c6226b52fe85563de296ccf30f4b6133346e53ef471b90257c33696e64481f",
+    "translation_hash": "c5110cde3d55045e93489e9f857b5254c290c700e2e51478008352ad15da7968",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "de",
+    "document": "search-adapters",
+    "source_fingerprint": "618600df4a1917b0cc73ce2d38c6271b34127199cecf4189a7fd45355ccb2ac7",
+    "translation_hash": "edf0c742e7840094e329e6344aae104a3496e6332db1a991dee2a9b45f921d3c",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "de",
+    "document": "the-gridschema",
+    "source_fingerprint": "cdf6e47e0fa6a2ef7b974c3b2ac02ea7892b7f9a31ffa33a18595708e80d8a45",
+    "translation_hash": "60e42062706253b8e55bcf68398a9a82ceea96de403182898217ca4c57c7d2a8",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "de",
+    "document": "limits",
+    "source_fingerprint": "4ebb0479bf2bf034db02fbe9221ed719f6f737678d26a8c1dee647b249dba066",
+    "translation_hash": "c1e2eba0c083b02e906053186eb0be7ecbbe7dccfd3e7afde80c6563583853c3",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "de",
+    "document": "dialects-and-providers",
+    "source_fingerprint": "e3cadc85fee286141cd8091c6103e2780064d51e19a1428afa783d8f20b83081",
+    "translation_hash": "e05ca95f504103c811bb6182c52ceba3180a7001de13ffd4df2d0fb81da8e75c",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "de",
+    "document": "overview",
+    "source_fingerprint": "3929869b5367531388935cc42945f515177b84bf6d3ffe925cbccd06c8cf38e0",
+    "translation_hash": "f0398d38e23461da557de01423b31ee1da243b401a69c6aff47a72370dbbf94b",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "de",
+    "document": "ui.json",
+    "source_fingerprint": "8cd68a818e684c4cab6f771abf6096acbf889af5796c5118c40bd4d44cbf7f20",
+    "translation_hash": "0d66467ce0e7a540dd5b2af6fbedcc808fa8e4e25cf8f21ad005eec38e249bc7",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "it",
+    "document": "what-is-craticula",
+    "source_fingerprint": "e8f756cfd41d5e8621dce7f0e9a10a459e2c9061e1f4434abe57c82e8adc1664",
+    "translation_hash": "10d877636b505ca42a561bf8779f49bf59f20ebdcbe3399389e4ea159ea53087",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "it",
+    "document": "request-to-query",
+    "source_fingerprint": "6c0315a52de692dbf39fc149aa86390474630dd3c2eb2282d8985f93da818dc0",
+    "translation_hash": "a88387bc45349ba5309c28c8fab0f0ae919a5999cef24549a86dbc3806cebb9f",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "it",
+    "document": "strict-and-lenient",
+    "source_fingerprint": "20ab3fa199820cb9e052565112f509257cd8428bafaf7eced343e56e4ea4c25a",
+    "translation_hash": "dd9b44dd043f2f8cad6393a2b9c8ecaf652f69bde4ae9dc96ea955c5f2060337",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "it",
+    "document": "safety-model",
+    "source_fingerprint": "cad40472e319059d27fe5a7517ac79ed14efb07866e1630c2883f9c7419a959c",
+    "translation_hash": "dd0f43210787a475670183ec5127ef557a9630b9429220a9c68051deecd8b21e",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "it",
+    "document": "quickstart-csharp",
+    "source_fingerprint": "b1a5412bec8769ab8737adfd5828f36a3502b6b49ca68c2ba7f883125d5e6756",
+    "translation_hash": "dcd8328bba11e18abd0f07a611916b47418bd229fa946cfc161024cade45a579",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "it",
+    "document": "quickstart-typescript",
+    "source_fingerprint": "072ec77c552dd32b4086a7e68bb381e3e721e82ea24a817d6929470d27629ac2",
+    "translation_hash": "804a3e1d0d8eca62a012ab318a681f6aaeb0b058545f887394f9a3c98624a643",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "it",
+    "document": "quickstart-python",
+    "source_fingerprint": "1a16c930083a5f86f8097b39f7a061a955f53e1df4f9037186cd267905f2c2ba",
+    "translation_hash": "2d191370c7512695423f5e2a76bda0b86762fbd85a5ed733fa5027f110833721",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "it",
+    "document": "quickstart-go",
+    "source_fingerprint": "99c3a5a56c06d2a70375387b75d972430756a414510521cfe4542daa3fea3e3a",
+    "translation_hash": "3cf6f8a2c3420d7888d6f3d5c833f4f9525ee5c59b9c02f0793bd2bd796b7e7a",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "it",
+    "document": "index-guidance",
+    "source_fingerprint": "3d3bf891b84587e5732e82a2bb52c06b0c2ee549efb1865d1fc2d889fe36ebf5",
+    "translation_hash": "1b1b2ff03cfac7ae20a2b8c7752cd3c04bb2158b39c6083f31db495957a26268",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "it",
+    "document": "odata-migration",
+    "source_fingerprint": "fd82735ea37c07ef6fc24c75d469d2a95817109d4cb1345e8240e4df38b66ee0",
+    "translation_hash": "df24e7145ee06e78a5203b4391ecf827bb9526e1538e25a426fd656716de3e98",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "it",
+    "document": "paging-and-sorting",
+    "source_fingerprint": "c01a09b912527d1a95923a5776c7b4abb3290f980e8c9111c4751565b710b445",
+    "translation_hash": "19391bf18ed648b9ae5e6c7c6e05f910b0ea73c7a8c1e249fb1c986e5e03bda5",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "it",
+    "document": "grouping-and-aggregation",
+    "source_fingerprint": "10e3bdf6eb7dc0f59a4e20738237bb2f9f7ebac06181756626f1c01f952450a5",
+    "translation_hash": "68ffe16b96ea6801a453d2a690a8dafb73aff384d4aa37a5637009222fc0b661",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "it",
+    "document": "csv-export",
+    "source_fingerprint": "fa1523a098455aba885855279c19504be3084b49be415b2a066c79e11c573ace",
+    "translation_hash": "cf33e9356321cd873be9748985673881eeb532ba92899a4a6d8b2b686f9aad8e",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "it",
+    "document": "relational-adapters",
+    "source_fingerprint": "c7c6226b52fe85563de296ccf30f4b6133346e53ef471b90257c33696e64481f",
+    "translation_hash": "19d218322a28ed37c0ab8bc4edadb6f8f78b655b42307f01fd3e50ed21050920",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "it",
+    "document": "search-adapters",
+    "source_fingerprint": "618600df4a1917b0cc73ce2d38c6271b34127199cecf4189a7fd45355ccb2ac7",
+    "translation_hash": "47f89a452be7d07ed34f10c637486cdbb8a31ff3f8b6b7f4e2efd756151b00e6",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "it",
+    "document": "the-gridschema",
+    "source_fingerprint": "cdf6e47e0fa6a2ef7b974c3b2ac02ea7892b7f9a31ffa33a18595708e80d8a45",
+    "translation_hash": "e58cbe18127f2ecc96e726748827b63690803ac8e4d45ef87913892f2c1046d8",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "it",
+    "document": "limits",
+    "source_fingerprint": "4ebb0479bf2bf034db02fbe9221ed719f6f737678d26a8c1dee647b249dba066",
+    "translation_hash": "3fbde56d3d67d24815cbcb39a6cd96f17f3665a54509a212bf7c54b613f5181e",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "it",
+    "document": "dialects-and-providers",
+    "source_fingerprint": "e3cadc85fee286141cd8091c6103e2780064d51e19a1428afa783d8f20b83081",
+    "translation_hash": "6465b1afeb2a354459a87b973ed630ab3448eb0a641dbab75e990b2a49e0c623",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "it",
+    "document": "overview",
+    "source_fingerprint": "3929869b5367531388935cc42945f515177b84bf6d3ffe925cbccd06c8cf38e0",
+    "translation_hash": "89d467ac499f014037eec62f78c642049fccf2bdf76d5332082624513b86a3bd",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "it",
+    "document": "ui.json",
+    "source_fingerprint": "8cd68a818e684c4cab6f771abf6096acbf889af5796c5118c40bd4d44cbf7f20",
+    "translation_hash": "83b11f511bcca3c0cfb83bc7cf33181cebcf06ee74e4b531fd557e6bf414bbad",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "es",
+    "document": "what-is-craticula",
+    "source_fingerprint": "e8f756cfd41d5e8621dce7f0e9a10a459e2c9061e1f4434abe57c82e8adc1664",
+    "translation_hash": "499eda5dc552c20d4648f7c2b403092a7430bfe11c639632c247cf4170a310e5",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "es",
+    "document": "request-to-query",
+    "source_fingerprint": "6c0315a52de692dbf39fc149aa86390474630dd3c2eb2282d8985f93da818dc0",
+    "translation_hash": "081a26a7ff2f767125cd09b3b75dc8c552acab41003bf9b93dfef0f5968fdaca",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "es",
+    "document": "strict-and-lenient",
+    "source_fingerprint": "20ab3fa199820cb9e052565112f509257cd8428bafaf7eced343e56e4ea4c25a",
+    "translation_hash": "5f726cff281e0cb30bd27f1352903448b0a5fa26f47772e8b60ada996a577478",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "es",
+    "document": "safety-model",
+    "source_fingerprint": "cad40472e319059d27fe5a7517ac79ed14efb07866e1630c2883f9c7419a959c",
+    "translation_hash": "5a60da9324733441d286fac13d821ceb6fcbf426b627c0aab90aed6a1f83e3e8",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "es",
+    "document": "quickstart-csharp",
+    "source_fingerprint": "b1a5412bec8769ab8737adfd5828f36a3502b6b49ca68c2ba7f883125d5e6756",
+    "translation_hash": "091c09e344637dd82bae108de8a5f9c9713c50a8d07e0bbe4db0cf0656ae10d2",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "es",
+    "document": "quickstart-typescript",
+    "source_fingerprint": "072ec77c552dd32b4086a7e68bb381e3e721e82ea24a817d6929470d27629ac2",
+    "translation_hash": "214256a05ec7f1cd046eb662e8f0d15782999b11821dc31ccd7b66aee4849e41",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "es",
+    "document": "quickstart-python",
+    "source_fingerprint": "1a16c930083a5f86f8097b39f7a061a955f53e1df4f9037186cd267905f2c2ba",
+    "translation_hash": "845f42e639401e1af00f37c83a02f3249165c578e7c1149a5625df5f2e2cd629",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "es",
+    "document": "quickstart-go",
+    "source_fingerprint": "99c3a5a56c06d2a70375387b75d972430756a414510521cfe4542daa3fea3e3a",
+    "translation_hash": "955db158d13a1c51f02ef7c2e36735bb2c251ba62f4d97d9dd5d1d35fdfc82bd",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "es",
+    "document": "index-guidance",
+    "source_fingerprint": "3d3bf891b84587e5732e82a2bb52c06b0c2ee549efb1865d1fc2d889fe36ebf5",
+    "translation_hash": "e7d9aa1bee39635401c42d060230c71e7cf7b26c6cbe4c3aa6c626d8db5b11c3",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "es",
+    "document": "odata-migration",
+    "source_fingerprint": "fd82735ea37c07ef6fc24c75d469d2a95817109d4cb1345e8240e4df38b66ee0",
+    "translation_hash": "d1da0cef6bdfc508daf1970a280df20f3a895b1809ba3944516fa9527e7b6e41",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "es",
+    "document": "paging-and-sorting",
+    "source_fingerprint": "c01a09b912527d1a95923a5776c7b4abb3290f980e8c9111c4751565b710b445",
+    "translation_hash": "1beb09cdde43a71b345d60ae8d5ead73dc73e4a9e7c12ad2f0d8b996951e4c75",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "es",
+    "document": "grouping-and-aggregation",
+    "source_fingerprint": "10e3bdf6eb7dc0f59a4e20738237bb2f9f7ebac06181756626f1c01f952450a5",
+    "translation_hash": "3629ebaa5371c8fc5eabe59820da4ba1c4b099338a677159727703285ebf07a4",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "es",
+    "document": "csv-export",
+    "source_fingerprint": "fa1523a098455aba885855279c19504be3084b49be415b2a066c79e11c573ace",
+    "translation_hash": "fed1a4b083030d4ccc5272ab6409524f6f6896b74816ebf5cacc80e47307d788",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "es",
+    "document": "relational-adapters",
+    "source_fingerprint": "c7c6226b52fe85563de296ccf30f4b6133346e53ef471b90257c33696e64481f",
+    "translation_hash": "560a8f0f3879ca4022f982bed1d8adf9a4ebba90aa1f1d1b7b89d8bddbcae198",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "es",
+    "document": "search-adapters",
+    "source_fingerprint": "618600df4a1917b0cc73ce2d38c6271b34127199cecf4189a7fd45355ccb2ac7",
+    "translation_hash": "83a33c0ea0dd8dbbecb513d89977a9249aa02aeec49998f30332ab0e1ce43873",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "es",
+    "document": "the-gridschema",
+    "source_fingerprint": "cdf6e47e0fa6a2ef7b974c3b2ac02ea7892b7f9a31ffa33a18595708e80d8a45",
+    "translation_hash": "856b87095967894108c1eaeaf29bde912ed2bbd2e52cad1982c679eccfe4c66e",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "es",
+    "document": "limits",
+    "source_fingerprint": "4ebb0479bf2bf034db02fbe9221ed719f6f737678d26a8c1dee647b249dba066",
+    "translation_hash": "5a5fb161a851f296108ced1016762b1274c719ef10f86d41234588c12a9f0df2",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "es",
+    "document": "dialects-and-providers",
+    "source_fingerprint": "e3cadc85fee286141cd8091c6103e2780064d51e19a1428afa783d8f20b83081",
+    "translation_hash": "3ce90c1d58f696e868ae05d24b13ceda9135fc03e04caa581ecf6574ca910b8d",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "es",
+    "document": "overview",
+    "source_fingerprint": "3929869b5367531388935cc42945f515177b84bf6d3ffe925cbccd06c8cf38e0",
+    "translation_hash": "0e66d2913387be51eaea81cd5888ff315128ea787ccf5a12b251ca36c1feb21b",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "es",
+    "document": "ui.json",
+    "source_fingerprint": "8cd68a818e684c4cab6f771abf6096acbf889af5796c5118c40bd4d44cbf7f20",
+    "translation_hash": "fd75ad6b44da764dae03184e721a6348a7b93667cc005366128c62727423d049",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "zh",
+    "document": "what-is-craticula",
+    "source_fingerprint": "e8f756cfd41d5e8621dce7f0e9a10a459e2c9061e1f4434abe57c82e8adc1664",
+    "translation_hash": "8bafcfa2fae55c64e76bdd065e6db38b7eec0255adcbeccaf07337ef29dc2945",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "zh",
+    "document": "request-to-query",
+    "source_fingerprint": "6c0315a52de692dbf39fc149aa86390474630dd3c2eb2282d8985f93da818dc0",
+    "translation_hash": "3302c4bb1fb23a35ea21e399212bbec7e1f00d73fc405f50990f8a615e7aa886",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "zh",
+    "document": "strict-and-lenient",
+    "source_fingerprint": "20ab3fa199820cb9e052565112f509257cd8428bafaf7eced343e56e4ea4c25a",
+    "translation_hash": "37277325ae4914d335782d032bd9b04fd7950169a8b20e0bb562fcccea4f5604",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "zh",
+    "document": "safety-model",
+    "source_fingerprint": "cad40472e319059d27fe5a7517ac79ed14efb07866e1630c2883f9c7419a959c",
+    "translation_hash": "d76da348ac8646ed97f65f94b39773ae7c592bb4ef8cc12c1eaf47196ae49882",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "zh",
+    "document": "quickstart-csharp",
+    "source_fingerprint": "b1a5412bec8769ab8737adfd5828f36a3502b6b49ca68c2ba7f883125d5e6756",
+    "translation_hash": "3026ed195fa4cd034d0cd0019585514a637ca95b88b80f2dd7d34053c1ee3894",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "zh",
+    "document": "quickstart-typescript",
+    "source_fingerprint": "072ec77c552dd32b4086a7e68bb381e3e721e82ea24a817d6929470d27629ac2",
+    "translation_hash": "0df297bd94ffe8883283118677392b307779a3296013cf942bb0aa535a7fb0e2",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "zh",
+    "document": "quickstart-python",
+    "source_fingerprint": "1a16c930083a5f86f8097b39f7a061a955f53e1df4f9037186cd267905f2c2ba",
+    "translation_hash": "6646a5528b2390267239d42bd31c797f448d342681c39579a8bc66147184052a",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "zh",
+    "document": "quickstart-go",
+    "source_fingerprint": "99c3a5a56c06d2a70375387b75d972430756a414510521cfe4542daa3fea3e3a",
+    "translation_hash": "5ddeed1469cb7f75442108a23e3863cb5781be2267b0d98cb4fc32d1dae09702",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "zh",
+    "document": "index-guidance",
+    "source_fingerprint": "3d3bf891b84587e5732e82a2bb52c06b0c2ee549efb1865d1fc2d889fe36ebf5",
+    "translation_hash": "6b3df3bc033bc81c16f5f7be3406aa58ee101709488153f1ef29c7030b398c66",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "zh",
+    "document": "odata-migration",
+    "source_fingerprint": "fd82735ea37c07ef6fc24c75d469d2a95817109d4cb1345e8240e4df38b66ee0",
+    "translation_hash": "da724b7f97e14d4562f531672bfdd402c84a207c627f6e4021aa1833bb5f79ca",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "zh",
+    "document": "paging-and-sorting",
+    "source_fingerprint": "c01a09b912527d1a95923a5776c7b4abb3290f980e8c9111c4751565b710b445",
+    "translation_hash": "506bfa47cd05774802022ede0cba4063b3eaa1249bf715463510d3e1fa837608",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "zh",
+    "document": "grouping-and-aggregation",
+    "source_fingerprint": "10e3bdf6eb7dc0f59a4e20738237bb2f9f7ebac06181756626f1c01f952450a5",
+    "translation_hash": "3849ccd0d9874efe089d0a698fa1b3b8bf068e13fc9831ad8f8325294400c6d1",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "zh",
+    "document": "csv-export",
+    "source_fingerprint": "fa1523a098455aba885855279c19504be3084b49be415b2a066c79e11c573ace",
+    "translation_hash": "baaf0e047939c94fc6d9eecc65ef82a503210042dfa041c6be66bc3332256b7a",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "zh",
+    "document": "relational-adapters",
+    "source_fingerprint": "c7c6226b52fe85563de296ccf30f4b6133346e53ef471b90257c33696e64481f",
+    "translation_hash": "c0e9ddb9e99f23fd0e7802273c02256bb140e5966f0c22e8bd4546535b325ce7",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "zh",
+    "document": "search-adapters",
+    "source_fingerprint": "618600df4a1917b0cc73ce2d38c6271b34127199cecf4189a7fd45355ccb2ac7",
+    "translation_hash": "960f9f40bc380ee50a0f881a7fd101d1dd209e6ef90b75d28b4ea69c3245850a",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "zh",
+    "document": "the-gridschema",
+    "source_fingerprint": "cdf6e47e0fa6a2ef7b974c3b2ac02ea7892b7f9a31ffa33a18595708e80d8a45",
+    "translation_hash": "240760b10c84ba51bb5eaee0cbc64fdbc186407b4d7dddc60848406f9711c99a",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "zh",
+    "document": "limits",
+    "source_fingerprint": "4ebb0479bf2bf034db02fbe9221ed719f6f737678d26a8c1dee647b249dba066",
+    "translation_hash": "4259a9084d0bcc4159cecfa3b262852b99a6344604212a4da074d4a03c242752",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "zh",
+    "document": "dialects-and-providers",
+    "source_fingerprint": "e3cadc85fee286141cd8091c6103e2780064d51e19a1428afa783d8f20b83081",
+    "translation_hash": "3feaba51dfb2c31b934aa3bd0c356c6ccef554aa46d94e4a7d324efef8c985d9",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "zh",
+    "document": "overview",
+    "source_fingerprint": "3929869b5367531388935cc42945f515177b84bf6d3ffe925cbccd06c8cf38e0",
+    "translation_hash": "30d6ee2cf7c18f4ef814a829f377f887933ad85311ad3aa89861431d891ef7cc",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
+  },
+  {
+    "language": "zh",
+    "document": "ui.json",
+    "source_fingerprint": "8cd68a818e684c4cab6f771abf6096acbf889af5796c5118c40bd4d44cbf7f20",
+    "translation_hash": "74639d7bd12022ee207da2ecdd8af82805fe78144262a44e753f5a0bebb5fe38",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-21"
   }
 ]

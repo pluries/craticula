@@ -5,7 +5,7 @@ description: Cómo una cuadrícula agrupada pide un nivel cada vez y cómo se co
 source_fingerprint: 10e3bdf6eb7dc0f59a4e20738237bb2f9f7ebac06181756626f1c01f952450a5
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 # Agrupación y agregación {#grouping-and-aggregation}
 

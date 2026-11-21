@@ -5,7 +5,7 @@ description: Was die beiden Schemamodi mit Spalten tun, die das Schema nicht erl
 source_fingerprint: 20ab3fa199820cb9e052565112f509257cd8428bafaf7eced343e56e4ea4c25a
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 # Strict und Lenient {#strict-and-lenient}
 

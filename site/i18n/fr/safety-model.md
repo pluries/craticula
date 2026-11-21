@@ -5,7 +5,7 @@ description: Comment les valeurs, les identifiants et les limites protègent une
 source_fingerprint: cad40472e319059d27fe5a7517ac79ed14efb07866e1630c2883f9c7419a959c
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 # Le modèle de sécurité {#the-safety-model}
 

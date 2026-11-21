@@ -5,7 +5,7 @@ description: 行如何开窗和排序，以及分页为何是确定性的。
 source_fingerprint: c01a09b912527d1a95923a5776c7b4abb3290f980e8c9111c4751565b710b445
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 # 分页与排序 {#paging-and-sorting}
 

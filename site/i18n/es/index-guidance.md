@@ -5,7 +5,7 @@ description: Los índices y ajustes de base de datos que mantienen las consultas
 source_fingerprint: 3d3bf891b84587e5732e82a2bb52c06b0c2ee549efb1865d1fc2d889fe36ebf5
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 # Guía de índices y bases de datos {#index-and-database-guidance}
 

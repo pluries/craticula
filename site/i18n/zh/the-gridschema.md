@@ -5,7 +5,7 @@ description: 列出表格可以触及哪些内容的 schema，以及它的哪些
 source_fingerprint: cdf6e47e0fa6a2ef7b974c3b2ac02ea7892b7f9a31ffa33a18595708e80d8a45
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 # GridSchema {#the-gridschema}
 

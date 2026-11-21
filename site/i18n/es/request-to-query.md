@@ -5,7 +5,7 @@ description: El camino desde una solicitud de AG Grid hasta una instrucción con
 source_fingerprint: 6c0315a52de692dbf39fc149aa86390474630dd3c2eb2282d8985f93da818dc0
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 # Cómo una solicitud se convierte en una consulta {#how-a-request-becomes-a-query}
 

@@ -5,7 +5,7 @@ description: Lo schema che elenca ciò che una griglia può toccare e quali dei 
 source_fingerprint: cdf6e47e0fa6a2ef7b974c3b2ac02ea7892b7f9a31ffa33a18595708e80d8a45
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 # Il GridSchema {#the-gridschema}
 

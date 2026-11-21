@@ -14,6 +14,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from urllib.parse import urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import build_site as bs  # noqa: E402
@@ -687,6 +688,78 @@ def contrast(a: str, b: str) -> float:
     return (hi + 0.05) / (lo + 0.05)
 
 
+OWN_NETLOC = urlsplit(json.loads((ROOT / "site" / "site.json").read_text(encoding="utf-8"))["baseUrl"]).netloc.lower()
+ATTRIBUTE = re.compile(r"""([\w:-]+)\s*=\s*"([^"]*)\"""")
+ABSOLUTE_HREF = re.compile(r"href=\"https?://")
+ALTERNATE_REL = "alternate"
+CANONICAL_REL = "canonical"
+
+
+def own_host_link(tag: str) -> bool:
+    """The only absolute references a built page may carry: `<link rel="alternate" hreflang=...>` and `<link rel="canonical">`, each on the
+    site's own https host (spec 004, FR-005). Anything else, or any other host, is foreign."""
+    attributes = dict(ATTRIBUTE.findall(tag))
+    rel = attributes.get("rel")
+    if not tag.startswith("<link") or not (rel == CANONICAL_REL or (rel == ALTERNATE_REL and attributes.get("hreflang"))):
+        return False
+    target = urlsplit(attributes.get("href", ""))
+    return target.scheme == "https" and target.netloc.lower() == OWN_NETLOC
+
+
+def foreign_link(tag: str) -> bool:
+    """A `<link>` with an absolute href that is not an own-host hreflang alternate or canonical."""
+    return bool(ABSOLUTE_HREF.search(tag)) and not own_host_link(tag)
+
+class OwnHostAlternateGuard(unittest.TestCase):
+    """T1 still rejects every foreign host, script and remote resource: only an hreflang alternate or the canonical link on the site's own host is accepted."""
+
+    OWN = f"https://{OWN_NETLOC}/fr/index.html"
+    SCRIPT_PATTERN = re.compile(r"<script\b[^>]*\bsrc=\"((?:theme|site)\.js(?:\?v=[0-9a-f]{10})?)\"")
+
+    def alternate(self, href: str) -> str:
+        return f'<link rel="alternate" hreflang="fr" href="{href}">'
+
+    def test_T1_an_hreflang_alternate_on_the_own_host_is_accepted(self):
+        self.assertTrue(own_host_link(self.alternate(self.OWN)))
+        self.assertFalse(foreign_link(self.alternate(self.OWN)))
+
+    def test_T1_the_canonical_link_on_the_own_host_is_accepted_and_on_another_host_is_not(self):
+        self.assertFalse(foreign_link(f'<link rel="canonical" href="https://{OWN_NETLOC}/index.html">'))
+        self.assertTrue(foreign_link('<link rel="canonical" href="https://evil.example/index.html">'))
+        self.assertTrue(foreign_link(f'<link rel="canonical" href="https://{OWN_NETLOC}.evil.example/index.html">'))
+
+    def test_T1_an_hreflang_alternate_to_a_foreign_host_is_rejected(self):
+        self.assertTrue(foreign_link(self.alternate("https://evil.example/fr/index.html")))
+
+    def test_T1_a_lookalike_host_is_rejected(self):
+        for host in (f"{OWN_NETLOC}.evil.example", f"evil-{OWN_NETLOC}", f"{OWN_NETLOC}@evil.example", f"evil.example/{OWN_NETLOC}", f"{OWN_NETLOC}:8443"):
+            with self.subTest(host=host):
+                self.assertTrue(foreign_link(self.alternate(f"https://{host}/fr/index.html")))
+
+    def test_T1_a_plain_http_alternate_on_the_own_host_is_rejected(self):
+        self.assertTrue(foreign_link(self.alternate(f"http://{OWN_NETLOC}/fr/index.html")))
+
+    def test_T1_a_link_that_is_not_an_alternate_on_the_own_host_is_rejected(self):
+        for tag in (f'<link rel="stylesheet" href="https://{OWN_NETLOC}/style.css">',
+                    f'<link rel="icon" href="https://{OWN_NETLOC}/favicon.ico">',
+                    f'<link rel="preload" as="script" href="https://{OWN_NETLOC}/site.js">',
+                    f'<link rel="alternate" href="https://{OWN_NETLOC}/fr/index.html">'):
+            with self.subTest(tag=tag):
+                self.assertTrue(foreign_link(tag))
+                self.assertFalse(own_host_link(tag))
+
+    def test_T1_the_exception_covers_no_other_tag(self):
+        self.assertFalse(own_host_link(f'<a rel="alternate" hreflang="fr" href="https://{OWN_NETLOC}/">'))
+        self.assertFalse(own_host_link(f'<img rel="alternate" hreflang="fr" src="https://{OWN_NETLOC}/x.png">'))
+
+    def test_T1_an_absolute_script_src_on_the_own_host_is_still_refused_by_the_script_check(self):
+        for src in (f"https://{OWN_NETLOC}/site.js", f"//{OWN_NETLOC}/site.js"):
+            with self.subTest(src=src):
+                tag = f'<script src="{src}"></script>'
+                self.assertIsNone(self.SCRIPT_PATTERN.search(tag))
+                self.assertFalse(own_host_link(tag))
+
+
 class SiteDesign(unittest.TestCase):
     """The approved redesign of this repository's own site (FR-32, NFR-13, task #3475): T1..T6 of that task."""
 
@@ -716,7 +789,7 @@ class SiteDesign(unittest.TestCase):
                 self.assertEqual(page.count("></script>"), page.count("<script"))  # no inline body
                 self.assertEqual(len(re.findall(r"<script\b", page)), len(re.findall(r"<script\b[^>]*\bsrc=", page)))
                 for tag in re.findall(r"<link\b[^>]*>", page):
-                    self.assertNotRegex(tag, r"href=\"https?://")
+                    self.assertFalse(foreign_link(tag), tag)
                 for tag in re.findall(r"<(?:img|source|iframe|video|audio|embed|object)\b[^>]*>", page):
                     self.assertNotRegex(tag, r"\bsrc=\"(?:https?:)?//")
                 self.assertNotRegex(page, r"\bsrc=\"(?:https?:)?//")
@@ -810,6 +883,8 @@ class SiteDesign(unittest.TestCase):
     def test_T1_no_tag_but_a_loads_or_points_to_another_host(self):
         for slug, page in self.pages.items():
             for tag in re.findall(r"<(?!a(?![a-z0-9]))[a-z][^>]*>", page, re.I):
+                if own_host_link(tag):
+                    continue
                 for name, value in re.findall(r"""\b(src|srcset|poster|data|href)\s*=\s*["']([^"']*)["']""", tag, re.I):
                     with self.subTest(page=slug, tag=tag[:60]):
                         self.assertNotRegex(value, r"(?i)^\s*(?:[a-z][a-z0-9+.-]*:|[/\\]{2})", f"{name} in {tag[:80]}")

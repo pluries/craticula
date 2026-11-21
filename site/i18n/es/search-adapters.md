@@ -5,7 +5,7 @@ description: Ejecute consultas compiladas de MongoDB y OpenSearch con los adapta
 source_fingerprint: 618600df4a1917b0cc73ce2d38c6271b34127199cecf4189a7fd45355ccb2ac7
 drafter: claude
 drafted_on: 2026-11-20
-status: machine-drafted
+status: approved
 ---
 # Adaptadores de MongoDB y OpenSearch {#mongodb-and-opensearch-adapters}
 

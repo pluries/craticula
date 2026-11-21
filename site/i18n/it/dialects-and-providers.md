@@ -5,7 +5,7 @@ description: Come ciascun motore di database differisce per quoting, paginazione
 source_fingerprint: e3cadc85fee286141cd8091c6103e2780064d51e19a1428afa783d8f20b83081
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 # Dialetti e provider {#dialects-and-providers}
 

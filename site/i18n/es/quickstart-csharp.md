@@ -5,7 +5,7 @@ description: Compile una solicitud de cuadrícula a SQL y MongoDB desde C#.
 source_fingerprint: b1a5412bec8769ab8737adfd5828f36a3502b6b49ca68c2ba7f883125d5e6756
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 # Inicio rápido: C# {#quickstart-c}
 

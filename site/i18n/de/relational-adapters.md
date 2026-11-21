@@ -5,7 +5,7 @@ description: Was die beiden relationalen Adapter leisten, was sie benötigen und
 source_fingerprint: c7c6226b52fe85563de296ccf30f4b6133346e53ef471b90257c33696e64481f
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 # Entity Framework Core und Dapper {#entity-framework-core-and-dapper}
 

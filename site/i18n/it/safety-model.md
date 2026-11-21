@@ -5,7 +5,7 @@ description: Come valori, identificatori e limiti mantengono sicura una query co
 source_fingerprint: cad40472e319059d27fe5a7517ac79ed14efb07866e1630c2883f9c7419a959c
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 # Il modello di sicurezza {#the-safety-model}
 

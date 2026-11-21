@@ -5,7 +5,7 @@ description: 哪些数据库索引和设置能让编译出的查询既快又准�
 source_fingerprint: 3d3bf891b84587e5732e82a2bb52c06b0c2ee549efb1865d1fc2d889fe36ebf5
 drafter: claude
 drafted_on: 2026-11-19
-status: machine-drafted
+status: approved
 ---
 # 索引与数据库指南 {#index-and-database-guidance}
 
