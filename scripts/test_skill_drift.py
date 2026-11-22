@@ -11,6 +11,7 @@ import os
 import shutil
 import sys
 import tempfile
+import unicodedata
 import unittest
 import xml.etree.ElementTree as ET
 from collections import Counter
@@ -105,7 +106,14 @@ AGENT_WORDS = {
     "zh": ("claude", "代理", "智能体", "技能", "skill", "ai", "llm", "模型", "助手"),
 }
 # The fixed agent-behaviour sentence per language; T033 fills it, and it is the only source for the skill, the page and the tests.
-AGENT_SENTENCES: dict[str, str] = {}
+AGENT_SENTENCES: dict[str, str] = {
+    "en": "Agent behaviour is not guaranteed: the skill is text, and the proof that an agent reaches a working run is one manual demonstration, not an automated test.",
+    "fr": "Le comportement d'un agent n'est pas garanti : la compétence est du texte, et la preuve qu'un agent aboutit à une exécution qui fonctionne est une démonstration manuelle, pas un test automatisé.",
+    "de": "Das Verhalten eines Agenten ist nicht garantiert: Der Skill ist Text, und der Nachweis, dass ein Agent zu einem funktionierenden Lauf kommt, ist eine manuelle Demonstration, kein automatisierter Test.",
+    "it": "Il comportamento di un agente non è garantito: la skill è testo, e la prova che un agente arrivi a un'esecuzione funzionante è una dimostrazione manuale, non un test automatizzato.",
+    "es": "El comportamiento de un agente no está garantizado: la skill es texto, y la prueba de que un agente llega a una ejecución que funciona es una demostración manual, no una prueba automatizada.",
+    "zh": "不保证智能体的行为：该技能只是文本，智能体能否完成一次可运行的流程，只靠一次人工演示来证明，而不是自动化测试。",
+}
 
 # Facts the page must not restate (SC-012): the range digits as whole numbers; check_page adds the ids, backends and limit names.
 PAGE_LITERALS = ("31", "36")
@@ -666,6 +674,18 @@ class RealRepoTests(unittest.TestCase):
         check_no_language_variants(tmp)
         check_not_under_claude(tmp)
         self.assertIn("Apache License", (tmp / SKILL_DIR / "LICENSE").read_text(encoding="utf-8"))
+
+
+    def test_the_fixed_sentences_are_present_and_the_english_one_equals_the_plan_text(self):
+        # GUARD (green on arrival, T033): pins the table this task writes; US3-AS6, FR-029.
+        self.assertEqual(sorted(AGENT_SENTENCES), sorted(LANGS))
+        enders = {"en": ".", "fr": ".", "de": ".", "it": ".", "es": ".", "zh": "。"}
+        for lang, sentence in AGENT_SENTENCES.items():
+            with self.subTest(lang=lang):
+                folded = unicodedata.normalize("NFKC", sentence).strip().rstrip("\"»”“\u201c\u201d ")
+                self.assertTrue(folded)
+                self.assertTrue(folded.endswith(enders[lang]), lang)
+        self.assertEqual(AGENT_SENTENCES["en"], "Agent behaviour is not guaranteed: the skill is text, and the proof that an agent reaches a working run is one manual demonstration, not an automated test.")
 
 
 class CheckerNegativeTests(unittest.TestCase):
