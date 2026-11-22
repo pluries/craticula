@@ -49,6 +49,7 @@ PUBLIC_INPUTS = (
     "skills/", ".claude-plugin/",
 )
 
+ADAPTER_PROJECTS = ("Craticula.Dapper", "Craticula.EntityFrameworkCore", "Craticula.MongoDB.Driver", "Craticula.OpenSearch.Client")
 SAMPLE_COMPILERS = ("Craticula.Sql", "Craticula.Mongo", "Craticula.Search")
 COMMON_NAMES = ("GridSchema", "AgGridRequestParser", "AgGridParseOptions", "GridFilterPipeline", "ResourceLimits")
 SNIPPET_NAMES = {
@@ -309,6 +310,10 @@ def main(root: Path = ROOT) -> int:
 class RealRepoTests(unittest.TestCase):
     """Checks run on the real tree (filled by the tests of the next phases)."""
 
+    def test_the_real_samples_reference_only_core_agrid_and_their_compiler(self):
+        # US6-AS1, US6-AS5: the three samples compile only; the real tree has no package and no adapter reference.
+        check_sample_references(ROOT)
+
 
 class CheckerNegativeTests(unittest.TestCase):
     """One fact broken at a time on a scratch copy made by `make_repo` (filled by the tests of the next phases)."""
@@ -317,6 +322,22 @@ class CheckerNegativeTests(unittest.TestCase):
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
         self.root = make_repo(self.tmp)
+
+    def test_a_sample_referencing_a_driver_fails(self):
+        # US6-AS5: a PackageReference, and a ProjectReference to each adapter, fail naming the project file and the reference.
+        sample = "csharp/samples/Craticula.Quickstart.Mongo/Craticula.Quickstart.Mongo.csproj"
+        added = ["PackageReference Include=\"Some.Driver.Package\" Version=\"1.0.0\""]
+        for adapter in ADAPTER_PROJECTS:
+            added.append(f"ProjectReference Include=\"../../src/{adapter}/{adapter}.csproj\"")
+        for reference in added:
+            with self.subTest(reference=reference):
+                scratch = make_repo(Path(tempfile.mkdtemp(dir=self.tmp)))
+                edit(scratch, sample, "</ItemGroup>", f"  <{reference} />\n  </ItemGroup>")
+                with self.assertRaises(AssertionError) as caught:
+                    check_sample_references(scratch)
+                message = str(caught.exception)
+                self.assertIn("Craticula.Quickstart.Mongo.csproj", message)
+                self.assertIn(reference.split("\"")[1].split("/")[-1].removesuffix(".csproj"), message)
 
 
 if __name__ == "__main__":
