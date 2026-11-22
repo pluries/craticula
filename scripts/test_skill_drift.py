@@ -2682,7 +2682,7 @@ class US5MarketplaceTests(ScratchCase):
                 self.write_marketplace()
 
     def test_there_is_no_second_copy_of_the_skill(self):
-        # US5-AS2, FR-017: one SKILL.md in the tree, the one the entry points at; a SKILL.md under .claude-plugin fails.
+        # US5-AS2, US5-AS5 (the plugin is the same text: no second copy), FR-017: one SKILL.md in the tree, the one the entry points at; a SKILL.md under .claude-plugin fails.
         found = [item for item in self.root.rglob("SKILL.md")]
         self.assertEqual(found, [self.root / SKILL_MD])
         target = self.root / ".claude-plugin" / "SKILL.md"

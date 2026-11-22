@@ -458,7 +458,7 @@ class SkillFolderRuleTests(unittest.TestCase):
         self.assertIn("no rule for /skills/", codeowners_required_problems("*  @pluries\n/csharp/src/  @pluries\n", self.root))
 
     def test_a_missing_plugin_rule_fails(self):
-        # FR-028: once `.claude-plugin/` exists in the root, a change to it asks the owner for review.
+        # US5-AS7, FR-028: once `.claude-plugin/` exists in the root, a change to it asks the owner for review.
         (self.root / PLUGIN_DIR).mkdir()
         problems = codeowners_required_problems("*  @pluries\n/skills/  @pluries\n", self.root)
         self.assertIn("no rule for /.claude-plugin/", problems)
@@ -728,7 +728,7 @@ class RealFileTests(unittest.TestCase):
         self.assertEqual([], codeowners_required_problems(CODEOWNERS.read_text(encoding="utf-8"), ROOT))
 
     def test_codeowners_has_the_plugin_rule(self):
-        # FR-028: a change to the plugin folder asks the owner for review.
+        # US5-AS7, FR-028: a change to the plugin folder asks the owner for review.
         text = CODEOWNERS.read_text(encoding="utf-8")
         self.assertIn("/.claude-plugin/", {pattern for pattern, _ in codeowners_rules(text)})
         self.assertEqual([], codeowners_required_problems(text, ROOT))
