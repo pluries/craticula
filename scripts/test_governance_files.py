@@ -181,6 +181,31 @@ def private_references(text: str) -> list[str]:
     return found
 
 
+SKILL_PUBLIC_DIRS = ("skills", ".claude-plugin")
+
+
+def skill_public_files(root: Path) -> list[Path]:
+    """Every file under `skills/` and `.claude-plugin/` (a folder that is absent contributes none)."""
+    return sorted(path for folder in SKILL_PUBLIC_DIRS for path in (root / folder).rglob("*") if path.is_file())
+
+
+def skill_private_problems(root: Path) -> list[str]:
+    """`path:line` for each line of a file under `skills/` or `.claude-plugin/` that names a private path (NFR-01, FR-004, FR-033):
+    the same rule as `private_references`, so `~/.claude/` and `.claude-plugin` stay allowed."""
+    problems = []
+    for path in skill_public_files(root):
+        for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
+            if private_references(line):
+                problems.append(f"{path.relative_to(root).as_posix()}:{number}")
+    return problems
+
+
+def codeowners_required_problems(text: str, root: Path) -> list[str]:
+    """The rules the public skill needs on top of `codeowners_problems` (FR-028): a rule for `/skills/`."""
+    patterns = {pattern.strip("/") for pattern, _ in codeowners_rules(text)}
+    return [f"no rule for /{folder}/" for folder in ("skills",) if folder not in patterns]
+
+
 def gate_paths(text: str) -> set[str]:
     """The backticked paths of the gate list in `text`: from the `.azuredevops/` entry nearest before `csharp/**/Directory.*.props`
     up to that entry (the list ends there in the flow rule and in both copies; an earlier mention of `.azuredevops/` in
@@ -400,6 +425,36 @@ class PrivateReferenceRuleTests(unittest.TestCase):
                      "mydocs/readme", "subdocs/x", "csharp/docs/x", "src/docs/x", "scripts/check-dco.sh and scripts/test_check_dco.py"):
             with self.subTest(line=line):
                 self.assertEqual([], private_references(line))
+
+
+class SkillFolderRuleTests(unittest.TestCase):
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.root, True)
+
+    def test_a_skill_file_naming_docs_is_reported_with_file_and_line(self):
+        skill = self.root / "skills" / "craticula" / "references"
+        skill.mkdir(parents=True)
+        (skill / "a.md").write_text("fine\nsee docs/adr-private/x and docs/feat/1\n", encoding="utf-8")
+        self.assertEqual(["skills/craticula/references/a.md:2"], skill_private_problems(self.root))
+
+    def test_a_plugin_file_naming_the_private_root_is_reported(self):
+        plugin = self.root / ".claude-plugin"
+        plugin.mkdir()
+        (plugin / "plugin.json").write_text('{"x": "CLAUDE.md"}\n', encoding="utf-8")
+        self.assertEqual([".claude-plugin/plugin.json:1"], skill_private_problems(self.root))
+
+    def test_the_home_skills_folder_and_the_plugin_folder_are_not_private(self):
+        folder = self.root / "skills" / "craticula"
+        folder.mkdir(parents=True)
+        (folder / "SKILL.md").write_text("copy it to ~/.claude/skills/craticula/ or use .claude-plugin/marketplace.json\n", encoding="utf-8")
+        self.assertEqual([], skill_private_problems(self.root))
+
+    def test_absent_folders_report_nothing(self):
+        self.assertEqual([], skill_private_problems(self.root))
+
+    def test_a_missing_skills_rule_fails(self):
+        self.assertIn("no rule for /skills/", codeowners_required_problems("*  @pluries\n/csharp/src/  @pluries\n", self.root))
 
 
 class DependabotTests(unittest.TestCase):
@@ -655,6 +710,16 @@ class RealFileTests(unittest.TestCase):
     def test_fr03_codeowners_exists_and_is_valid(self):
         self.assertTrue(CODEOWNERS.exists(), ".github/CODEOWNERS is missing")
         self.assertEqual([], codeowners_problems(CODEOWNERS.read_text(encoding="utf-8"), ROOT))
+        self.assertEqual([], codeowners_required_problems(CODEOWNERS.read_text(encoding="utf-8"), ROOT))
+
+    def test_codeowners_has_the_skills_rule(self):
+        # US1-AS7, FR-028: a change to the public skill folder asks the owner for review.
+        self.assertEqual([], codeowners_required_problems(CODEOWNERS.read_text(encoding="utf-8"), ROOT))
+
+    def test_skill_and_plugin_files_name_no_private_path(self):
+        # US1-AS5, FR-004, FR-033, SC-003: a glob that matches nothing must fail, not pass on an empty list.
+        self.assertTrue(skill_public_files(ROOT), "no file under skills/ was read")
+        self.assertEqual([], skill_private_problems(ROOT))
 
     def test_fr04_security_md_exists_and_is_valid(self):
         self.assertTrue(SECURITY.exists(), "SECURITY.md is missing")
