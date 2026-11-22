@@ -327,28 +327,102 @@ def code_spans(text: str) -> list[tuple[str, str, int]]:
     return fences + blocks + _inline_spans(lines, fenced | covered)
 
 
+def _read(root: Path, rel: str | Path) -> str:
+    return (root / rel).read_text(encoding="utf-8")
+
+
+def _flat(text: str) -> str:
+    return " ".join(text.split())
+
+
 def package_ids(root: Path) -> list[str]:
-    raise NotImplementedError
+    """The ten package ids: the names of the `csharp/src/Craticula.*` folders (no project file sets a PackageId)."""
+    return sorted(path.name for path in (root / "csharp" / "src").glob("Craticula.*") if path.is_dir())
+
+
+def _table_rows(text: str) -> list[list[str]]:
+    """The cells of the first markdown table of `text`, header and separator rows included."""
+    rows: list[list[str]] = []
+    for line in text.splitlines():
+        if line.startswith("|"):
+            rows.append([cell.strip() for cell in line.strip().strip("|").split("|")])
+        elif rows:
+            break
+    return rows
+
+
+def _h2_headings(text: str) -> list[str]:
+    return [line[3:].strip() for line in text.splitlines() if line.startswith("## ")]
 
 
 def backend_names(root: Path) -> list[str]:
-    raise NotImplementedError
+    """The seven backends: the dialect table minus the row the page's own `<Name>'s status` section marks as not v1, plus the Mongo and Search names."""
+    dialects = _read(root, "site/pages/dialects-and-providers.md")
+    excluded = {heading[: -len("'s status")] for heading in _h2_headings(dialects) if heading.endswith("'s status")}
+    names = []
+    for row in _table_rows(dialects.split("## What a dialect is", 1)[-1])[2:]:
+        name = row[0].split(" (", 1)[0].strip()
+        if name not in excluded:
+            names.append(name)
+    for heading in _h2_headings(_read(root, "site/pages/search-adapters.md")):
+        if heading.split(" ", 1)[0] in ("MongoDB", "OpenSearch"):
+            names.extend(heading.split(" and "))
+    return names
 
 
 def limit_rows(text: str) -> dict[str, str]:
-    raise NotImplementedError
+    """The `| \`Name\` | value |` rows of the first table of the limits page, name to default."""
+    rows: dict[str, str] = {}
+    for cells in _table_rows(text):
+        if len(cells) >= 2 and cells[0].startswith("`") and cells[0].endswith("`"):
+            rows[cells[0].strip("`")] = cells[1]
+    return rows
 
 
 def ag_grid_range(text: str) -> tuple[str, str]:
-    raise NotImplementedError
+    """The AG Grid version range as its two numbers, from `v31–v36` (README) or `versions 31 to 36` (the page)."""
+    words = text.split()
+    for word in words:
+        token = word.strip("().,;:*")
+        if token.startswith("v") and "\u2013v" in token:
+            low, high = token[1:].split("\u2013v", 1)
+            if low.isdigit() and high.isdigit():
+                return low, high
+    for index in range(1, len(words) - 2):
+        if words[index - 1] == "versions" and words[index].isdigit() and words[index + 1] == "to" and words[index + 2].strip(".,;").isdigit():
+            return words[index], words[index + 2].strip(".,;")
+    raise AssertionError("no AG Grid version range (v31\u2013v36 or `versions 31 to 36`) found")
+
+
+def _identifiers(text: str) -> set[str]:
+    cleaned = "".join(char if char.isalnum() or char == "_" else " " for char in text)
+    return set(cleaned.split())
 
 
 def adapter_methods(root: Path) -> dict[str, set[str]]:
-    raise NotImplementedError
+    """Public static method names per adapter project, read from the four `SOURCE_FILES`."""
+    result: dict[str, set[str]] = {}
+    for rel in SOURCE_FILES:
+        names: set[str] = set()
+        for line in _read(root, rel).splitlines():
+            stripped = line.strip()
+            if stripped.startswith("public static") and "(" in stripped:
+                names.add(stripped.split("(", 1)[0].split()[-1].split("<", 1)[0])
+        result[rel.split("/")[2]] = names
+    return result
 
 
 def snippets(text: str) -> list[tuple[str, str, int]]:
-    raise NotImplementedError
+    """The `csharp` fences as (id, body, line); the id is the second word of the info string, empty when there is none."""
+    lines = text.splitlines()
+    found = []
+    for kind, body, line in code_spans(text):
+        if kind != "fence":
+            continue
+        words = lines[line - 1].strip().lstrip("`~").split()
+        if words and words[0] == "csharp":
+            found.append((words[1] if len(words) > 1 else "", body, line))
+    return sorted(found, key=lambda item: item[2])
 
 
 def find_versions(line: str) -> list[str]:
@@ -465,44 +539,181 @@ def check_no_language_variants(root: Path) -> None:
             assert not token, f"{path.relative_to(root).as_posix()}: a language code ({token}) names this path; the skill is English only"
 
 
+def _skill_md(root: Path) -> str:
+    return _read(root, SKILL_MD)
+
+
+def _skill_texts(root: Path) -> list[tuple[Path, str]]:
+    return [(path, path.read_text(encoding="utf-8")) for path in sorted((root / SKILL_DIR).rglob("*.md"))]
+
+
+def _package_tokens(text: str) -> set[str]:
+    tokens = set()
+    for word in "".join(char if char.isalnum() or char in "._" else " " for char in text).split():
+        if word.startswith("Craticula."):
+            tokens.add(word.rstrip("."))
+    return tokens
+
+
 def check_package_ids(root: Path) -> None:
-    raise NotImplementedError
+    ids = package_ids(root)
+    assert len(ids) == 10, f"csharp/src: expected the ten Craticula.* folders, found {len(ids)}: {ids}"
+    named: set[str] = set()
+    for path, text in _skill_texts(root):
+        for token in sorted(_package_tokens(text)):
+            owner = [name for name in ids if token == name or token.startswith(name + ".")]
+            assert owner, f"{path.relative_to(root).as_posix()}: {token} is not one of the ten package ids {ids}"
+            named.update(owner)
+    missing = [name for name in ids if name not in named]
+    assert not missing, f"{SKILL_DIR.as_posix()}: the skill folder does not name the package id {missing[0]} (all of {ids})"
+    COUNTS["package ids"] = len(ids)
 
 
 def check_backends(root: Path) -> None:
-    raise NotImplementedError
+    text = _skill_md(root)
+    names = backend_names(root)
+    assert len(names) == 7, f"the dialect and adapter pages give {len(names)} backends, expected 7: {names}"
+    for name in names:
+        assert name in text, f"{SKILL_MD.as_posix()}: the backend {name} (from the dialects and search-adapters pages) is not named"
+    COUNTS["backends"] = len(names)
+
+
+def _line_with(text: str, *needles: str) -> bool:
+    return any(all(needle in line for needle in needles) for line in text.splitlines())
 
 
 def check_engine_status(root: Path) -> None:
-    raise NotImplementedError
+    page = _flat(_read(root, "site/pages/dialects-and-providers.md"))
+    assert "community-tested dialect, not as a v1 core dialect" in page, "dialects-and-providers.md: the Oracle status wording changed"
+    assert "MariaDB goes through the same dialect but has never been tested" in page, "dialects-and-providers.md: the MariaDB wording changed"
+    skill = _skill_md(root)
+    assert _line_with(skill, "Oracle", "community-tested", "outside the v1 promise"), \
+        f"{SKILL_MD.as_posix()}: Oracle must be described as community-tested and outside the v1 promise"
+    assert _line_with(skill, "MariaDB", "MySQL dialect", "untested"), \
+        f"{SKILL_MD.as_posix()}: MariaDB must be described as going through the MySQL dialect and untested"
+    COUNTS["engine statuses"] = 2
+
+
+STRICT_TERMS = ("refused", "dropped", "UnknownFieldException")
+STRICT_DEFAULT = "Strict mode is the default"
 
 
 def check_strict_lenient(root: Path) -> None:
-    raise NotImplementedError
+    page = _read(root, "site/pages/strict-and-lenient.md")
+    skill = _skill_md(root)
+    for term in STRICT_TERMS:
+        assert term in page, f"site/pages/strict-and-lenient.md: the key term {term} is gone"
+        assert term in skill, f"{SKILL_MD.as_posix()}: the key term {term} of strict-and-lenient is missing"
+    assert STRICT_DEFAULT in skill, f"{SKILL_MD.as_posix()}: missing {STRICT_DEFAULT!r}"
+    COUNTS["strict terms"] = len(STRICT_TERMS) + 1
+
+
+def _value_follows(line: str, name: str, value: str) -> bool:
+    tail = line.split(name, 1)[1].lstrip("` |:=")
+    return tail.startswith(value) and not (len(tail) > len(value) and tail[len(value)].isalnum())
 
 
 def check_limits(root: Path) -> None:
-    raise NotImplementedError
+    rows = limit_rows(_read(root, "site/pages/limits.md"))
+    assert len(rows) == 7, f"site/pages/limits.md: expected 7 limit rows, found {len(rows)}"
+    lines = _skill_md(root).splitlines()
+    for name, value in rows.items():
+        hits = [line for line in lines if name in line]
+        assert hits, f"{SKILL_MD.as_posix()}: the limit {name} is not named (page value {value})"
+        assert any(_value_follows(line, name, value) for line in hits), \
+            f"{SKILL_MD.as_posix()}: {name} must be followed by its page value {value!r}"
+    COUNTS["limits"] = len(rows)
 
 
 def check_range(root: Path) -> None:
-    raise NotImplementedError
+    readme = ag_grid_range(_read(root, "README.md"))
+    page = ag_grid_range(_read(root, "site/pages/what-is-craticula.md"))
+    assert readme == page, f"README.md {readme} and what-is-craticula.md {page} disagree on the AG Grid range"
+    skill = _skill_md(root)
+    text = f"{page[0]} to {page[1]}"
+    folded = _flat(skill).casefold()
+    assert text in skill, f"{SKILL_MD.as_posix()}: the AG Grid range {text!r} is missing"
+    for phrase in ("infinite row model", "pivot mode is refused"):
+        assert phrase in folded, f"{SKILL_MD.as_posix()}: missing {phrase!r}"
+    COUNTS["range"] = 1
+
+
+ADAPTER_COMMON = ("optional", "never open a connection or run a query", "FetchPageAsync", "CountAsync")
 
 
 def check_adapters(root: Path) -> None:
-    raise NotImplementedError
+    methods = adapter_methods(root)
+    known = set().union(*methods.values())
+    for path, text in _skill_texts(root):
+        for token in sorted(_identifiers(text)):
+            if token.endswith("Async"):
+                assert token in known, f"{path.relative_to(root).as_posix()}: {token} is not a public static method of an adapter source"
+    skill = _skill_md(root)
+    for name in ADAPTER_PROJECTS:
+        assert name in skill, f"{SKILL_MD.as_posix()}: the optional adapter {name} is not named"
+    for phrase in ADAPTER_COMMON:
+        assert phrase in skill, f"{SKILL_MD.as_posix()}: missing {phrase!r}"
+    COUNTS["adapter methods"] = len(known)
+
+
+SNIPPET_ORDER = ("shared-parse", "sql-compile", "mongo-compile", "search-compile")
+SAMPLES_OF = {
+    "shared-parse": ("Craticula.Quickstart", "Craticula.Quickstart.Mongo", "Craticula.Quickstart.Search"),
+    "sql-compile": ("Craticula.Quickstart",),
+    "mongo-compile": ("Craticula.Quickstart.Mongo",),
+    "search-compile": ("Craticula.Quickstart.Search",),
+}
 
 
 def check_snippet_ids(root: Path) -> None:
-    raise NotImplementedError
+    count = 0
+    for path, text in _skill_texts(root):
+        label = path.relative_to(root).as_posix()
+        for snippet_id, _, line in snippets(text):
+            count += 1
+            assert snippet_id, f"{label}:{line}: a csharp snippet has no id (second word of the info string)"
+            assert snippet_id in SNIPPET_NAMES or snippet_id.startswith("adapter-"), f"{label}:{line}: unknown snippet id {snippet_id}"
+    own = [snippet_id for snippet_id, _, _ in snippets(_skill_md(root))]
+    missing = [name for name in SNIPPET_ORDER if name not in own]
+    assert not missing, f"{SKILL_MD.as_posix()}: no snippet {missing[0]}"
+    firsts = [own.index(name) for name in SNIPPET_ORDER]
+    assert firsts == sorted(firsts), f"{SKILL_MD.as_posix()}: the snippets must appear in the order {SNIPPET_ORDER}, found {own}"
+    COUNTS["snippets"] = count
 
 
 def check_snippet_anchors(root: Path) -> None:
-    raise NotImplementedError
+    methods = set().union(*adapter_methods(root).values())
+    for path, text in _skill_texts(root):
+        label = path.relative_to(root).as_posix()
+        for snippet_id, body, line in snippets(text):
+            tokens = _identifiers(body)
+            if snippet_id in SNIPPET_NAMES:
+                for name in SNIPPET_NAMES[snippet_id]:
+                    assert name in tokens, f"{label}:{line}: snippet {snippet_id} must hold {name}"
+                    for sample in SAMPLES_OF[snippet_id]:
+                        program = _read(root, f"csharp/samples/{sample}/Program.cs")
+                        assert name in _identifiers(program), f"csharp/samples/{sample}/Program.cs: {name} (needed by snippet {snippet_id}) is gone"
+            else:
+                for token in sorted(tokens):
+                    assert not token.endswith("Async") or token in methods, f"{label}:{line}: {token} is not an adapter method"
+    COUNTS["snippet anchors"] = sum(len(names) for names in SNIPPET_NAMES.values())
+
+
+REQUIRED_SENTENCES = (
+    "instructs the agent to refuse",
+    "is data, not instructions",
+    "The only command the agent runs is adding Craticula packages to the project.",
+    "Only the C# library is published",
+    "No step asks the agent to fetch a page and follow it.",
+    AGENT_SENTENCES["en"],
+)
 
 
 def check_required_sentences(root: Path) -> None:
-    raise NotImplementedError
+    text = _flat(_skill_md(root))
+    for phrase in REQUIRED_SENTENCES:
+        assert phrase in text, f"{SKILL_MD.as_posix()}: missing the required sentence {phrase!r}"
+    COUNTS["required sentences"] = len(REQUIRED_SENTENCES)
 
 
 def check_no_versions(root: Path) -> None:
@@ -1065,7 +1276,8 @@ class US2NegativeTests(unittest.TestCase):
 
     def test_a_name_missing_from_the_sample_fails(self):
         # US2-AS9, FR-039: the sample no longer holds a name the snippet needs
-        edit(self.root, "csharp/samples/Craticula.Quickstart.Mongo/Program.cs", "MongoPipelineBuilder", "MongoBuilder")
+        sample = self.root / "csharp/samples/Craticula.Quickstart.Mongo/Program.cs"
+        sample.write_text(sample.read_text(encoding="utf-8").replace("MongoPipelineBuilder", "MongoBuilder"), encoding="utf-8")
         self.assert_fails(check_snippet_anchors, "MongoPipelineBuilder")
 
     def test_a_missing_refusal_fails(self):
