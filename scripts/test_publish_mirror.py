@@ -39,6 +39,91 @@ NEED_SCRIPTS = unittest.skipUnless(
     "needs bash, git, git-filter-repo, node, the scripts absent from the public mirror and the secret-pattern detector")
 
 
+MIRROR_SCRIPT = HERE / "publish_mirror.py"
+PRIVATE_ROOT = ".claude"
+PLUGIN_ROOT = ".claude-plugin"
+OBJECT_ID = "0123456789abcdef0123456789abcdef01234567"
+LEAKS_ARM = 'python3 "$HERE/publish_mirror.py" leaks "$TMP/objects.txt" "$p"'
+
+
+def object_line(path):
+    """One line of `git rev-list --objects --all`: the object id, a space, the path."""
+    return f"{OBJECT_ID} {path}"
+
+
+class LeakedPathsTests(unittest.TestCase):
+    """D-016(1): the leak check matches a private entry as a whole path component, so a public sibling that shares the prefix is no leak."""
+
+    def test_the_private_root_itself_and_a_path_under_it_leak(self):
+        for path in (PRIVATE_ROOT, PRIVATE_ROOT + "/x", PRIVATE_ROOT + "/rules/a.md"):
+            with self.subTest(path=path):
+                self.assertEqual([object_line(path)], mirror.leaked_paths(object_line(path) + "\n", PRIVATE_ROOT))
+
+    def test_a_sibling_folder_that_shares_the_prefix_is_not_a_leak(self):
+        for path in (PLUGIN_ROOT, PLUGIN_ROOT + "/marketplace.json", PRIVATE_ROOT + "x/y", PRIVATE_ROOT + "ish"):
+            with self.subTest(path=path):
+                self.assertEqual([], mirror.leaked_paths(object_line(path) + "\n", PRIVATE_ROOT))
+
+    def test_only_the_leaking_lines_are_returned_among_public_ones(self):
+        leak = object_line(PRIVATE_ROOT + "/x")
+        text = "\n".join([object_line(PLUGIN_ROOT + "/marketplace.json"), leak, object_line("skills/craticula/SKILL.md")]) + "\n"
+        self.assertEqual([leak], mirror.leaked_paths(text, PRIVATE_ROOT))
+
+    def test_an_empty_object_list_has_no_leak(self):
+        self.assertEqual([], mirror.leaked_paths("", PRIVATE_ROOT))
+
+    def test_the_path_is_the_text_after_the_first_space(self):
+        spaced = object_line(PRIVATE_ROOT + "/a b.md")
+        self.assertEqual([spaced], mirror.leaked_paths(spaced + "\n", PRIVATE_ROOT))
+
+    def test_an_entry_that_is_a_file_path_matches_that_file_only(self):
+        entry = "scripts/publish-github.sh"
+        self.assertEqual([object_line(entry)], mirror.leaked_paths(object_line(entry) + "\n", entry))
+        self.assertEqual([], mirror.leaked_paths(object_line(entry + ".bak") + "\n", entry))
+
+
+class LeaksCommandTests(unittest.TestCase):
+    """The `leaks <objects.txt> <entry>` subcommand the publish script calls: exit 1 on a leak, 0 on none, anything else non-zero is an error."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+
+    def leaks(self, *arguments):
+        return subprocess.run([sys.executable, str(MIRROR_SCRIPT), "leaks", *arguments], capture_output=True, text=True)
+
+    def objects_file(self, *paths):
+        target = self.tmp / "objects.txt"
+        target.write_text("".join(object_line(path) + "\n" for path in paths), encoding="utf-8")
+        return str(target)
+
+    def test_a_private_root_object_exits_one_and_names_it(self):
+        result = self.leaks(self.objects_file(PRIVATE_ROOT + "/x"), PRIVATE_ROOT)
+        self.assertEqual(1, result.returncode, result.stderr)
+        self.assertIn(PRIVATE_ROOT + "/x", result.stdout + result.stderr)
+
+    def test_a_public_sibling_exits_zero(self):
+        result = self.leaks(self.objects_file(PLUGIN_ROOT + "/x"), PRIVATE_ROOT)
+        self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_a_missing_file_is_not_zero(self):
+        self.assertNotEqual(0, self.leaks(str(self.tmp / "absent.txt"), PRIVATE_ROOT).returncode)
+
+    def test_a_missing_argument_is_not_zero(self):
+        self.assertNotEqual(0, self.leaks(self.objects_file(PLUGIN_ROOT + "/x")).returncode)
+
+
+@unittest.skipUnless(PUBLISH.exists(), "scripts/publish-github.sh is private and absent from the public mirror")
+class PublishWiringTests(unittest.TestCase):
+    def test_the_shell_calls_the_leaks_subcommand_and_fails_on_non_zero(self):
+        # The failing arm cannot be reached through the filter (it removes the path first), so the wiring is pinned as text:
+        # the `*)` arm asks the subcommand under `if !`, so a leak (exit 1) and a crash (any other code) both abort the publish.
+        lines = PUBLISH.read_text(encoding="utf-8").splitlines()
+        arms = [line.strip() for line in lines if LEAKS_ARM in line]
+        self.assertEqual(1, len(arms), f"expected exactly one line calling {LEAKS_ARM}")
+        self.assertTrue(arms[0].startswith("*) if ! ") or arms[0].startswith("if ! "), arms[0])
+
+
 class MappingTests(unittest.TestCase):
     def test_subject_mapping_table(self):
         table = [
@@ -294,6 +379,19 @@ class ScriptTests(unittest.TestCase):
 
     def public_tree(self):
         return self.git("ls-tree", "-r", "--name-only", "main", cwd=self.pub).stdout.split()
+
+    def test_a_top_level_folder_that_shares_a_private_prefix_is_published(self):
+        # D-016: the dry run against a scratch repository. `.claude-plugin/` is public although `.claude` is private; the leak check
+        # must read whole path components. Also US1-AS3: the mirror carries skills/.
+        self.write(PLUGIN_ROOT + "/marketplace.json", "{}\n")
+        self.write("skills/craticula/SKILL.md", "# skill\n")
+        self.write(PRIVATE_ROOT + "/more.md", "private\n")
+        self.commit("TECHNICAL #5 a public folder beside the private root")
+        self.publish()
+        tree = self.public_tree()
+        self.assertIn(PLUGIN_ROOT + "/marketplace.json", tree)
+        self.assertIn("skills/craticula/SKILL.md", tree)
+        self.assertEqual([], [path for path in tree if path.startswith(PRIVATE_ROOT + "/")])
 
     def test_docs_adr_is_published_and_no_other_docs_path_is(self):
         # #1665 AC5 and AC6, ADR 0004: one commit adds an ADR and another document under docs/.

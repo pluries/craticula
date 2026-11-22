@@ -172,6 +172,13 @@ def gate_paths(text: str) -> set[str]:
     return set()
 
 
+PLUGIN_DIR = ".claude-plugin"
+# Lines and link targets where the plugin folder is not the whole component, or climbs out into the private `.claude/` root.
+LOOPHOLE_TARGETS = (".claude-plugin/../.claude/x", ".claude-pluginx/y", ".claude-plugin/a/../../.claude/x")
+PLUGIN_AND_HOME_LINES = (".claude-plugin/marketplace.json", "/.claude-plugin/  @cstephan-dev", "~/.claude/skills/craticula/",
+                         "copy it to ~/.claude/skills")
+
+
 class CodeownersRuleTests(unittest.TestCase):
     """Each rule has a case that must fail, so a rule that stops checking is noticed."""
 
@@ -244,6 +251,32 @@ class SecurityRuleTests(unittest.TestCase):
 
     def test_fr04_an_external_https_link_is_not_resolved_against_the_tree(self):
         self.assertEqual([], security_problems(self.GOOD + "\n[x](https://developercertificate.org)\n", ROOT))
+
+    def scratch_root(self):
+        """A root holding the files SECURITY.md's own link and the plugin's marketplace file resolve to, so only the privacy rule decides."""
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        (root / "VERSIONING.md").write_text("# Versioning\n", encoding="utf-8")
+        (root / PLUGIN_DIR).mkdir()
+        (root / PLUGIN_DIR / "marketplace.json").write_text("{}\n", encoding="utf-8")
+        (root / ".claude" / "rules").mkdir(parents=True)
+        (root / ".claude" / "rules" / "x.md").write_text("private\n", encoding="utf-8")
+        return root
+
+    def test_nfr01_a_link_to_the_plugin_folder_is_not_a_private_path(self):
+        problems = security_problems(self.GOOD + f"\n[x]({PLUGIN_DIR}/marketplace.json)\n", self.scratch_root())
+        self.assertEqual([], problems)
+
+    def test_nfr01_a_link_to_an_existing_private_rules_file_still_is(self):
+        problems = security_problems(self.GOOD + "\n[x](.claude/rules/x.md)\n", self.scratch_root())
+        self.assertTrue(any("private path" in problem for problem in problems), problems)
+
+    def test_nfr01_a_link_that_climbs_out_of_the_plugin_folder_into_the_private_root_still_is_private(self):
+        root = self.scratch_root()
+        for target in LOOPHOLE_TARGETS:
+            with self.subTest(target=target):
+                problems = security_problems(self.GOOD + f"\n[x]({target})\n", root)
+                self.assertTrue(any("private path" in problem for problem in problems), problems)
 
 
 class MoreRuleTests(unittest.TestCase):
@@ -319,6 +352,28 @@ class PrivateReferenceRuleTests(unittest.TestCase):
                      "scripts/test_publish_mirror_real.py", "see https://dev.azure.com/org/project", "https://org.visualstudio.com/x"):
             with self.subTest(line=line):
                 self.assertEqual([line], private_references(line))
+
+    def test_nfr01_the_plugin_folder_and_the_home_install_path_are_not_the_private_root(self):
+        for line in PLUGIN_AND_HOME_LINES:
+            with self.subTest(line=line):
+                self.assertEqual([], private_references(line))
+
+    def test_nfr01_a_second_private_mention_on_a_line_with_a_public_one_is_still_flagged(self):
+        for line in ("install to ~/.claude/ or .claude/skills/x", ".claude-plugin and .claude/x", ".claudex/y"):
+            with self.subTest(line=line):
+                self.assertEqual([line], private_references(line))
+
+    def test_nfr01_a_lookalike_that_is_not_on_a_component_boundary_or_that_climbs_out_is_still_flagged(self):
+        for line in LOOPHOLE_TARGETS:
+            with self.subTest(line=line):
+                self.assertEqual([line], private_references(line))
+
+    def test_nfr01_every_public_lookalike_starts_with_a_private_entry_and_is_not_one(self):
+        self.assertTrue(PUBLIC_LOOKALIKES)
+        for lookalike in PUBLIC_LOOKALIKES:
+            with self.subTest(lookalike=lookalike):
+                self.assertTrue(lookalike.startswith(PRIVATE_PREFIXES))
+                self.assertNotIn(lookalike, PRIVATE_PREFIXES)
 
     def test_nfr01_public_names_are_not_flagged(self):
         for line in ("see docs/adr/0001.md and docs/adr", "the folder `docs/adr/`", "kept in docs/adr.", "see README.md and spec/semantics.md", "scripts/check-dco.sh", "csharp/src/Core", "the .github/workflows folder",
