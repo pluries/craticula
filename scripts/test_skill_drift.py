@@ -7,6 +7,7 @@ run them on scratch copies made by `make_repo`. The text scans here are a tripwi
 CODEOWNERS rule for the two public folders and the maker's review of every change to them.
 Run: python3 scripts/test_skill_drift.py (a C# wrapper in Craticula.Conformance.Tests runs it on `dotnet test` once the maker adds it).
 """
+import os
 import shutil
 import sys
 import tempfile
@@ -137,12 +138,185 @@ def edit(root: Path, rel: str, old: str, new: str) -> None:
     path.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 
+FRONT_MATTER_FENCE = "---"
+FRONT_KEYS = ("name", "description", "license")
+DESCRIPTION_START = "Use when"
+DESCRIPTION_CLAUSE = "Do NOT use"
+FOLDED_MARKS = (">", "|", ">-", "|-", ">+", "|+")
+LIST_MARKS = ("- ", "* ", "+ ")
+ORDERED_MARKS = (". ", ") ")
+
+
+def _key_and_value(line: str) -> tuple[str, str] | None:
+    key, colon, value = line.partition(":")
+    name = key.replace("-", "").replace("_", "")
+    if colon and name.isalnum():
+        return key, value.strip()
+    return None
+
+
+def _continue_value(values: dict[str, str], current: str, line: str, number: int) -> None:
+    pair = _key_and_value(line.strip())
+    if pair:
+        raise AssertionError(f"line {number}: indented key {pair[0]}:")
+    if current:
+        values[current] = f"{values[current]} {line.strip()}".strip()
+
+
+def _add_key(values: dict[str, str], line: str, number: int) -> str:
+    pair = _key_and_value(line)
+    if pair is None:
+        raise AssertionError(f"line {number}: not a key: value line")
+    if pair[0] in values:
+        raise AssertionError(f"line {number}: duplicate key {pair[0]}")
+    values[pair[0]] = "" if pair[1] in FOLDED_MARKS else pair[1]
+    return pair[0]
+
+
 def read_front_matter(text: str) -> dict[str, str]:
-    raise NotImplementedError
+    """The `key: value` pairs between the two `---` lines; an indented `key:` line or a repeated key raises with its line number."""
+    lines = text.split("\n")
+    if lines[0].strip() != FRONT_MATTER_FENCE:
+        raise AssertionError("line 1: the front matter must open with ---")
+    values: dict[str, str] = {}
+    current = ""
+    for number, line in enumerate(lines[1:], start=2):
+        if line.strip() == FRONT_MATTER_FENCE:
+            return values
+        if line[:1] in (" ", "\t"):
+            _continue_value(values, current, line, number)
+        else:
+            current = _add_key(values, line, number)
+    raise AssertionError("the front matter is never closed by ---")
+
+
+def _fence_marker(line: str) -> tuple[str, int]:
+    stripped = line.lstrip(" ")
+    if len(line) - len(stripped) > 3 or not stripped or stripped[0] not in "`~":
+        return "", 0
+    run = len(stripped) - len(stripped.lstrip(stripped[0]))
+    return (stripped[0], run) if run >= 3 else ("", 0)
+
+
+def _scan_fences(lines: list[str]) -> tuple[list[tuple[str, str, int]], set[int]]:
+    spans: list[tuple[str, str, int]] = []
+    fenced: set[int] = set()
+    index = 0
+    while index < len(lines):
+        char, run = _fence_marker(lines[index])
+        if not char:
+            index += 1
+            continue
+        end = index + 1
+        while end < len(lines):
+            closer, length = _fence_marker(lines[end])
+            if closer == char and length >= run and not lines[end].strip().strip(char):
+                break
+            end += 1
+        spans.append(("fence", "\n".join(lines[index + 1:end]), index + 1))
+        fenced.update(range(index, min(end, len(lines) - 1) + 1))
+        index = end + 1
+    return spans, fenced
+
+
+def _closing_run(line: str, start: int, length: int) -> int:
+    marks = "`" * length
+    found = line.find(marks, start)
+    while found != -1:
+        after = found + length
+        if (found == 0 or line[found - 1] != "`") and (after >= len(line) or line[after] != "`"):
+            return found
+        found = line.find(marks, found + 1)
+    return -1
+
+
+def _spans_in_line(line: str, number: int) -> list[tuple[str, str, int]]:
+    spans: list[tuple[str, str, int]] = []
+    position = 0
+    while position < len(line):
+        if line[position] != "`":
+            position += 1
+            continue
+        end = position
+        while end < len(line) and line[end] == "`":
+            end += 1
+        closer = _closing_run(line, end, end - position)
+        if closer == -1:
+            position = end
+            continue
+        spans.append(("inline", line[end:closer], number))
+        position = closer + (end - position)
+    return spans
+
+
+def _inline_spans(lines: list[str], skip: set[int]) -> list[tuple[str, str, int]]:
+    spans: list[tuple[str, str, int]] = []
+    for index, line in enumerate(lines):
+        if index not in skip:
+            spans.extend(_spans_in_line(line, index + 1))
+    return spans
+
+
+def _is_list_item(stripped: str) -> bool:
+    if stripped[:2] in LIST_MARKS:
+        return True
+    digits = len(stripped) - len(stripped.lstrip("0123456789"))
+    return 0 < digits <= 9 and stripped[digits:digits + 2] in ORDERED_MARKS
+
+
+def _is_indented(line: str) -> bool:
+    return line.startswith("    ") or line.startswith("\t")
+
+
+def _next_list_state(line: str, in_list: bool) -> bool:
+    if _is_list_item(line.strip()):
+        return True
+    return in_list and line[:1] in (" ", "\t")
+
+
+def _block_end(lines: list[str], start: int, fenced: set[int]) -> int:
+    last = start
+    index = start
+    while index < len(lines) and index not in fenced:
+        if lines[index].strip():
+            if not _is_indented(lines[index]):
+                break
+            last = index
+        index += 1
+    return last + 1
+
+
+def _indented_blocks(lines: list[str], fenced: set[int]) -> tuple[list[tuple[str, str, int]], set[int]]:
+    spans: list[tuple[str, str, int]] = []
+    covered: set[int] = set()
+    in_list = False
+    after_blank = True
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if index in fenced or not line.strip():
+            after_blank = True
+            in_list = in_list and index not in fenced
+            index += 1
+        elif after_blank and not in_list and _is_indented(line):
+            end = _block_end(lines, index, fenced)
+            spans.append(("indented", "\n".join(lines[index:end]), index + 1))
+            covered.update(range(index, end))
+            after_blank = False
+            index = end
+        else:
+            in_list = _next_list_state(line, in_list)
+            after_blank = False
+            index += 1
+    return spans, covered
 
 
 def code_spans(text: str) -> list[tuple[str, str, int]]:
-    raise NotImplementedError
+    """Every code span as (kind, body, line): kind `fence`, `inline` or `indented`; the line is where a block opens, 1-based."""
+    lines = text.splitlines()
+    fences, fenced = _scan_fences(lines)
+    blocks, covered = _indented_blocks(lines, fenced)
+    return fences + blocks + _inline_spans(lines, fenced | covered)
 
 
 def package_ids(root: Path) -> list[str]:
@@ -182,23 +356,105 @@ def sentences(text: str, lang: str) -> list[str]:
 
 
 def check_front_matter(root: Path) -> None:
-    raise NotImplementedError
+    label = SKILL_MD.as_posix()
+    try:
+        values = read_front_matter((root / SKILL_MD).read_text(encoding="utf-8"))
+    except AssertionError as problem:
+        raise AssertionError(f"{label}: {problem}") from None
+    for key in values:
+        assert key in FRONT_KEYS, f"{label}: unexpected key {key} (allowed: {', '.join(FRONT_KEYS)})"
+    for key in FRONT_KEYS:
+        assert key in values, f"{label}: missing key {key}"
+    folder = SKILL_DIR.name
+    assert values["name"] == folder, f"{label}: name is {values['name']!r}, expected the folder name {folder!r}"
+    description = values["description"]
+    assert description.startswith(DESCRIPTION_START), f"{label}: description must start with {DESCRIPTION_START!r}"
+    assert DESCRIPTION_CLAUSE in description, f"{label}: description must contain {DESCRIPTION_CLAUSE!r}"
+    assert values["license"] == LICENCE_ID, f"{label}: license is {values['license']!r}, expected {LICENCE_ID}"
+
+
+def _link_targets(text: str) -> list[tuple[str, int]]:
+    targets: list[tuple[str, int]] = []
+    start = text.find("](")
+    while start != -1:
+        end = text.find(")", start)
+        if end == -1:
+            break
+        target = text[start + 2:end]
+        for cut in (" ", "#", "\n"):
+            target = target.split(cut, 1)[0]
+        targets.append((target, text.count("\n", 0, start) + 1))
+        start = text.find("](", end)
+    return targets
+
+
+def _has_scheme(target: str) -> bool:
+    colon = target.find(":")
+    return colon > 0 and "/" not in target[:colon] and target[:colon].isalpha() or "://" in target
+
+
+def _code_paths(text: str) -> list[tuple[str, int]]:
+    paths: list[tuple[str, int]] = []
+    for _, body, line in code_spans(text):
+        span = body.strip()
+        if span and not any(char.isspace() for char in span) and ("/" in span or span.startswith(("./", "../"))):
+            paths.append((span, line))
+    return paths
+
+
+def _path_problem(folder: Path, path: str) -> str:
+    parts = path.split("/")
+    if parts[0] in ("..", "~", "") or ".." in parts:
+        return "leaves the skill folder"
+    if not folder.joinpath(*[part for part in parts if part]).exists():
+        return "does not exist in the skill folder"
+    return ""
 
 
 def check_inside_folder(root: Path) -> None:
-    raise NotImplementedError
+    folder = root / SKILL_DIR
+    for file in sorted(folder.rglob("*.md")):
+        text = file.read_text(encoding="utf-8")
+        label = file.relative_to(root).as_posix()
+        found = [(target, line) for target, line in _link_targets(text) if target and not _has_scheme(target)]
+        for path, line in found + [item for item in _code_paths(text) if not _has_scheme(item[0])]:
+            problem = _path_problem(folder, path)
+            assert not problem, f"{label}:{line}: {path} {problem}"
 
 
 def check_not_under_claude(root: Path) -> None:
-    raise NotImplementedError
+    for start in (root / ".claude", root / SKILL_DIR):
+        for folder, _, names in os.walk(start):
+            relative = Path(folder).relative_to(root)
+            if "SKILL.md" in names and ".claude" in relative.parts and relative.name == SKILL_DIR.name:
+                raise AssertionError(f"{(relative / 'SKILL.md').as_posix()}: the skill must not sit below .claude/ (the mirror strips it)")
 
 
 def check_licence_files(root: Path) -> None:
-    raise NotImplementedError
+    for name in ("LICENSE", "NOTICE"):
+        source = root / name
+        copy = root / SKILL_DIR / name
+        assert source.is_file(), f"{name}: the root file is missing"
+        assert copy.is_file(), f"{(SKILL_DIR / name).as_posix()}: missing, expected a byte copy of {name}"
+        assert copy.read_bytes() == source.read_bytes(), f"{(SKILL_DIR / name).as_posix()}: differs from the root {name}"
+
+
+def _language_token(relative: Path) -> str:
+    for part in relative.parts:
+        for token in part.replace("-", ".").replace("_", ".").split("."):
+            if token.lower() in LANGUAGE_CODES:
+                return token
+    return ""
 
 
 def check_no_language_variants(root: Path) -> None:
-    raise NotImplementedError
+    folder = root / SKILL_DIR
+    for current, folders, names in os.walk(folder):
+        entries = names if names or folders else [""]
+        for name in sorted(entries):
+            path = Path(current) / name
+            token = _language_token(path.relative_to(folder))
+            assert not token, f"{path.relative_to(root).as_posix()}: a language code ({token}) names this path; the skill is English only"
 
 
 def check_package_ids(root: Path) -> None:
