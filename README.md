@@ -80,6 +80,17 @@ The C# implementation is split into ten NuGet packages, all published on nuget.o
 Install one with `dotnet add package <name>`. To check that the packages build and a clean consumer compiles against them, run
 `bash scripts/pack-smoke.sh` (Python 3.10+ and the .NET 10 SDK; about 3 minutes).
 
+## Claude skill
+
+A skill for Claude guides you from nothing to a first compiled grid request and tells Claude to refuse the unsafe shortcuts. Install it as a Claude Code plugin:
+
+```text
+claude plugin marketplace add pluries/craticula
+claude plugin install craticula@craticula
+```
+
+Or copy the folder [`skills/craticula`](skills/craticula/SKILL.md) into `~/.claude/skills/craticula/`. The skill is text: Claude's behaviour is not guaranteed. See the [Claude skill page](https://craticula.pluries.dev/claude-skill.html).
+
 ## Dependency licenses
 
 Every NuGet package under `csharp/`, transitive ones and test projects included, must carry a license the project accepts.

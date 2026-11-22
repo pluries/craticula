@@ -392,7 +392,7 @@ atexit.register(shutil.rmtree, _SCRATCH, True)
 
 
 def language_build(name: str) -> SimpleNamespace:
-    """One of the two builds the language tests read, made once per run. FULL: every language previewed, all 20 documents translated, a base
+    """One of the two builds the language tests read, made once per run. FULL: every language previewed, all 21 documents translated, a base
     address. PARTIAL: only French previewed, `overview` not translated, no base address, and the folders of two disabled languages left from an
     earlier build. A build that raises (the language build is not written yet) is not kept, so each test that needs it fails by itself."""
     if name not in _BUILDS:
@@ -409,7 +409,7 @@ def language_build(name: str) -> SimpleNamespace:
 
 # ---------------------------------------------------------------- spec 004-site-languages: checks and approvals (T014a to T015)
 
-DOCUMENT_COUNT = 20
+DOCUMENT_COUNT = 21
 APPROVER = "Ada Tester"   # a synthetic name: the real approver is registered by the maker
 TODAY = "2026-11-19"
 APPROVALS_PATH = "site/i18n/approvals.json"

@@ -2,9 +2,9 @@
 translates: what-is-craticula
 title: Qué es Craticula
 description: Qué compila Craticula, qué no hace nunca y en qué estado se encuentra.
-source_fingerprint: e8f756cfd41d5e8621dce7f0e9a10a459e2c9061e1f4434abe57c82e8adc1664
+source_fingerprint: 512000cfdae7ff06fd1d3cb96ba4f1892294a7fd2212e266fc84104c3017b36c
 drafter: claude
-drafted_on: 2026-11-19
+drafted_on: 2026-11-22
 status: approved
 ---
 # Qué es Craticula {#what-craticula-is}
@@ -64,9 +64,9 @@ El modo pivote no es compatible. El analizador de solicitudes rechaza una solici
 
 ## Estado actual {#current-state}
 
-Craticula está en versión preliminar. Todavía no se ha publicado ningún paquete, y nadie aloja una demostración para los visitantes. El repositorio contiene una aplicación de demostración que usted mismo ejecuta (`examples/demo`) y que requiere Docker, el SDK de .NET 10 y Node.
+Los paquetes de C# están publicados en nuget.org, y nadie aloja una demostración para los visitantes. El repositorio contiene una aplicación de demostración que usted mismo ejecuta (`examples/demo`) y que requiere Docker, el SDK de .NET 10 y Node.
 
-Para probarlo, compile desde el código fuente. La [guía de inicio rápido de C#](quickstart-csharp.html) muestra cómo hacerlo. La biblioteca de C# es la implementación de referencia. El repositorio describe portaciones a TypeScript, Python y Go previstas tras la congelación de la especificación. Ninguna existe todavía.
+Para probarlo, añada los paquetes desde nuget.org. La [guía de inicio rápido de C#](quickstart-csharp.html) muestra cómo hacerlo. La biblioteca de C# es la implementación de referencia. El repositorio describe portaciones a TypeScript, Python y Go previstas tras la congelación de la especificación. Ninguna existe todavía.
 
 ## Para continuar {#where-to-go-next}
 

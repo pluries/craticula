@@ -25,6 +25,8 @@ PRIVATE_PREFIXES = ("docs/", ".claude", "CLAUDE.md", ".mcp.json", ".githooks", "
                     "csharp/tests/Craticula.Conformance.Tests/JenkinsfileTests.cs", "csharp/tests/Craticula.Conformance.Tests/ReleaseStepsTests.cs", "Jenkinsfile", "jenkins/")
 # `docs/adr` is the one public folder under a private path (the PUBLIC_EXCEPT array of scripts/publish-github.sh, #1665, ADR 0004).
 PUBLIC_EXCEPTIONS = ("docs/adr",)
+PUBLIC_LOOKALIKES = (".claude-plugin",)
+HOME_PREFIX = "~/"
 PRIVATE_HOSTS = re.compile(r"dev\.azure\.com|visualstudio\.com", re.IGNORECASE)
 PUBLISH_SCRIPT = ROOT / "scripts" / "publish-github.sh"
 OWNER = re.compile(r"^(?:@[A-Za-z0-9][A-Za-z0-9-]*(?:/[A-Za-z0-9._-]+)?|[^@\s]+@[^@\s]+\.[A-Za-z]+)$")
@@ -115,7 +117,7 @@ def security_problems(text: str, root: Path) -> list[str]:
         if re.match(r"^[a-z][a-z0-9+.-]*:", target):
             continue
         path = target.split("#")[0].lstrip("/")      # a root-relative link is read against the repository root
-        if path.startswith(PRIVATE_PREFIXES):
+        if _private_link(path):
             problems.append(f"link into a private path: {target}")
         elif path and not (root / path).exists():
             problems.append(f"link that does not resolve: {target}")
@@ -136,12 +138,30 @@ def supported_row(text: str) -> bool:
     return False
 
 
+def _is_public_lookalike(text: str) -> bool:
+    """True when `text` starts with a public lookalike on a component boundary and its path token never climbs out with `..`."""
+    for lookalike in PUBLIC_LOOKALIKES:
+        if text.startswith(lookalike):
+            rest = text[len(lookalike):]
+            if rest and not (rest[0] == "/" or rest[0].isspace()):
+                continue
+            token = rest.split(None, 1)[0] if rest and not rest[0].isspace() else ""
+            return ".." not in token.split("/")
+    return False
+
+
+def _private_link(path: str) -> bool:
+    return path.startswith(PRIVATE_PREFIXES) and not _is_public_lookalike(path)
+
+
 def _private_match_at(line: str, start: int) -> bool:
     """True when the private prefix found at `start` is a reference to the private root path (not a public exception such as `docs/adr`,
     not a nested directory that merely shares the name)."""
     if any(re.match(re.escape(exception) + r"(?:/(?!\.\.)|(?![\w/-]|\.\w))", line[start:]) for exception in PUBLIC_EXCEPTIONS):
         return False
     before = line[:start]
+    if before.endswith(HOME_PREFIX) or _is_public_lookalike(line[start:]):
+        return False
     if not before or before[-1] not in "/.-_" and not before[-1].isalnum():
         return True
     return bool(re.search(r"(?:^|[^\w./-])(?:\.{1,2}/|/)+$", before))
@@ -161,6 +181,33 @@ def private_references(text: str) -> list[str]:
     return found
 
 
+PLUGIN_DIR = ".claude-plugin"
+SKILL_PUBLIC_DIRS = ("skills", PLUGIN_DIR)
+
+
+def skill_public_files(root: Path) -> list[Path]:
+    """Every file under `skills/` and `.claude-plugin/` (a folder that is absent contributes none)."""
+    return sorted(path for folder in SKILL_PUBLIC_DIRS for path in (root / folder).rglob("*") if path.is_file())
+
+
+def skill_private_problems(root: Path) -> list[str]:
+    """`path:line` for each line of a file under `skills/` or `.claude-plugin/` that names a private path (NFR-01, FR-004, FR-033):
+    the same rule as `private_references`, so `~/.claude/` and `.claude-plugin` stay allowed."""
+    problems = []
+    for path in skill_public_files(root):
+        for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
+            if private_references(line):
+                problems.append(f"{path.relative_to(root).as_posix()}:{number}")
+    return problems
+
+
+def codeowners_required_problems(text: str, root: Path) -> list[str]:
+    """The rules the public skill needs on top of `codeowners_problems` (FR-028): a rule for `/skills/`."""
+    patterns = {pattern.strip("/") for pattern, _ in codeowners_rules(text)}
+    folders = ["skills"] + ([PLUGIN_DIR] if (root / PLUGIN_DIR).is_dir() else [])
+    return [f"no rule for /{folder}/" for folder in folders if folder not in patterns]
+
+
 def gate_paths(text: str) -> set[str]:
     """The backticked paths of the gate list in `text`: from the `.azuredevops/` entry nearest before `csharp/**/Directory.*.props`
     up to that entry (the list ends there in the flow rule and in both copies; an earlier mention of `.azuredevops/` in
@@ -170,6 +217,12 @@ def gate_paths(text: str) -> set[str]:
         if start != -1 and end.start() - start < 2500:
             return set(re.findall(r"`([^`]+)`", text[start:end.end() + 1]))
     return set()
+
+
+# Lines and link targets where the plugin folder is not the whole component, or climbs out into the private `.claude/` root.
+LOOPHOLE_TARGETS = (".claude-plugin/../.claude/x", ".claude-pluginx/y", ".claude-plugin/a/../../.claude/x")
+PLUGIN_AND_HOME_LINES = (".claude-plugin/marketplace.json", "/.claude-plugin/  @cstephan-dev", "~/.claude/skills/craticula/",
+                         "copy it to ~/.claude/skills")
 
 
 class CodeownersRuleTests(unittest.TestCase):
@@ -244,6 +297,32 @@ class SecurityRuleTests(unittest.TestCase):
 
     def test_fr04_an_external_https_link_is_not_resolved_against_the_tree(self):
         self.assertEqual([], security_problems(self.GOOD + "\n[x](https://developercertificate.org)\n", ROOT))
+
+    def scratch_root(self):
+        """A root holding the files SECURITY.md's own link and the plugin's marketplace file resolve to, so only the privacy rule decides."""
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        (root / "VERSIONING.md").write_text("# Versioning\n", encoding="utf-8")
+        (root / PLUGIN_DIR).mkdir()
+        (root / PLUGIN_DIR / "marketplace.json").write_text("{}\n", encoding="utf-8")
+        (root / ".claude" / "rules").mkdir(parents=True)
+        (root / ".claude" / "rules" / "x.md").write_text("private\n", encoding="utf-8")
+        return root
+
+    def test_nfr01_a_link_to_the_plugin_folder_is_not_a_private_path(self):
+        problems = security_problems(self.GOOD + f"\n[x]({PLUGIN_DIR}/marketplace.json)\n", self.scratch_root())
+        self.assertEqual([], problems)
+
+    def test_nfr01_a_link_to_an_existing_private_rules_file_still_is(self):
+        problems = security_problems(self.GOOD + "\n[x](.claude/rules/x.md)\n", self.scratch_root())
+        self.assertTrue(any("private path" in problem for problem in problems), problems)
+
+    def test_nfr01_a_link_that_climbs_out_of_the_plugin_folder_into_the_private_root_still_is_private(self):
+        root = self.scratch_root()
+        for target in LOOPHOLE_TARGETS:
+            with self.subTest(target=target):
+                problems = security_problems(self.GOOD + f"\n[x]({target})\n", root)
+                self.assertTrue(any("private path" in problem for problem in problems), problems)
 
 
 class MoreRuleTests(unittest.TestCase):
@@ -320,11 +399,73 @@ class PrivateReferenceRuleTests(unittest.TestCase):
             with self.subTest(line=line):
                 self.assertEqual([line], private_references(line))
 
+    def test_nfr01_the_plugin_folder_and_the_home_install_path_are_not_the_private_root(self):
+        for line in PLUGIN_AND_HOME_LINES:
+            with self.subTest(line=line):
+                self.assertEqual([], private_references(line))
+
+    def test_nfr01_a_second_private_mention_on_a_line_with_a_public_one_is_still_flagged(self):
+        for line in ("install to ~/.claude/ or .claude/skills/x", ".claude-plugin and .claude/x", ".claudex/y"):
+            with self.subTest(line=line):
+                self.assertEqual([line], private_references(line))
+
+    def test_nfr01_a_lookalike_that_is_not_on_a_component_boundary_or_that_climbs_out_is_still_flagged(self):
+        for line in LOOPHOLE_TARGETS:
+            with self.subTest(line=line):
+                self.assertEqual([line], private_references(line))
+
+    def test_nfr01_every_public_lookalike_starts_with_a_private_entry_and_is_not_one(self):
+        self.assertTrue(PUBLIC_LOOKALIKES)
+        for lookalike in PUBLIC_LOOKALIKES:
+            with self.subTest(lookalike=lookalike):
+                self.assertTrue(lookalike.startswith(PRIVATE_PREFIXES))
+                self.assertNotIn(lookalike, PRIVATE_PREFIXES)
+
     def test_nfr01_public_names_are_not_flagged(self):
         for line in ("see docs/adr/0001.md and docs/adr", "the folder `docs/adr/`", "kept in docs/adr.", "see README.md and spec/semantics.md", "scripts/check-dco.sh", "csharp/src/Core", "the .github/workflows folder",
                      "mydocs/readme", "subdocs/x", "csharp/docs/x", "src/docs/x", "scripts/check-dco.sh and scripts/test_check_dco.py"):
             with self.subTest(line=line):
                 self.assertEqual([], private_references(line))
+
+
+class SkillFolderRuleTests(unittest.TestCase):
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.root, True)
+
+    def test_a_skill_file_naming_docs_is_reported_with_file_and_line(self):
+        skill = self.root / "skills" / "craticula" / "references"
+        skill.mkdir(parents=True)
+        (skill / "a.md").write_text("fine\nsee docs/adr-private/x and docs/feat/1\n", encoding="utf-8")
+        self.assertEqual(["skills/craticula/references/a.md:2"], skill_private_problems(self.root))
+
+    def test_a_plugin_file_naming_the_private_root_is_reported(self):
+        plugin = self.root / ".claude-plugin"
+        plugin.mkdir()
+        (plugin / "plugin.json").write_text('{"x": "CLAUDE.md"}\n', encoding="utf-8")
+        self.assertEqual([".claude-plugin/plugin.json:1"], skill_private_problems(self.root))
+
+    def test_the_home_skills_folder_and_the_plugin_folder_are_not_private(self):
+        folder = self.root / "skills" / "craticula"
+        folder.mkdir(parents=True)
+        (folder / "SKILL.md").write_text("copy it to ~/.claude/skills/craticula/ or use .claude-plugin/marketplace.json\n", encoding="utf-8")
+        self.assertEqual([], skill_private_problems(self.root))
+
+    def test_absent_folders_report_nothing(self):
+        self.assertEqual([], skill_private_problems(self.root))
+
+    def test_a_missing_skills_rule_fails(self):
+        self.assertIn("no rule for /skills/", codeowners_required_problems("*  @pluries\n/csharp/src/  @pluries\n", self.root))
+
+    def test_a_missing_plugin_rule_fails(self):
+        # US5-AS7, FR-028: once `.claude-plugin/` exists in the root, a change to it asks the owner for review.
+        (self.root / PLUGIN_DIR).mkdir()
+        problems = codeowners_required_problems("*  @pluries\n/skills/  @pluries\n", self.root)
+        self.assertIn("no rule for /.claude-plugin/", problems)
+        self.assertNotIn("no rule for /.claude-plugin/", codeowners_required_problems("*  @pluries\n/skills/  @pluries\n/.claude-plugin/  @pluries\n", self.root))
+
+    def test_the_plugin_rule_is_not_required_while_the_folder_is_absent(self):
+        self.assertEqual([], codeowners_required_problems("*  @pluries\n/skills/  @pluries\n", self.root))
 
 
 class DependabotTests(unittest.TestCase):
@@ -580,6 +721,22 @@ class RealFileTests(unittest.TestCase):
     def test_fr03_codeowners_exists_and_is_valid(self):
         self.assertTrue(CODEOWNERS.exists(), ".github/CODEOWNERS is missing")
         self.assertEqual([], codeowners_problems(CODEOWNERS.read_text(encoding="utf-8"), ROOT))
+        self.assertEqual([], codeowners_required_problems(CODEOWNERS.read_text(encoding="utf-8"), ROOT))
+
+    def test_codeowners_has_the_skills_rule(self):
+        # US1-AS7, FR-028: a change to the public skill folder asks the owner for review.
+        self.assertEqual([], codeowners_required_problems(CODEOWNERS.read_text(encoding="utf-8"), ROOT))
+
+    def test_codeowners_has_the_plugin_rule(self):
+        # US5-AS7, FR-028: a change to the plugin folder asks the owner for review.
+        text = CODEOWNERS.read_text(encoding="utf-8")
+        self.assertIn("/.claude-plugin/", {pattern for pattern, _ in codeowners_rules(text)})
+        self.assertEqual([], codeowners_required_problems(text, ROOT))
+
+    def test_skill_and_plugin_files_name_no_private_path(self):
+        # US1-AS5, FR-004, FR-033, SC-003: a glob that matches nothing must fail, not pass on an empty list.
+        self.assertTrue(skill_public_files(ROOT), "no file under skills/ was read")
+        self.assertEqual([], skill_private_problems(ROOT))
 
     def test_fr04_security_md_exists_and_is_valid(self):
         self.assertTrue(SECURITY.exists(), "SECURITY.md is missing")

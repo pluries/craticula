@@ -722,7 +722,7 @@ class ScopeCheck(MiniRepository):
     def test_US3_AS5_the_documents_are_the_translated_scope_pages_only(self):
         self.assertEqual([INDEX, GUIDE], si.documents(self.root))
 
-    def test_US3_AS5_the_documents_of_this_repository_are_twenty_and_leave_out_the_english_pages_and_the_split_parts(self):
+    def test_US3_AS5_the_documents_of_this_repository_are_twenty_one_and_leave_out_the_english_pages_and_the_split_parts(self):
         slugs = si.documents(ROOT)
         self.assertEqual(DOCUMENT_COUNT, len(slugs))
         for english in ("spec", "semantics", "grid-schema", "ir-schema", "performance", "case-sensitivity"):
@@ -1021,7 +1021,7 @@ UNRECORDED, EDITED_AFTER = "safety-model", INDEX
 
 
 class TwentyDocuments(unittest.TestCase):
-    """A copy of this repository's sources with a stub translation of the 20 documents in each language, two of them missing."""
+    """A copy of this repository's sources with a stub translation of the 21 documents in each language, two of them missing."""
 
     omitted: tuple[str, ...] = ()
 
@@ -1035,7 +1035,7 @@ class TwentyDocuments(unittest.TestCase):
 
 
 class StatusCounts(TwentyDocuments):
-    """T015, US3-AS6, FR-019: the counts are exclusive, in the order missing, stale, machine-drafted, approved, and sum to 20."""
+    """T015, US3-AS6, FR-019: the counts are exclusive, in the order missing, stale, machine-drafted, approved, and sum to 21."""
 
     omitted = STATUS_OMITTED
 
@@ -1062,7 +1062,7 @@ class StatusCounts(TwentyDocuments):
         self.assertEqual(before[APPROVED] + 1, after[APPROVED])
         self.assertEqual(before[DRAFTED] - 1, after[DRAFTED])
 
-    def test_US3_AS6_the_four_counts_sum_to_twenty_in_every_language(self):
+    def test_US3_AS6_the_four_counts_sum_to_twenty_one_in_every_language(self):
         counts = si.status(self.root)
         self.assertEqual(set(LANGUAGE_CODES), set(counts))
         for lang, row in counts.items():

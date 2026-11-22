@@ -2,9 +2,9 @@
 translates: what-is-craticula
 title: Craticula 是什么
 description: Craticula 编译什么、绝不做什么，以及目前的进展。
-source_fingerprint: e8f756cfd41d5e8621dce7f0e9a10a459e2c9061e1f4434abe57c82e8adc1664
+source_fingerprint: 512000cfdae7ff06fd1d3cb96ba4f1892294a7fd2212e266fc84104c3017b36c
 drafter: claude
-drafted_on: 2026-11-19
+drafted_on: 2026-11-22
 status: approved
 ---
 # Craticula 是什么 {#what-craticula-is}
@@ -64,9 +64,9 @@ Oracle 不在 v1 的清单中，项目将其视为一个悬而未决的问题。
 
 ## 当前状态 {#current-state}
 
-Craticula 处于预发布阶段。目前尚未发布任何包，也没有人为访客运行演示。仓库中有一个需要您自行运行的演示应用（`examples/demo`），它需要 Docker、.NET 10 SDK 和 Node。
+C# 包已发布在 nuget.org 上，没有人为访客运行演示。仓库中有一个需要您自行运行的演示应用（`examples/demo`），它需要 Docker、.NET 10 SDK 和 Node。
 
-若要试用，请从源代码构建。[C# 快速入门](quickstart-csharp.html)介绍了具体方法。C# 库是参考实现。仓库说明 TypeScript、Python 和 Go 的移植版本计划在规范冻结之后进行，目前均尚不存在。
+若要试用，请从 nuget.org 添加这些包。[C# 快速入门](quickstart-csharp.html)介绍了具体方法。C# 库是参考实现。仓库说明 TypeScript、Python 和 Go 的移植版本计划在规范冻结之后进行，目前均尚不存在。
 
 ## 下一步 {#where-to-go-next}
 

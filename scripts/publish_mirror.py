@@ -130,6 +130,28 @@ def merge_message():
     return MERGE_SUBJECT + "\n"
 
 
+def leaked_paths(objects_text: str, entry: str) -> list[str]:
+    """Lines of a `git rev-list --objects` listing whose path is `entry` or lies under it (a sibling such as `entry-x` is no leak)."""
+    leaks = []
+    for line in objects_text.splitlines():
+        path = line.partition(" ")[2]
+        if path == entry or path.startswith(entry + "/"):
+            leaks.append(line)
+    return leaks
+
+
+def _leaks_command(objects_file: str, entry: str) -> int:
+    try:
+        with open(objects_file, encoding="utf-8") as handle:
+            found = leaked_paths(handle.read(), entry)
+    except (OSError, UnicodeDecodeError) as error:
+        print(f"\u26d4 cannot read {objects_file}: {error}", file=sys.stderr)
+        return 2
+    for line in found[:3]:
+        print(line)
+    return EXIT_REFUSED if found else EXIT_OK
+
+
 def main(argv):
     command = argv[1] if len(argv) > 1 else ""
     try:
@@ -141,12 +163,14 @@ def main(argv):
         if command == "merge-message" and len(argv) == 2:
             sys.stdout.write(merge_message())
             return 0
+        if command == "leaks" and len(argv) == 4:
+            return _leaks_command(argv[2], argv[3])
         if command == "is-recorded" and len(argv) == 5:
             return 0 if argv[4] in recorded_syncs(argv[2], argv[3]) else 1
     except RuntimeError as error:
         print(f"\u26d4 {error}", file=sys.stderr)
         return EXIT_REFUSED
-    print("usage: publish_mirror.py check-extra <repo> <public> <head> | merge-message | is-recorded <repo> <head> <sha>", file=sys.stderr)
+    print("usage: publish_mirror.py check-extra <repo> <public> <head> | merge-message | is-recorded <repo> <head> <sha> | leaks <objects.txt> <entry>", file=sys.stderr)
     return 2
 
 

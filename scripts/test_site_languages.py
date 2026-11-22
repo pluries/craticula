@@ -2,7 +2,7 @@
 """Tests of the language build of the docs site (spec 004-site-languages, tasks T005 to T007b). Each test names the scenario it proves
 (US1-AS1 to AS17) or the requirement it pins (FR-006, FR-016). T005 is a pin and is green from the start; the rest specify behaviour the
 generator does not have yet. The language fixture (a copy of this repository's sources with six interface files and a stub translation of each
-of the 20 documents, two of them hand-written) is built by `site_test_support.language_build`. Offline, standard library only.
+of the 21 documents, two of them hand-written) is built by `site_test_support.language_build`. Offline, standard library only.
 Run: python3 scripts/test_site_languages.py
 """
 import atexit

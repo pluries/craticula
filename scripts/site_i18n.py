@@ -798,7 +798,7 @@ def _english_anchors(text: str) -> list[str]:
 
 
 def documents(root: Path) -> list[str]:
-    """The slugs of the documents: the pages of `scope: translated` of `site/site.json`, in page order (20 in this repository, `index`
+    """The slugs of the documents: the pages of `scope: translated` of `site/site.json`, in page order (21 in this repository, `index`
     included); an English-only page, a split semantics part and `ui.json` are not documents."""
     return _scoped(root, SCOPES[0])
 

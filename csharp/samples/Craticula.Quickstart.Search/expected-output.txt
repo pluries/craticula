@@ -1,0 +1,7 @@
+-- index: products
+-- page
+{"query":{"bool":{"must":[{"wildcard":{"name.keyword":{"value":"*lamp*","case_insensitive":true}}},{"range":{"stock":{"gt":5}}}]}},"sort":[{"stock":{"order":"asc","missing":"_last"}},{"id":{"order":"asc","missing":"_last"}}],"from":0,"size":25}
+-- count
+{"query":{"bool":{"must":[{"wildcard":{"name.keyword":{"value":"*lamp*","case_insensitive":true}}},{"range":{"stock":{"gt":5}}}]}},"size":0}
+
+-- refused: UnknownFieldException: Field allowlist check failed (SC-1/SC-2) for 1 colId(s): password

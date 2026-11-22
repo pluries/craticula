@@ -2,9 +2,9 @@
 translates: overview
 title: 概览
 description: Craticula 是什么、它编译什么，以及目前进展到哪一步。
-source_fingerprint: 3929869b5367531388935cc42945f515177b84bf6d3ffe925cbccd06c8cf38e0
+source_fingerprint: c3dad5cf6df4a66c49bd0d2e9d8c4a27f6d981379f463a98eadd2a7b96c4a407
 drafter: claude
-drafted_on: 2026-11-19
+drafted_on: 2026-11-22
 status: approved
 ---
 # Craticula {#craticula}
@@ -88,6 +88,17 @@ C# 实现被拆分为十个 NuGet 包，全部发布在 nuget.org 上：
 [`Craticula.OpenSearch.Client`](https://www.nuget.org/packages/Craticula.OpenSearch.Client)。
 使用 `dotnet add package <name>` 安装其中任意一个。要检查这些包能否构建，以及一个干净的使用方项目能否针对它们编译，请运行
 `bash scripts/pack-smoke.sh`（需要 Python 3.10+ 和 .NET 10 SDK；大约 3 分钟）。
+
+## Claude 技能 {#claude-skill}
+
+Claude 技能（skill）会引导你从零开始，直到编译出第一个网格请求，并让 Claude 拒绝那些不安全的捷径。将它作为 Claude Code 插件安装：
+
+```text
+claude plugin marketplace add pluries/craticula
+claude plugin install craticula@craticula
+```
+
+或者将文件夹 [`skills/craticula`](skills/craticula/SKILL.md) 复制到 `~/.claude/skills/craticula/`。该技能就是文本：Claude 的行为无法得到保证。参见 [Claude 技能页面](https://craticula.pluries.dev/claude-skill.html)。
 
 ## 依赖项许可证 {#dependency-licenses}
 

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The compile-only Search sample (spec 005, US6). It compiles an AG Grid request into a Search query and prints it: no database,
+       no driver, no package outside this repository. Built with the solution, so a change to the library that breaks it breaks the build. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Craticula.Core/Craticula.Core.csproj" />
+    <ProjectReference Include="../../src/Craticula.AgGrid/Craticula.AgGrid.csproj" />
+    <ProjectReference Include="../../src/Craticula.Search/Craticula.Search.csproj" />
+  </ItemGroup>
+
+</Project>

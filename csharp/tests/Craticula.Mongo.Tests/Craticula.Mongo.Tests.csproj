@@ -8,6 +8,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\Shared\SampleOutput.cs" Link="SampleOutput.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
 
@@ -21,6 +25,8 @@
          backends make the SAME GRP-* decisions, which no per-backend artifact suite can check
          because each only ever compares a compiler against its own hand-written arm. -->
     <ProjectReference Include="../../src/Craticula.Sql/Craticula.Sql.csproj" />
+    <!-- The compile-only Mongo sample (spec 005, US6): its tests run the entry point and compare the output with the recorded file. -->
+    <ProjectReference Include="../../samples/Craticula.Quickstart.Mongo/Craticula.Quickstart.Mongo.csproj" />
   </ItemGroup>
 
 </Project>

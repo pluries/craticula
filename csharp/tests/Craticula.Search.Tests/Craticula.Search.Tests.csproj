@@ -8,6 +8,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\Shared\SampleOutput.cs" Link="SampleOutput.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
 
@@ -23,6 +27,8 @@
          hand-written arm. -->
     <ProjectReference Include="../../src/Craticula.Sql/Craticula.Sql.csproj" />
     <ProjectReference Include="../../src/Craticula.Mongo/Craticula.Mongo.csproj" />
+    <!-- The compile-only Search sample (spec 005, US6): its tests run the entry point and compare the output with the recorded file. -->
+    <ProjectReference Include="../../samples/Craticula.Quickstart.Search/Craticula.Quickstart.Search.csproj" />
   </ItemGroup>
 
 </Project>
