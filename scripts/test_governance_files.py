@@ -25,6 +25,8 @@ PRIVATE_PREFIXES = ("docs/", ".claude", "CLAUDE.md", ".mcp.json", ".githooks", "
                     "csharp/tests/Craticula.Conformance.Tests/JenkinsfileTests.cs", "csharp/tests/Craticula.Conformance.Tests/ReleaseStepsTests.cs", "Jenkinsfile", "jenkins/")
 # `docs/adr` is the one public folder under a private path (the PUBLIC_EXCEPT array of scripts/publish-github.sh, #1665, ADR 0004).
 PUBLIC_EXCEPTIONS = ("docs/adr",)
+PUBLIC_LOOKALIKES = (".claude-plugin",)
+HOME_PREFIX = "~/"
 PRIVATE_HOSTS = re.compile(r"dev\.azure\.com|visualstudio\.com", re.IGNORECASE)
 PUBLISH_SCRIPT = ROOT / "scripts" / "publish-github.sh"
 OWNER = re.compile(r"^(?:@[A-Za-z0-9][A-Za-z0-9-]*(?:/[A-Za-z0-9._-]+)?|[^@\s]+@[^@\s]+\.[A-Za-z]+)$")
@@ -115,7 +117,7 @@ def security_problems(text: str, root: Path) -> list[str]:
         if re.match(r"^[a-z][a-z0-9+.-]*:", target):
             continue
         path = target.split("#")[0].lstrip("/")      # a root-relative link is read against the repository root
-        if path.startswith(PRIVATE_PREFIXES):
+        if _private_link(path):
             problems.append(f"link into a private path: {target}")
         elif path and not (root / path).exists():
             problems.append(f"link that does not resolve: {target}")
@@ -136,12 +138,30 @@ def supported_row(text: str) -> bool:
     return False
 
 
+def _is_public_lookalike(text: str) -> bool:
+    """True when `text` starts with a public lookalike on a component boundary and its path token never climbs out with `..`."""
+    for lookalike in PUBLIC_LOOKALIKES:
+        if text.startswith(lookalike):
+            rest = text[len(lookalike):]
+            if rest and not (rest[0] == "/" or rest[0].isspace()):
+                continue
+            token = rest.split(None, 1)[0] if rest and not rest[0].isspace() else ""
+            return ".." not in token.split("/")
+    return False
+
+
+def _private_link(path: str) -> bool:
+    return path.startswith(PRIVATE_PREFIXES) and not _is_public_lookalike(path)
+
+
 def _private_match_at(line: str, start: int) -> bool:
     """True when the private prefix found at `start` is a reference to the private root path (not a public exception such as `docs/adr`,
     not a nested directory that merely shares the name)."""
     if any(re.match(re.escape(exception) + r"(?:/(?!\.\.)|(?![\w/-]|\.\w))", line[start:]) for exception in PUBLIC_EXCEPTIONS):
         return False
     before = line[:start]
+    if before.endswith(HOME_PREFIX) or _is_public_lookalike(line[start:]):
+        return False
     if not before or before[-1] not in "/.-_" and not before[-1].isalnum():
         return True
     return bool(re.search(r"(?:^|[^\w./-])(?:\.{1,2}/|/)+$", before))
