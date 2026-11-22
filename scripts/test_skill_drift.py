@@ -889,8 +889,8 @@ OPTIONAL_KINDS = {"check_marketplace": "marketplace", "check_page": "page", "che
 FLOORS: dict[str, tuple[int, bool]] = {
     "package ids": (10, True), "backends": (7, True), "engine statuses": (2, False), "strict terms": (4, False),
     "limits": (7, False), "range": (1, False), "adapter methods": (2, False), "snippets": (4, False),
-    "snippet anchors": (13, False), "required sentences": (6, False), "urls": (3, False), "command lines": (4, False),
-    "text files": (5, False), "marketplace": (1, False),
+    "snippet anchors": (13, False), "required sentences": (6, False), "urls": (6, False), "command lines": (4, False),
+    "text files": (6, False), "marketplace": (1, False), "page": (1, False), "install commands": (2, False),
 }
 
 
@@ -1251,8 +1251,10 @@ def check_limit_prose(root: Path) -> None:
             assert not problem, f"{label}:{number}: limit-raising prose ({problem}): {folded[:80]!r}"
 
 
-def check_floors(counts: Counter) -> None:
+def check_floors(counts: Counter, absent: tuple[str, ...] = ()) -> None:
     for kind, (floor, exact) in FLOORS.items():
+        if kind in absent:
+            continue
         assert kind in counts, f"{kind}: not counted (floor {floor})"
         if exact:
             assert counts[kind] == floor, f"{kind}: counted {counts[kind]}, expected exactly {floor}"
@@ -1260,16 +1262,103 @@ def check_floors(counts: Counter) -> None:
             assert counts[kind] >= floor, f"{kind}: counted {counts[kind]}, floor {floor}"
 
 
+PAGE_LINKS = ("dialects-and-providers.html", "limits.html", "safety-model.html",
+              "quickstart-python.html", "quickstart-go.html", "quickstart-typescript.html")
+RELEASE_TAG_WORDS = "dotnet-v"
+SECURITY_FILE = "SECURITY.md"
+WHAT_IS_PAGE = "site/pages/what-is-craticula.md"
+STALE_CLAIMS = ("pre-release", "no package is published")
+
+
+def _page_literals(root: Path) -> list[str]:
+    """What the page must not restate: the ten ids, the seven backends, the limit names, then `PAGE_LITERALS` as whole numbers."""
+    names = [*package_ids(root), *backend_names(root), *limit_rows(_read(root, "site/pages/limits.md"))]
+    return sorted([*names, *PAGE_LITERALS], key=len, reverse=True)  # the longest first, so the message names the whole id
+
+
+def _literal_in_line(line: str, literal: str) -> bool:
+    if literal in PAGE_LITERALS:
+        return literal in _word_tokens(line, "")
+    return literal in line
+
+
+def _page_literal_problem(rel: str, body: str, literals: list[str]) -> None:
+    for number, line in enumerate(unicodedata.normalize("NFKC", body).splitlines(), 1):
+        for literal in literals:
+            assert not _literal_in_line(line, literal), f"{rel}:{number}: the page restates {literal!r}; the fact pages own it (SC-012)"
+
+
+def _page_needs(rel: str, body: str, lang: str, repo: str) -> None:
+    for link in PAGE_LINKS:
+        assert link in body, f"{rel}: no link to {link}"
+    allowed = _fold(AGENT_SENTENCES[lang])
+    assert any(_fold(_plain(item)) == allowed for item in sentences(body, lang)), f"{rel}: the fixed agent sentence of {lang} is missing"
+    for needle in (repo, RELEASE_TAG_WORDS, SECURITY_FILE):
+        assert needle in body, f"{rel}: {needle} is not named (the official source, FR-042)"
+
+
 def check_page(root: Path) -> None:
-    raise NotImplementedError
+    literals = _page_literals(root)
+    repo = json.loads(_read(root, "site/site.json"))["repo"]
+    documents = _page_files(root)
+    assert documents and documents[0][0] == PAGE.as_posix(), f"{PAGE.as_posix()}: the English page is missing"
+    for rel, lang in documents:
+        body = _page_body(_read(root, rel))
+        _page_literal_problem(rel, body, literals)
+        _page_needs(rel, body, lang, repo)
+    COUNTS["page"] = len(documents)
+
+
+def _install_commands(root: Path) -> tuple[str, str]:
+    """The two `claude plugin` commands: the marketplace `name` of the marketplace file and the repository slug of site/site.json."""
+    assert (root / MARKETPLACE).is_file(), f"{MARKETPLACE.as_posix()}: missing; the install commands name its marketplace"
+    data = json.loads(_read(root, MARKETPLACE))
+    slug = urlsplit(json.loads(_read(root, "site/site.json"))["repo"]).path.strip("/")
+    plugins = data.get("plugins") if isinstance(data, dict) else None
+    plugin = plugins[0].get("name") if isinstance(plugins, list) and plugins and isinstance(plugins[0], dict) else None
+    assert isinstance(data.get("name"), str) and isinstance(plugin, str), f"{MARKETPLACE.as_posix()}: no marketplace name or plugin name"
+    return f"claude plugin marketplace add {slug}", f"claude plugin install {plugin}@{data['name']}"
+
+
+def _page_command_lines(text: str) -> list[tuple[str, int]]:
+    """Every line a reader could paste: each line of a fence or indented block and each command-looking inline span."""
+    found: list[tuple[str, int]] = []
+    for kind, body, number in code_spans(text):
+        if kind == "inline":
+            if _command_like(body.strip()):
+                found.append((body.strip(), number))
+        else:
+            found.extend(_fence_lines(body, number + 1 if kind == "fence" else number))
+    return found
 
 
 def check_install_commands(root: Path) -> None:
-    raise NotImplementedError
+    commands = _install_commands(root)
+    total = 0
+    for rel, _ in _page_files(root):
+        lines = _page_command_lines(_page_body(_read(root, rel)))
+        for text, number in lines:
+            assert text in commands, f"{rel}:{number}: {text!r} is not one of the two install commands {list(commands)}"
+        for command in commands:
+            assert any(text == command for text, _ in lines), f"{rel}: the install command {command!r} is missing"
+        total += len(lines)
+    COUNTS["install commands"] = total
+
+
+def _stale_claim(lines: list[str]) -> tuple[str, int] | None:
+    """The first stale claim and its line; a claim wrapped across two lines is reported at the line where it starts."""
+    for index, line in enumerate(lines):
+        following = lines[index + 1] if index + 1 < len(lines) else ""
+        own, window = _fold(line), _fold(line + " " + following)
+        for claim in STALE_CLAIMS:
+            if claim in own or (claim in window and claim not in _fold(following)):
+                return claim, index + 1
+    return None
 
 
 def check_what_is_craticula(root: Path) -> None:
-    raise NotImplementedError
+    hit = _stale_claim(_read(root, WHAT_IS_PAGE).splitlines())
+    assert hit is None, f"{WHAT_IS_PAGE}:{hit[1] if hit else 0}: still says {hit[0] if hit else ''!r}, false since the packages were published"
 
 
 MARKET_TOP_KEYS = {"name", "owner", "metadata", "plugins"}
@@ -1431,16 +1520,18 @@ CHECKS = (
 def main(root: Path = ROOT) -> int:
     COUNTS.clear()
     assert (root / SKILL_MD).is_file(), f"{SKILL_MD.as_posix()}: missing; the skill folder is never an optional input"
+    absent: list[str] = []
     for check in CHECKS:
         optional = OPTIONAL_INPUTS.get(check.__name__)
         if optional is not None and not (root / optional).is_file():
             print(f"{OPTIONAL_KINDS[check.__name__]}: absent")
+            absent.append(OPTIONAL_KINDS[check.__name__])
             continue
         check(root)
     for kind in sorted(COUNTS):
         print(f"{kind}: {COUNTS[kind]}")
     if root is ROOT:
-        check_floors(COUNTS)
+        check_floors(COUNTS, tuple(absent))
         print("floors: ok")
     else:
         print("floors: skipped")
@@ -2684,6 +2775,216 @@ class US5MarketplaceTests(ScratchCase):
                     self.fails(needle)
         self.write_marketplace()
         check_marketplace(self.root)
+
+
+US4_LINKS = ("dialects-and-providers.html", "limits.html", "safety-model.html",
+             "quickstart-python.html", "quickstart-go.html", "quickstart-typescript.html")
+US4_WHAT_IS = "site/pages/what-is-craticula.md"
+US4_OLD_STATE = "Craticula is pre-release. No package is published yet, and nobody runs a demo for visitors."
+US4_NEW_STATE = "The C# packages are published on nuget.org, and nobody runs a demo for visitors."
+
+
+class US4PageTests(ScratchCase):
+    """US4: the page, its five drafts and the install commands, on scratch pages (the real page is tested after it exists)."""
+
+    def commands(self) -> tuple[str, str]:
+        _, repo, _ = self.site_urls()
+        return (f"claude plugin marketplace add {repo.rstrip('/').split('github.com/', 1)[1]}",
+                "claude plugin install craticula@craticula")
+
+    def page_text(self, lang: str, omit: tuple[str, ...] = (), extra: str = "") -> str:
+        _, repo, _ = self.site_urls()
+        parts = {
+            "intro": "Short intro for a reader who has never seen the skill.",
+            "commands": fence("text", *self.commands()),
+            "folder": "Copy the folder to `~/.claude/skills/craticula/`.",
+            "repo": f"The official source is {repo}.",
+            "tag": "Release tags start with dotnet-v.",
+            "security": "Report a problem as SECURITY.md describes.",
+            "sentence": AGENT_SENTENCES[lang],
+            **{link: f"See [a page]({link})." for link in US4_LINKS},
+        }
+        body = "\n\n".join(text for key, text in parts.items() if key not in omit)
+        return PAGE_HEADER + "\n# Claude skill\n\n" + body + "\n" + extra
+
+    def put_pages(self, langs: tuple[str, ...] = LANGS) -> None:
+        for lang in langs:
+            path = self.root / page_rel(lang)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(self.page_text(lang), encoding="utf-8")
+
+    def put(self, lang: str, text: str) -> None:
+        path = self.root / page_rel(lang)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+
+    def literals(self) -> list[str]:
+        limits = limit_rows(_read(self.root, "site/pages/limits.md"))
+        return [*package_ids(self.root), *backend_names(self.root), *limits, *PAGE_LITERALS]
+
+    def test_page_states_both_installs_the_languages_the_official_source_and_security(self):
+        # US4-AS2, US4-AS7, FR-020, FR-030, FR-031, FR-042: the page and its five drafts each hold both install commands, the six
+        # links, the repository URL, the release tag words, SECURITY.md and the fixed sentence of their language.
+        self.put_pages()
+        check_page(self.root)
+        check_install_commands(self.root)
+        _, repo, _ = self.site_urls()
+        expected = {"repo": repo, "tag": "dotnet-v", "security": "SECURITY.md", "sentence": "sentence",
+                    **{link: link for link in US4_LINKS}}
+        for lang in LANGS:
+            for key, needle in expected.items():
+                with self.subTest(lang=lang, omitted=key):
+                    self.put(lang, self.page_text(lang, omit=(key,)))
+                    with self.assertRaises(AssertionError) as caught:
+                        check_page(self.root)
+                    self.assertIn(page_rel(lang), str(caught.exception))
+                    self.assertIn(needle, str(caught.exception))
+                    self.put(lang, self.page_text(lang))
+            with self.subTest(lang=lang, omitted="commands"):
+                self.put(lang, self.page_text(lang, omit=("commands",)))
+                with self.assertRaises(AssertionError) as caught:
+                    check_install_commands(self.root)
+                self.assertIn(page_rel(lang), str(caught.exception))
+                self.put(lang, self.page_text(lang))
+
+    def test_page_holds_none_of_the_fact_literals(self):
+        # US4-AS8, FR-030, SC-012: none of the ten ids, the seven backends, the limit names, 31 and 36 as whole numbers, in the page
+        # or in any draft body; a number inside a longer number is not the literal.
+        self.put_pages()
+        literals = self.literals()
+        self.assertGreaterEqual(len(literals), 10 + 7 + 7 + 2)
+        for lang in LANGS:
+            for literal in literals:
+                with self.subTest(lang=lang, literal=literal):
+                    message = self.assert_fails(check_page, f"The text says {literal} here.", page_rel(lang))
+                    self.assertIn(literal, message)
+                    self.assertIn(page_rel(lang), message)
+            self.assert_passes(check_page, "Items 310 and 1360 and v3136 are not the range.", page_rel(lang))
+
+    def test_a_restated_package_id_in_the_page_fails(self):
+        # US4-AS8, SC-012: an id in prose, in a code span or on a command line of the page fails and the message names it.
+        self.put_pages()
+        for text in ("Add Craticula.Core to the project.", "Add `Craticula.Sql` to the project.",
+                     fence("text", "dotnet add package Craticula.Dapper")):
+            with self.subTest(text=text[:30]):
+                message = self.assert_fails(check_page, text, PAGE)
+                self.assertIn("Craticula.", message)
+        self.assert_fails(check_page, "Add Craticula.OpenSearch.Client.", "site/i18n/de/claude-skill.md")
+
+    def test_page_links_to_the_three_fact_pages_and_the_three_quickstarts(self):
+        # US4-AS9, FR-031: each of the six link targets must appear in the page and in each draft; a near miss is not the target.
+        self.put_pages()
+        for lang in LANGS:
+            for link in US4_LINKS:
+                with self.subTest(lang=lang, link=link):
+                    wrong = link.replace(".html", "-x.html")
+                    self.put(lang, self.page_text(lang, omit=(link,), extra=f"[a page]({wrong})\n"))
+                    with self.assertRaises(AssertionError) as caught:
+                        check_page(self.root)
+                    self.assertIn(link, str(caught.exception))
+                    self.put(lang, self.page_text(lang))
+
+    def test_install_commands_name_the_marketplace_and_the_repository(self):
+        # US4-AS10, FR-020, R12: the two commands are derived from the marketplace name and the repository slug of site/site.json.
+        self.put_pages()
+        check_install_commands(self.root)
+        self.assertEqual(COUNTS["install commands"], 2 * len(LANGS))
+        market, install = self.commands()
+        self.assertEqual(install, "claude plugin install craticula@craticula")
+        self.assertTrue(market.endswith("pluries/craticula"), market)
+        edit(self.root, ".claude-plugin/marketplace.json", '"name": "craticula",', '"name": "other",')
+        with self.assertRaises(AssertionError) as caught:
+            check_install_commands(self.root)
+        self.assertIn("other", str(caught.exception))
+        fresh = self.fresh()
+        edit(fresh, "site/site.json", "pluries/craticula", "pluries/fork")
+        self.root = fresh
+        self.put_pages()
+        self.put("zh", self.page_text("zh").replace("pluries/fork", "pluries/craticula"))
+        with self.assertRaises(AssertionError) as caught:
+            check_install_commands(self.root)
+        self.assertIn("pluries/fork", str(caught.exception))
+
+    def test_a_page_code_block_holds_only_the_two_commands(self):
+        # US4-AS10, FR-020, FR-027: another line in a code block, an indented command or a command-looking span fails; the personal
+        # folder path span is not command-looking and passes; a span equal to a command passes.
+        self.put_pages()
+        market, install = self.commands()
+        for line in ("dotnet add package Craticula.Core", "claude plugin install evil@evil", f"{market} --scope user",
+                     "claude plugin update craticula", "npm i x", f"FOO=1 {install}"):
+            with self.subTest(line=line):
+                message = self.assert_fails(check_install_commands, fence("text", line), PAGE)
+                self.assertIn(PAGE.as_posix(), message)
+                self.assert_fails(check_install_commands, "    " + line, PAGE)
+                self.assert_fails(check_install_commands, f"Run `{line}` now.", PAGE)
+        self.assert_passes(check_install_commands, "Copy it to `~/.claude/skills/craticula/` by hand.", PAGE)
+        self.assert_passes(check_install_commands, f"Run `{install}` now.", PAGE)
+        self.assert_passes(check_install_commands, fence("text", market, install), PAGE)
+
+    def test_install_commands_need_the_marketplace_file(self):
+        # US4-AS10: with the page present and the marketplace file absent, the command check says so instead of guessing a name.
+        self.put_pages()
+        (self.root / MARKETPLACE).unlink()
+        with self.assertRaises(AssertionError) as caught:
+            check_install_commands(self.root)
+        self.assertIn("marketplace", str(caught.exception))
+
+    def test_a_draft_header_date_is_not_a_page_literal(self):
+        # US4-AS8, SC-012: `drafted_on: 2026-12-31` in the header block holds 31 and is not scanned; the same 31 in the body fails.
+        self.put_pages()
+        for lang in LANGS:
+            self.assertIn("2026-12-31", (self.root / page_rel(lang)).read_text(encoding="utf-8"))
+        check_page(self.root)
+        self.assert_fails(check_page, "Dated 2026-12-31 in the body.", "site/i18n/fr/claude-skill.md")
+
+    def test_main_runs_the_page_checks_while_the_page_exists(self):
+        # US4-AS2, US4-AS8, FR-030: with the page present, main counts it and the install commands, and a broken page fails main.
+        self.put_pages()
+        result, printed = run_main(self.root)
+        self.assertEqual(result, 0, printed)
+        self.assertIn(f"page: {len(LANGS)}", printed)
+        self.assertIn(f"install commands: {2 * len(LANGS)}", printed)
+        self.put("en", self.page_text("en", omit=("sentence",)))
+        result, _ = run_main(self.root)
+        self.assertIsInstance(result, AssertionError)
+
+    def what_is(self, text: str) -> Path:
+        path = self.root / US4_WHAT_IS
+        path.write_text("# What Craticula is\n\n## Current state\n\n" + text + "\n", encoding="utf-8")
+        return self.root
+
+    def test_what_is_craticula_no_longer_says_no_package_is_published_or_pre_release(self):
+        # US4-AS5, FR-019, D-004: `pre-release` and `no package is published` fail, also in other case and across a line wrap; the
+        # corrected sentence passes; and the real page is the corrected one.
+        for text in (US4_OLD_STATE, "Craticula is Pre-Release.", "No package is\npublished yet.", "NO PACKAGE IS PUBLISHED."):
+            with self.subTest(text=text[:30]):
+                with self.assertRaises(AssertionError) as caught:
+                    check_what_is_craticula(self.what_is(text))
+                self.assertIn("what-is-craticula.md", str(caught.exception))
+        check_what_is_craticula(self.what_is(US4_NEW_STATE))
+        check_what_is_craticula(ROOT)
+
+
+class US4RealTests(unittest.TestCase):
+    """US4: the real English page (its drafts are checked once they exist: T049 to T053)."""
+
+    def test_the_real_page_passes_the_page_and_install_checks(self):
+        # US4-AS2, US4-AS8, US4-AS9, US4-AS10, FR-020, FR-030, FR-031, FR-042, SC-012
+        check_page(ROOT)
+        check_install_commands(ROOT)
+
+    def test_the_real_page_passes_the_text_scans(self):
+        # US4-AS8, FR-014, FR-025, FR-027, FR-029: versions, hostile text, URLs, schemes, agent claims, hidden characters.
+        for check in (check_no_versions, check_hostile, check_urls, check_schemes, check_agent_claims, check_hidden_text):
+            with self.subTest(check=check.__name__):
+                check(ROOT)
+
+    def test_the_real_page_has_only_the_two_commands_in_its_code_block(self):
+        # US4-AS10, FR-020: one code block, exactly the two `claude plugin` commands.
+        blocks = [span for span in code_spans((ROOT / PAGE).read_text(encoding="utf-8")) if span[0] != "inline"]
+        self.assertEqual(len(blocks), 1)
+        self.assertEqual([line for line, _ in _fence_lines(blocks[0][1], 0)],
+                         ["claude plugin marketplace add pluries/craticula", "claude plugin install craticula@craticula"])
 
 
 if __name__ == "__main__":

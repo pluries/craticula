@@ -165,6 +165,14 @@
       "scope": "translated"
     },
     {
+      "slug": "claude-skill",
+      "title": "Claude skill",
+      "source": "site/pages/claude-skill.md",
+      "group": "Guides",
+      "description": "Install the Craticula skill for Claude and learn what it does and does not do.",
+      "scope": "translated"
+    },
+    {
       "slug": "paging-and-sorting",
       "title": "Paging and sorting",
       "source": "site/pages/paging-and-sorting.md",

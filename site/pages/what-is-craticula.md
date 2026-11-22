@@ -55,9 +55,9 @@ Pivot mode is not supported. The request parser refuses a request with pivot mod
 
 ## Current state
 
-Craticula is pre-release. No package is published yet, and nobody runs a demo for visitors. The repository has a demo app you run yourself (`examples/demo`), which needs Docker, the .NET 10 SDK and Node.
+The C# packages are published on nuget.org, and nobody runs a demo for visitors. The repository has a demo app you run yourself (`examples/demo`), which needs Docker, the .NET 10 SDK and Node.
 
-To try it, build from source. The [C# quickstart](quickstart-csharp.html) shows how. The C# library is the reference implementation. The repository describes TypeScript, Python and Go ports as planned for after the specification is frozen. None of them exists yet.
+To try it, add the packages from nuget.org. The [C# quickstart](quickstart-csharp.html) shows how. The C# library is the reference implementation. The repository describes TypeScript, Python and Go ports as planned for after the specification is frozen. None of them exists yet.
 
 ## Where to go next
 

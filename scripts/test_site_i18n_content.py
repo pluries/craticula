@@ -23,7 +23,7 @@ SCOPE = "scope"
 SLUG = "slug"
 PAGES = "pages"
 ENGLISH_SCOPE = ("semantics", "spec", "grid-schema", "ir-schema", "performance")
-SITE_ENTRIES = 25
+SITE_ENTRIES = 26
 SCOPE_VALUES = ("translated", "english")
 
 
