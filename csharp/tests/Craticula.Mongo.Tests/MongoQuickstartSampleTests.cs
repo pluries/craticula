@@ -19,7 +19,7 @@ public class MongoQuickstartSampleTests
     private static MethodInfo EntryPoint => Assembly.Load(new AssemblyName(Sample)).EntryPoint
         ?? throw new InvalidOperationException(Sample + " has no entry point.");
 
-    // US6-AS2, US6-AS3, SC-010
+    // US6-AS2, US6-AS3, US6-AS4 (the expected output ends with the refusal line), SC-010
     [Fact]
     public void The_Mongo_Quickstart_Prints_Exactly_Its_Expected_Output()
     {

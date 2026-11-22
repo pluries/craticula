@@ -377,7 +377,7 @@ def backend_names(root: Path) -> list[str]:
 
 
 def limit_rows(text: str) -> dict[str, str]:
-    """The `| \`Name\` | value |` rows of the first table of the limits page, name to default."""
+    """The `| Name | value |` rows of the first table of the limits page, name to default."""
     rows: dict[str, str] = {}
     for cells in _table_rows(text):
         if len(cells) >= 2 and cells[0].startswith("`") and cells[0].endswith("`"):
@@ -975,6 +975,8 @@ def _url_tokens(text: str) -> list[tuple[str, int]]:
 
 
 def _under(path: str, prefix: str) -> bool:
+    if ".." in path.split("/") or "%" in path:
+        return False
     return not prefix or path == prefix or path.startswith(prefix + "/")
 
 
@@ -1035,7 +1037,8 @@ def _interpolates(line: str) -> bool:
     start = line.find('$"')
     while start != -1:
         rest = line[start + 2:]
-        end = rest.find('"')
+        closing = '"""' if rest.startswith('""') else '"'
+        end = rest.find(closing, len(closing) - 1)
         if "{" in (rest if end == -1 else rest[:end]):
             return True
         start = line.find('$"', start + 2)
@@ -2010,6 +2013,7 @@ UNSAFE_SNIPPETS = (
     ("var q = string.Concat(a, b);", "string.Concat"), ("var q = new StringBuilder();", "StringBuilder"),
     ("db.Rows.FromSqlRaw(text);", "FromSqlRaw"), ("db.Database.ExecuteSqlRaw(text);", "ExecuteSqlRaw"),
     ('var q = "select " + request.Filter;', "+ request"),
+    ('var q = $"""select {x}""";', "raw $\" plus {"), ('var q = $$"""select {{x}}""";', "raw $$\" plus {"),
 )
 LIMIT_STEM_SENTENCES = {stem: f"Please {stem} the limit here." for stem in RAISE_STEMS if stem != "maxvalue"}
 LIMIT_STEM_SENTENCES["maxvalue"] = "Use int.MaxValue for the limit here."
@@ -2396,6 +2400,14 @@ class US3NegativeTests(ScratchCase):
         nuget = self.site_urls()[2]
         self.assert_fails(check_urls, f"Read {nuget}Newtonsoft.Json for more.")
         self.assert_fails(check_urls, f"Read {nuget}Craticula.Corez for more.")
+
+    def test_a_dot_segment_or_percent_path_fails(self):
+        # US3-AS9, FR-027: traversal and encoded traversal escape the prefix once a browser resolves them.
+        repo = self.site_urls()[1]
+        nuget = self.site_urls()[2]
+        for url in (repo + "/../../attacker/x", nuget + "Craticula.Core/../../Evil.Pkg", repo + "/%2e%2e/%2e%2e/attacker/x"):
+            with self.subTest(url=url):
+                self.assert_fails(check_urls, f"Read {url} for more.")
 
     def test_an_unlisted_agent_test_sentence_fails(self):
         # US3-AS6, FR-014, FR-029, SC-003: in each language; English in the skill, the others in that language's draft.

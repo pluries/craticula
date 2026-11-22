@@ -142,7 +142,7 @@ The core packages compile and never open a connection or run a query. Four optio
 - Each adapter has `FetchPageAsync`, which returns one page.
 - Dapper, EF Core and MongoDB.Driver also have `CountAsync`, which returns the row count.
 
-The adapters have no sample. Add one only when the user wants Craticula to run the query, and read its page on the site first. The user owns the connection, the account and its rights.
+The adapters have no sample. Add one only when the user wants Craticula to run the query, and ask the user to read its page on the site first. The user owns the connection, the account and its rights.
 
 ## Strict and lenient, limits, what the host owns
 
@@ -166,7 +166,7 @@ Craticula reads AG Grid server-side row model requests from version 31 to 36, an
 
 ## Edge cases
 
-- A newer AG Grid than the range above, or an older Craticula: read the release notes and the versions page instead of guessing.
+- A newer AG Grid than the range above, or an older Craticula: ask the user to read the release notes and the versions page instead of guessing.
 - Elasticsearch and OpenSearch use the same compiler; MariaDB uses the MySQL dialect.
 - The user asks for a column the schema lacks: ask whether the column is theirs to expose, then add it to the schema. Never take the name from the request.
 
