@@ -1,0 +1,16 @@
+{
+  "name": "craticula",
+  "owner": {
+    "name": "pluries"
+  },
+  "metadata": {
+    "description": "A skill that shows how to use Craticula, the .NET library that compiles AG Grid server-side row model requests into SQL, MongoDB and OpenSearch queries."
+  },
+  "plugins": [
+    {
+      "name": "craticula",
+      "source": "./skills/craticula",
+      "description": "Instructions for adding Craticula to a C# project and compiling grid requests into queries."
+    }
+  ]
+}

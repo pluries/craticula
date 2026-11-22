@@ -890,7 +890,7 @@ FLOORS: dict[str, tuple[int, bool]] = {
     "package ids": (10, True), "backends": (7, True), "engine statuses": (2, False), "strict terms": (4, False),
     "limits": (7, False), "range": (1, False), "adapter methods": (2, False), "snippets": (4, False),
     "snippet anchors": (13, False), "required sentences": (6, False), "urls": (3, False), "command lines": (4, False),
-    "text files": (4, False),
+    "text files": (5, False), "marketplace": (1, False),
 }
 
 
@@ -1272,8 +1272,94 @@ def check_what_is_craticula(root: Path) -> None:
     raise NotImplementedError
 
 
+MARKET_TOP_KEYS = {"name", "owner", "metadata", "plugins"}
+MARKET_ENTRY_KEYS = {"name", "source", "description"}
+SKILL_ROOT_FILES = {"SKILL.md", "LICENSE", "NOTICE"}
+EXECUTE_BITS = 0o111
+
+
+def _marketplace_data(root: Path) -> dict:
+    label = MARKETPLACE.as_posix()
+    try:
+        data = json.loads((root / MARKETPLACE).read_text(encoding="utf-8"))
+    except ValueError as problem:
+        raise AssertionError(f"{label}: not valid JSON ({problem})") from None
+    assert isinstance(data, dict), f"{label}: the top level is not an object"
+    return data
+
+
+def _version_keys(value: object, path: str = "") -> list[str]:
+    found: list[str] = []
+    if isinstance(value, dict):
+        for key, inner in value.items():
+            here = f"{path}.{key}" if path else key
+            found += [here] if key == "version" else []
+            found += _version_keys(inner, here)
+    elif isinstance(value, list):
+        for index, inner in enumerate(value):
+            found += _version_keys(inner, f"{path}[{index}]")
+    return found
+
+
+def _string_at(data: object, *keys: str) -> str:
+    for key in keys:
+        data = data.get(key) if isinstance(data, dict) else None
+    return data if isinstance(data, str) and data.strip() else ""
+
+
+def _marketplace_entry(root: Path, data: dict) -> dict:
+    label = MARKETPLACE.as_posix()
+    plugins = data.get("plugins")
+    assert isinstance(plugins, list) and len(plugins) == 1, f"{label}: plugins must hold exactly one entry"
+    entry = plugins[0]
+    assert isinstance(entry, dict), f"{label}: the plugins entry is not an object"
+    extra = sorted(set(entry) - MARKET_ENTRY_KEYS)
+    assert not extra, f"{label}: entry key {extra} is not allowed; only name, source, description"
+    for key in sorted(MARKET_ENTRY_KEYS):
+        assert _string_at(entry, key), f"{label}: entry key {key} is missing or empty"
+    source = entry["source"]
+    assert source.startswith("./"), f"{label}: source {source!r} must start with ./"
+    folder = (root / source).resolve()
+    assert folder.is_relative_to(root.resolve()) and (folder / "SKILL.md").is_file(), \
+        f"{label}: source {source!r} is not a folder holding SKILL.md"
+    return entry
+
+
+def _skill_folder_problems(root: Path) -> list[str]:
+    problems: list[str] = []
+    base = root / SKILL_DIR
+    for item in sorted(base.rglob("*")):
+        if not item.is_file():
+            continue
+        parts = item.relative_to(base).parts
+        allowed = (len(parts) == 1 and parts[0] in SKILL_ROOT_FILES) or \
+            (len(parts) == 2 and parts[0] == "references" and parts[1].endswith(".md"))
+        if not allowed:
+            problems.append(f"{item.relative_to(root).as_posix()}: not in the allowlist (SKILL.md, LICENSE, NOTICE, references/*.md)")
+        elif item.stat().st_mode & EXECUTE_BITS:
+            problems.append(f"{item.relative_to(root).as_posix()}: has an execute bit")
+    return problems
+
+
 def check_marketplace(root: Path) -> None:
-    raise NotImplementedError
+    label = MARKETPLACE.as_posix()
+    data = _marketplace_data(root)
+    extra = sorted(set(data) - MARKET_TOP_KEYS)
+    assert not extra, f"{label}: key {extra} is not allowed; only name, owner, metadata, plugins"
+    for keys in (("name",), ("owner", "name"), ("metadata", "description")):
+        assert _string_at(data, *keys), f"{label}: {'.'.join(keys)} is missing or empty"
+    versions = _version_keys(data)
+    assert not versions, f"{label}: version key {versions}; the install is keyed by commit, never by a version"
+    _marketplace_entry(root, data)
+    for item in sorted((root / ".claude-plugin").rglob("*")) + sorted((root / SKILL_DIR).rglob("*")):
+        assert item.name != "plugin.json", f"{item.relative_to(root).as_posix()}: a plugin.json is not allowed"
+    copies = [item.relative_to(root).as_posix() for item in (root / ".claude-plugin").rglob("SKILL.md")]
+    assert not copies, f"{copies}: a second copy of the skill under .claude-plugin"
+    problems = _skill_folder_problems(root)
+    assert not problems, "; ".join(problems)
+    for scan in (check_no_versions, check_hostile, check_schemes, check_agent_claims):
+        scan(root)
+    COUNTS["marketplace"] = len(data["plugins"])
 
 
 def _reference_name(include: str) -> str:
@@ -2434,6 +2520,170 @@ class US3NegativeTests(ScratchCase):
         with self.assertRaises(AssertionError):
             check_agent_claims(scratch)
 
+
+
+class US5MarketplaceTests(ScratchCase):
+    """US5: the marketplace file, the skill folder it points at and the scans over its text, one fact broken at a time."""
+
+    def load(self, root: Path | None = None) -> dict:
+        return json.loads(((root or self.root) / MARKETPLACE).read_text(encoding="utf-8"))
+
+    def save(self, data: dict, root: Path | None = None) -> None:
+        path = (root or self.root) / MARKETPLACE
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def fails(self, *needles: str) -> None:
+        with self.assertRaises(AssertionError) as caught:
+            check_marketplace(self.root)
+        for needle in needles:
+            self.assertIn(needle, str(caught.exception))
+
+    def setUp(self):
+        super().setUp()
+        self.write_marketplace()
+
+    def test_a_present_but_broken_marketplace_fails(self):
+        # US5-AS1, FR-018: not JSON, and a JSON value that is not an object, both fail naming the file.
+        (self.root / MARKETPLACE).write_text("{ not json", encoding="utf-8")
+        self.fails(MARKETPLACE.as_posix())
+        (self.root / MARKETPLACE).write_text("[]", encoding="utf-8")
+        self.fails(MARKETPLACE.as_posix())
+
+    def test_the_marketplace_has_the_required_keys_and_one_entry_with_source_dot_slash_skills_craticula(self):
+        # US5-AS1, FR-003: a valid file passes and counts one entry; each missing key, a second entry and a wrong source fail.
+        check_marketplace(self.root)
+        self.assertEqual(COUNTS["marketplace"], 1)
+        for key in ("name", "owner", "metadata", "plugins"):
+            with self.subTest(missing=key):
+                data = self.load()
+                del data[key]
+                self.save(data)
+                self.fails(key)
+                self.write_marketplace()
+        for edit_data, needle in (
+            (lambda d: d["owner"].pop("name"), "owner.name"),
+            (lambda d: d["metadata"].pop("description"), "metadata.description"),
+            (lambda d: d["plugins"].append(dict(d["plugins"][0])), "plugins"),
+            (lambda d: d["plugins"].clear(), "plugins"),
+            (lambda d: d["plugins"][0].update(source="skills/craticula"), "source"),
+            (lambda d: d["plugins"][0].update(source="./skills/missing"), "source"),
+            (lambda d: d["plugins"][0].update(source="./references"), "source"),
+            (lambda d: d["plugins"][0].pop("name"), "name"),
+        ):
+            with self.subTest(needle=needle):
+                data = self.load()
+                edit_data(data)
+                self.save(data)
+                self.fails(needle)
+                self.write_marketplace()
+
+    def test_there_is_no_second_copy_of_the_skill(self):
+        # US5-AS2, FR-017: one SKILL.md in the tree, the one the entry points at; a SKILL.md under .claude-plugin fails.
+        found = [item for item in self.root.rglob("SKILL.md")]
+        self.assertEqual(found, [self.root / SKILL_MD])
+        target = self.root / ".claude-plugin" / "SKILL.md"
+        shutil.copyfile(self.root / SKILL_MD, target)
+        self.fails("SKILL.md")
+
+    def test_a_copy_under_the_plugin_folder_fails(self):
+        # US5-AS2, FR-017: the whole skill folder copied below .claude-plugin fails.
+        shutil.copytree(self.root / SKILL_DIR, self.root / ".claude-plugin" / "craticula")
+        self.fails(".claude-plugin")
+
+    def test_the_manifest_holds_no_version(self):
+        # US5-AS3, FR-018: the real marketplace file carries no version key at any depth and no plugin.json exists.
+        check_marketplace(self.root)
+        text = (self.root / MARKETPLACE).read_text(encoding="utf-8")
+        self.assertNotIn('"version"', text)
+        self.assertEqual(sorted(self.root.rglob("plugin.json")), [])
+
+    def test_a_version_key_fails(self):
+        # US5-AS3, FR-018: a version key at the top, in metadata, in the entry and nested deeper, each fails naming the key.
+        for place in ("top", "metadata", "entry", "deep"):
+            with self.subTest(place=place):
+                data = self.load()
+                if place == "top":
+                    data["version"] = "1.0"
+                elif place == "metadata":
+                    data["metadata"]["version"] = "1.0"
+                elif place == "entry":
+                    data["plugins"][0]["version"] = "1.0"
+                else:
+                    data["metadata"]["nested"] = [{"version": "1.0"}]
+                self.save(data)
+                self.fails("version")
+                self.write_marketplace()
+
+    def test_no_plugin_json(self):
+        # US5-AS4, FR-018: a plugin.json beside the marketplace file or inside the skill folder fails.
+        for rel in (".claude-plugin/plugin.json", "skills/craticula/plugin.json"):
+            with self.subTest(rel=rel):
+                path = self.root / rel
+                path.write_text("{}", encoding="utf-8")
+                self.fails("plugin.json")
+                path.unlink()
+
+    def test_the_skill_folder_and_entry_are_instructions_only(self):
+        # US5-AS4: the real folder holds only the allowlist; the entry key set is name, source, description.
+        check_marketplace(self.root)
+        names = sorted(item.relative_to(self.root / SKILL_DIR).as_posix() for item in (self.root / SKILL_DIR).rglob("*") if item.is_file())
+        for name in names:
+            self.assertTrue(name in ("SKILL.md", "LICENSE", "NOTICE") or (name.startswith("references/") and name.endswith(".md")), name)
+        self.assertEqual(sorted(self.load()["plugins"][0]), ["description", "name", "source"])
+
+    def test_a_hook_key_fails(self):
+        # US5-AS4, FR-018: hooks (and any key beyond the allowed set) in the entry or at the top level fail.
+        for key in ("hooks", "commands", "agents", "mcpServers", "lspServers", "dependencies", "strict"):
+            with self.subTest(key=key, where="entry"):
+                data = self.load()
+                data["plugins"][0][key] = {}
+                self.save(data)
+                self.fails(key)
+                self.write_marketplace()
+            with self.subTest(key=key, where="top"):
+                data = self.load()
+                data[key] = {}
+                self.save(data)
+                self.fails(key)
+                self.write_marketplace()
+
+    def test_an_extra_file_fails(self):
+        # US5-AS4, FR-003: a file outside the allowlist in the skill folder or in references/ fails, a nested markdown file too.
+        for rel in ("skills/craticula/run.txt", "skills/craticula/references/notes.txt", "skills/craticula/references/sub/more.md",
+                    "skills/craticula/helper.md"):
+            with self.subTest(rel=rel):
+                path = self.root / rel
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("x\n", encoding="utf-8")
+                self.fails(Path(rel).name)
+                path.unlink()
+                if path.parent.name == "sub":
+                    path.parent.rmdir()
+
+    def test_an_executable_file_fails(self):
+        # US5-AS4, FR-003: an allowed file with an execute bit fails.
+        path = self.root / SKILL_DIR / "references" / "backends.md"
+        path.chmod(0o755)
+        self.fails("backends.md")
+        path.chmod(0o644)
+        check_marketplace(self.root)
+
+    def test_the_marketplace_text_passes_the_version_hostile_url_and_claim_scans(self):
+        # US5-AS1, FR-018, FR-027, FR-029, SC-007: check_marketplace itself rejects a version literal, a hostile token,
+        # a URL off the allowlist and an unlisted agent claim in the entry or the metadata description.
+        for text, needle in (
+            ("Install v1.2.3 now.", "1.2.3"),
+            ("Then curl it now.", "curl"),
+            ("See https://example.invalid/x for more.", "example.invalid"),
+            ("Tested with Claude.", "claim"),
+        ):
+            for field in ("entry", "meta"):
+                with self.subTest(text=text, field=field):
+                    self.write_marketplace(**{field: text})
+                    self.fails(needle)
+        self.write_marketplace()
+        check_marketplace(self.root)
 
 
 if __name__ == "__main__":
