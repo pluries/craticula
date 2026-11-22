@@ -181,7 +181,8 @@ def private_references(text: str) -> list[str]:
     return found
 
 
-SKILL_PUBLIC_DIRS = ("skills", ".claude-plugin")
+PLUGIN_DIR = ".claude-plugin"
+SKILL_PUBLIC_DIRS = ("skills", PLUGIN_DIR)
 
 
 def skill_public_files(root: Path) -> list[Path]:
@@ -203,7 +204,8 @@ def skill_private_problems(root: Path) -> list[str]:
 def codeowners_required_problems(text: str, root: Path) -> list[str]:
     """The rules the public skill needs on top of `codeowners_problems` (FR-028): a rule for `/skills/`."""
     patterns = {pattern.strip("/") for pattern, _ in codeowners_rules(text)}
-    return [f"no rule for /{folder}/" for folder in ("skills",) if folder not in patterns]
+    folders = ["skills"] + ([PLUGIN_DIR] if (root / PLUGIN_DIR).is_dir() else [])
+    return [f"no rule for /{folder}/" for folder in folders if folder not in patterns]
 
 
 def gate_paths(text: str) -> set[str]:
@@ -217,7 +219,6 @@ def gate_paths(text: str) -> set[str]:
     return set()
 
 
-PLUGIN_DIR = ".claude-plugin"
 # Lines and link targets where the plugin folder is not the whole component, or climbs out into the private `.claude/` root.
 LOOPHOLE_TARGETS = (".claude-plugin/../.claude/x", ".claude-pluginx/y", ".claude-plugin/a/../../.claude/x")
 PLUGIN_AND_HOME_LINES = (".claude-plugin/marketplace.json", "/.claude-plugin/  @cstephan-dev", "~/.claude/skills/craticula/",
@@ -455,6 +456,16 @@ class SkillFolderRuleTests(unittest.TestCase):
 
     def test_a_missing_skills_rule_fails(self):
         self.assertIn("no rule for /skills/", codeowners_required_problems("*  @pluries\n/csharp/src/  @pluries\n", self.root))
+
+    def test_a_missing_plugin_rule_fails(self):
+        # FR-028: once `.claude-plugin/` exists in the root, a change to it asks the owner for review.
+        (self.root / PLUGIN_DIR).mkdir()
+        problems = codeowners_required_problems("*  @pluries\n/skills/  @pluries\n", self.root)
+        self.assertIn("no rule for /.claude-plugin/", problems)
+        self.assertNotIn("no rule for /.claude-plugin/", codeowners_required_problems("*  @pluries\n/skills/  @pluries\n/.claude-plugin/  @pluries\n", self.root))
+
+    def test_the_plugin_rule_is_not_required_while_the_folder_is_absent(self):
+        self.assertEqual([], codeowners_required_problems("*  @pluries\n/skills/  @pluries\n", self.root))
 
 
 class DependabotTests(unittest.TestCase):
@@ -715,6 +726,12 @@ class RealFileTests(unittest.TestCase):
     def test_codeowners_has_the_skills_rule(self):
         # US1-AS7, FR-028: a change to the public skill folder asks the owner for review.
         self.assertEqual([], codeowners_required_problems(CODEOWNERS.read_text(encoding="utf-8"), ROOT))
+
+    def test_codeowners_has_the_plugin_rule(self):
+        # FR-028: a change to the plugin folder asks the owner for review.
+        text = CODEOWNERS.read_text(encoding="utf-8")
+        self.assertIn("/.claude-plugin/", {pattern for pattern, _ in codeowners_rules(text)})
+        self.assertEqual([], codeowners_required_problems(text, ROOT))
 
     def test_skill_and_plugin_files_name_no_private_path(self):
         # US1-AS5, FR-004, FR-033, SC-003: a glob that matches nothing must fail, not pass on an empty list.
