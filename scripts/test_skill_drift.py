@@ -889,8 +889,8 @@ OPTIONAL_KINDS = {"check_marketplace": "marketplace", "check_page": "page", "che
 FLOORS: dict[str, tuple[int, bool]] = {
     "package ids": (10, True), "backends": (7, True), "engine statuses": (2, False), "strict terms": (4, False),
     "limits": (7, False), "range": (1, False), "adapter methods": (2, False), "snippets": (4, False),
-    "snippet anchors": (13, False), "required sentences": (6, False), "urls": (6, False), "command lines": (4, False),
-    "text files": (6, False), "marketplace": (1, False), "page": (1, False), "install commands": (2, False),
+    "snippet anchors": (13, False), "required sentences": (6, False), "urls": (21, False), "command lines": (4, False),
+    "text files": (11, False), "marketplace": (1, False), "page": (6, False), "install commands": (12, False),
 }
 
 

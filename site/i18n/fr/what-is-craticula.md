@@ -2,10 +2,10 @@
 translates: what-is-craticula
 title: Ce qu'est Craticula
 description: Ce que Craticula compile, ce qu'il ne fait jamais, et où il en est.
-source_fingerprint: e8f756cfd41d5e8621dce7f0e9a10a459e2c9061e1f4434abe57c82e8adc1664
+source_fingerprint: 512000cfdae7ff06fd1d3cb96ba4f1892294a7fd2212e266fc84104c3017b36c
 drafter: claude
-drafted_on: 2026-11-19
-status: approved
+drafted_on: 2026-11-22
+status: machine-drafted
 ---
 # Ce qu'est Craticula {#what-craticula-is}
 
@@ -64,9 +64,9 @@ Le mode pivot n'est pas pris en charge. L'analyseur de requêtes refuse une requ
 
 ## État actuel {#current-state}
 
-Craticula est en pré-version. Aucun paquet n'est encore publié, et personne n'héberge de démo pour les visiteurs. Le dépôt contient une application de démonstration que vous exécutez vous-même (`examples/demo`), qui demande Docker, le SDK .NET 10 et Node.
+Les paquets C# sont publiés sur nuget.org, et personne n'héberge de démo pour les visiteurs. Le dépôt contient une application de démonstration que vous exécutez vous-même (`examples/demo`), qui demande Docker, le SDK .NET 10 et Node.
 
-Pour l'essayer, compilez depuis les sources. Le [guide de démarrage rapide C#](quickstart-csharp.html) montre comment. La bibliothèque C# est l'implémentation de référence. Le dépôt décrit des portages TypeScript, Python et Go comme prévus après le gel de la spécification. Aucun n'existe encore.
+Pour l'essayer, ajoutez les paquets depuis nuget.org. Le [guide de démarrage rapide C#](quickstart-csharp.html) montre comment. La bibliothèque C# est l'implémentation de référence. Le dépôt décrit des portages TypeScript, Python et Go comme prévus après le gel de la spécification. Aucun n'existe encore.
 
 ## Pour aller plus loin {#where-to-go-next}
 

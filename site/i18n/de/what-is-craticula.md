@@ -2,10 +2,10 @@
 translates: what-is-craticula
 title: Was Craticula ist
 description: Was Craticula kompiliert, was es nie tut und wo es heute steht.
-source_fingerprint: e8f756cfd41d5e8621dce7f0e9a10a459e2c9061e1f4434abe57c82e8adc1664
+source_fingerprint: 512000cfdae7ff06fd1d3cb96ba4f1892294a7fd2212e266fc84104c3017b36c
 drafter: claude
-drafted_on: 2026-11-19
-status: approved
+drafted_on: 2026-11-22
+status: machine-drafted
 ---
 # Was Craticula ist {#what-craticula-is}
 
@@ -64,9 +64,9 @@ Der Pivot-Modus wird nicht unterstützt. Der Anfrage-Parser lehnt eine Anfrage m
 
 ## Aktueller Stand {#current-state}
 
-Craticula ist eine Vorabversion. Es ist noch kein Paket veröffentlicht, und niemand betreibt eine Demo für Besucher. Das Repository enthält eine Demo-Anwendung, die Sie selbst ausführen (`examples/demo`) und die Docker, das .NET 10 SDK und Node benötigt.
+Die C#-Pakete sind auf nuget.org veröffentlicht, und niemand betreibt eine Demo für Besucher. Das Repository enthält eine Demo-Anwendung, die Sie selbst ausführen (`examples/demo`) und die Docker, das .NET 10 SDK und Node benötigt.
 
-Um es auszuprobieren, bauen Sie aus dem Quellcode. Die [C#-Schnellstartanleitung](quickstart-csharp.html) zeigt, wie. Die C#-Bibliothek ist die Referenzimplementierung. Das Repository beschreibt Portierungen nach TypeScript, Python und Go als geplant für die Zeit nach dem Einfrieren der Spezifikation. Keine davon existiert bisher.
+Um es auszuprobieren, fügen Sie die Pakete von nuget.org hinzu. Die [C#-Schnellstartanleitung](quickstart-csharp.html) zeigt, wie. Die C#-Bibliothek ist die Referenzimplementierung. Das Repository beschreibt Portierungen nach TypeScript, Python und Go als geplant für die Zeit nach dem Einfrieren der Spezifikation. Keine davon existiert bisher.
 
 ## Wie es weitergeht {#where-to-go-next}
 
