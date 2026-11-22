@@ -322,6 +322,42 @@ def check_sample_references(root: Path) -> None:
                 raise AssertionError(f"{label}: ProjectReference {_reference_name(include)} is not Core, AgGrid or the compiler of this sample")
 
 
+SKILL_NAME = "craticula"
+LICENCE_ID = "Apache-2.0"
+BACKENDS_REF = "references/backends.md"
+VALID_DESCRIPTION = "Use when adding Craticula to a C# project. Do NOT use for maintaining Craticula itself."
+VALID_BODY = f"# Craticula\n\nRead [backends]({BACKENDS_REF}), also `{BACKENDS_REF}` and `Program.cs`.\n"
+
+
+def skill_text(description: str = VALID_DESCRIPTION, body: str = VALID_BODY, **front: str) -> str:
+    """A SKILL.md text: the three allowed keys (overridable or extended through `front`), then the body."""
+    keys = {"name": SKILL_NAME, "description": description, "license": LICENCE_ID, **front}
+    lines = "".join(f"{key}: {value}\n" for key, value in keys.items())
+    return f"---\n{lines}---\n\n{body}"
+
+
+def write_skill(tmp: Path, text: str | None = None) -> Path:
+    """A scratch root holding only a well-formed skill folder (its SKILL.md and one reference) and return the root."""
+    root = Path(tempfile.mkdtemp(dir=tmp))
+    folder = root / SKILL_DIR
+    (folder / "references").mkdir(parents=True)
+    (folder / BACKENDS_REF).write_text("# Backends\n", encoding="utf-8")
+    (folder / "SKILL.md").write_text(skill_text() if text is None else text, encoding="utf-8")
+    return root
+
+
+def spans_of(text: str) -> list[tuple[str, str, int]]:
+    """`code_spans` with each body reduced to its stripped lines, sorted by line then body, so the tests do not pin trailing newlines or indentation."""
+    return sorted(((kind, "\n".join(part.strip() for part in body.splitlines()), line) for kind, body, line in code_spans(text)),
+                  key=lambda span: (span[2], span[1]))
+
+
+def split_skill(text: str) -> tuple[str, str]:
+    """The front matter and the body of a SKILL.md text."""
+    _, front, body = text.split("---\n", 2)
+    return front, body
+
+
 def main(root: Path = ROOT) -> int:
     raise NotImplementedError
 
@@ -332,6 +368,48 @@ class RealRepoTests(unittest.TestCase):
     def test_the_real_samples_reference_only_core_agrid_and_their_compiler(self):
         # US6-AS1, US6-AS5: the three samples compile only; the real tree has no package and no adapter reference.
         check_sample_references(ROOT)
+
+    def test_front_matter(self):
+        # US1-AS1, FR-001, FR-036: SKILL.md holds exactly name, description, license; name is the folder, license Apache-2.0.
+        check_front_matter(ROOT)
+
+    def test_description_and_body_do_not_present_a_maintainer_tool(self):
+        # US1-AS4: the description says Do NOT use for ...; the body never describes the skill as a maintainer tool.
+        text = (ROOT / SKILL_MD).read_text(encoding="utf-8")
+        description = read_front_matter(text)["description"]
+        _, body = split_skill(text)
+        self.assertIn("Do NOT use for", description)
+        self.assertNotIn("maintainer", body.lower())
+
+    def test_every_referenced_file_is_inside_the_folder(self):
+        # US1-AS2, FR-002: every markdown link and every path-like code span of the skill names a file inside skills/craticula/.
+        check_inside_folder(ROOT)
+
+    def test_licence_and_notice_equal_the_root_files(self):
+        # US1-AS6, FR-036: LICENSE and NOTICE of the folder are byte copies of the root files.
+        check_licence_files(ROOT)
+
+    def test_no_language_variant_in_the_folder(self):
+        # US1-AS8, FR-032: no file or folder of the skill is named with a language code.
+        check_no_language_variants(ROOT)
+
+    def test_no_skill_md_below_dot_claude(self):
+        # FR-023, US1-AS3: the skill is not under a stripped path; no SKILL.md below .claude/.
+        check_not_under_claude(ROOT)
+
+    def test_a_copy_of_the_folder_alone_is_well_formed(self):
+        # US1-AS1, AS2, AS6: the folder copied alone (with the root licence files, as the mirror publishes them) passes every folder check.
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        shutil.copytree(ROOT / SKILL_DIR, tmp / SKILL_DIR)
+        for name in ("LICENSE", "NOTICE"):
+            shutil.copyfile(ROOT / name, tmp / name)
+        check_front_matter(tmp)
+        check_inside_folder(tmp)
+        check_licence_files(tmp)
+        check_no_language_variants(tmp)
+        check_not_under_claude(tmp)
+        self.assertIn("Apache License", (tmp / SKILL_DIR / "LICENSE").read_text(encoding="utf-8"))
 
 
 class CheckerNegativeTests(unittest.TestCase):
@@ -370,6 +448,159 @@ class CheckerNegativeTests(unittest.TestCase):
                         check_sample_references(scratch)
                     self.assertIn(f"{sample}.csproj", str(caught.exception))
                     self.assertIn(other, str(caught.exception))
+
+
+    def assert_fails(self, check, root: Path, *needles: str) -> None:
+        """`check(root)` raises AssertionError and its message holds every needle (the file and what failed)."""
+        with self.assertRaises(AssertionError) as caught:
+            check(root)
+        for needle in needles:
+            self.assertIn(needle, str(caught.exception))
+
+    def test_front_matter_with_an_extra_key_fails(self):
+        # US1-AS1, FR-001: only name, description, license are allowed; the portable keys and a version are refused.
+        check_front_matter(write_skill(self.tmp))
+        for key, value in (("allowed-tools", "Bash"), ("metadata", "x"), ("compatibility", "x"), ("version", "1.0.0")):
+            with self.subTest(key=key):
+                root = write_skill(self.tmp, skill_text(**{key: value}))
+                self.assert_fails(check_front_matter, root, SKILL_MD.name, key)
+
+    def test_license_other_than_apache_2_0_fails(self):
+        # US1-AS6, FR-036: the license key must equal Apache-2.0.
+        root = write_skill(self.tmp, skill_text(license="MIT"))
+        self.assert_fails(check_front_matter, root, SKILL_MD.name, "license", LICENCE_ID)
+
+    def test_a_duplicate_key_fails(self):
+        # US1-AS1: a key given twice fails through read_front_matter, naming the key and its line (3), and through the check naming the file.
+        text = f"---\nname: {SKILL_NAME}\nname: other\ndescription: {VALID_DESCRIPTION}\nlicense: {LICENCE_ID}\n---\n\nBody\n"
+        with self.assertRaises(AssertionError) as caught:
+            read_front_matter(text)
+        self.assertIn("name", str(caught.exception))
+        self.assertIn("3", str(caught.exception))
+        self.assert_fails(check_front_matter, write_skill(self.tmp, text), SKILL_MD.name, "name")
+
+    def test_a_nested_key_under_a_folded_scalar_fails(self):
+        # US1-AS1: an indented `key:` line under a folded scalar fails, naming the key and its line (4).
+        text = f"---\nname: {SKILL_NAME}\ndescription: >\n  {VALID_DESCRIPTION}\n  version: 1\nlicense: {LICENCE_ID}\n---\n\nBody\n"
+        with self.assertRaises(AssertionError) as caught:
+            read_front_matter(text)
+        self.assertIn("version", str(caught.exception))
+        self.assertIn("5", str(caught.exception))
+        self.assert_fails(check_front_matter, write_skill(self.tmp, text), SKILL_MD.name, "version")
+
+    def test_name_that_differs_from_the_folder_fails(self):
+        # US1-AS1, FR-001: name must equal the folder name.
+        root = write_skill(self.tmp, skill_text(name="craticula-skill"))
+        self.assert_fails(check_front_matter, root, SKILL_MD.name, "name", SKILL_NAME)
+
+    def test_description_without_do_not_use_fails(self):
+        # US1-AS1, FR-001: the description must hold a "Do NOT use" clause.
+        root = write_skill(self.tmp, skill_text(description="Use when adding Craticula to a C# project."))
+        self.assert_fails(check_front_matter, root, SKILL_MD.name, "Do NOT use")
+
+    def test_description_not_starting_with_use_when_fails(self):
+        # US1-AS1, FR-001: the description must start with "Use when".
+        root = write_skill(self.tmp, skill_text(description="Adds Craticula to a C# project. Do NOT use for maintaining it."))
+        self.assert_fails(check_front_matter, root, SKILL_MD.name, "Use when")
+
+    def test_a_path_outside_the_folder_fails(self):
+        # US1-AS2, FR-002: a link, and a backticked path, that leave the folder or do not exist in it fail, naming the file and the path.
+        check_inside_folder(write_skill(self.tmp))
+        cases = {
+            "link": ("[readme](../README.md)", "../README.md"),
+            "link to a missing file": ("[x](references/missing.md)", "references/missing.md"),
+            "repository path": ("`csharp/samples/x`", "csharp/samples/x"),
+            "parent": ("`../x`", "../x"),
+            "absolute": ("`/x`", "/x"),
+        }
+        for label, (markup, path) in cases.items():
+            with self.subTest(case=label):
+                root = write_skill(self.tmp, skill_text(body=f"# Craticula\n\nSee {markup} here.\n"))
+                self.assert_fails(check_inside_folder, root, SKILL_MD.name, path)
+
+    def test_a_backticked_file_name_without_a_slash_is_not_a_path(self):
+        # US1-AS2, FR-002 (plan extraction rule): a span without `/` and not starting ./ or ../ is prose, so these names do not trip the check.
+        body = "# Craticula\n\nThe files `Program.cs`, `schema.json` and `SKILL.md` are named in words.\n"
+        check_inside_folder(write_skill(self.tmp, skill_text(body=body)))
+
+    def test_no_skill_md_below_dot_claude(self):
+        # FR-023: a SKILL.md below .claude/ fails, naming the path; the clean folder passes.
+        root = write_skill(self.tmp)
+        check_not_under_claude(root)
+        hidden = root / ".claude" / "skills" / SKILL_NAME
+        hidden.mkdir(parents=True)
+        (hidden / "SKILL.md").write_text(skill_text(), encoding="utf-8")
+        self.assert_fails(check_not_under_claude, root, ".claude/skills/craticula/SKILL.md")
+
+    def test_a_changed_licence_fails(self):
+        # US1-AS6, FR-036: a LICENSE or NOTICE that differs from the root file, or is missing, fails naming it.
+        for name in ("LICENSE", "NOTICE"):
+            with self.subTest(name=name):
+                root = write_skill(self.tmp)
+                for each in ("LICENSE", "NOTICE"):
+                    shutil.copyfile(ROOT / each, root / each)
+                    shutil.copyfile(ROOT / each, root / SKILL_DIR / each)
+                check_licence_files(root)
+                copy = root / SKILL_DIR / name
+                copy.write_text(copy.read_text(encoding="utf-8") + "changed\n", encoding="utf-8")
+                self.assert_fails(check_licence_files, root, name)
+                copy.unlink()
+                self.assert_fails(check_licence_files, root, name)
+
+    def test_a_file_named_with_a_language_code_fails(self):
+        # US1-AS8, FR-032: a path component or stem token equal to a language code fails and names the path, over every LANGUAGE_CODES entry.
+        check_no_language_variants(write_skill(self.tmp))
+        for code in LANGUAGE_CODES:
+            for relative in (f"references/backends.{code}.md", f"references/{code}/backends.md", f"SKILL-{code}.md", f"SKILL.{code}"):
+                with self.subTest(path=relative):
+                    root = write_skill(self.tmp)
+                    target = root / SKILL_DIR / relative
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_text("x\n", encoding="utf-8")
+                    self.assert_fails(check_no_language_variants, root, relative)
+
+    def test_a_language_code_outside_the_list_is_not_detected(self):
+        # GUARD (green on arrival once implemented; intended, plan Design (c)): a code outside LANGUAGE_CODES (hu) is not detected.
+        root = write_skill(self.tmp)
+        (root / SKILL_DIR / "references" / "backends.hu.md").write_text("x\n", encoding="utf-8")
+        check_no_language_variants(root)
+
+    def test_code_spans_find_backtick_and_tilde_fences_inline_spans_and_indented_blocks(self):
+        # FR-002 (shared scanner): fences of both characters, inline spans on one line, indented blocks that do not continue a list item.
+        text = "\n".join([
+            "Prose with `one` and `two words` here.",  # 1
+            "",
+            "```csharp",  # 3
+            "var a = `not inline`;",
+            "```",
+            "~~~text",  # 6
+            "tilde body",
+            "~~~",
+            "",
+            "Paragraph text.",  # 10
+            "",
+            "    indented code",  # 12
+            "",
+            "- item",  # 14
+            "    wrapped continuation",
+            "",
+            "    later paragraph of the item",
+            "",
+            "Tail `end`",  # 19
+        ])
+        expected = sorted([
+            ("inline", "one", 1), ("inline", "two words", 1), ("fence", "var a = `not inline`;", 3), ("fence", "tilde body", 6),
+            ("indented", "indented code", 12), ("inline", "end", 19),
+        ], key=lambda span: (span[2], span[1]))
+        self.assertEqual(spans_of(text), expected)
+        self.assertEqual(spans_of("```\nrest `x`\nmore"), [("fence", "rest `x`\nmore", 1)], "an unclosed fence runs to the end")
+        self.assertEqual(spans_of("    first\n\ntext"), [("indented", "first", 1)], "an indented block at the start of the file")
+        self.assertEqual(spans_of("text\n\n\ttabbed code\n"), [("indented", "tabbed code", 3)], "a tab opens an indented block")
+
+    def test_a_lone_backtick_is_prose_and_hides_nothing_on_the_next_lines(self):
+        # FR-002 (shared scanner): one backtick on a line opens nothing across lines; the next line's span and the fence are found.
+        text = "It costs 5` today.\nNext line has `real` span.\n\n```text\nfenced\n```\n"
+        self.assertEqual(spans_of(text), [("inline", "real", 2), ("fence", "fenced", 4)])
 
 
 if __name__ == "__main__":
