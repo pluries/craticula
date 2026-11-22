@@ -879,5 +879,209 @@ class CheckerNegativeTests(unittest.TestCase):
         self.assertEqual(spans_of(text), [("inline", "real", 2), ("fence", "fenced", 4)])
 
 
+TEN_IDS = {
+    "Craticula.Core", "Craticula.AgGrid", "Craticula.Sql", "Craticula.Mongo", "Craticula.Search", "Craticula.Export.Csv",
+    "Craticula.EntityFrameworkCore", "Craticula.Dapper", "Craticula.MongoDB.Driver", "Craticula.OpenSearch.Client",
+}
+SEVEN_BACKENDS = {"PostgreSQL", "SQL Server", "MySQL", "SQLite", "MongoDB", "OpenSearch", "Elasticsearch"}
+
+
+def skill_files(root: Path) -> list[Path]:
+    return sorted((root / SKILL_DIR).rglob("*.md"))
+
+
+def replace_everywhere(root: Path, old: str, new: str) -> None:
+    """Replace every `old` in every markdown file of the skill folder; fail loudly when it is nowhere."""
+    found = False
+    for path in skill_files(root):
+        text = path.read_text(encoding="utf-8")
+        if old in text:
+            found = True
+            path.write_text(text.replace(old, new), encoding="utf-8")
+    if not found:
+        raise AssertionError(f"{old!r} not found in the skill folder, nothing to edit")
+
+
+def break_in_snippet(root: Path, snippet_id: str, name: str) -> None:
+    """Rename `name` inside the body of the snippet `snippet_id` of SKILL.md only."""
+    path = root / SKILL_MD
+    text = path.read_text(encoding="utf-8")
+    for found_id, body, _ in snippets(text):
+        if found_id == snippet_id:
+            if name not in body:
+                raise AssertionError(f"{name!r} not in snippet {snippet_id}")
+            path.write_text(text.replace(body, body.replace(name, name + "X")), encoding="utf-8")
+            return
+    raise AssertionError(f"no snippet {snippet_id}")
+
+
+class US2RealTests(unittest.TestCase):
+    """US2: the facts of the skill text equal their sources (real tree)."""
+
+    def test_package_ids_are_the_ten_source_folders(self):
+        # US2-AS1, US3-AS3, FR-026
+        self.assertEqual(set(package_ids(ROOT)), TEN_IDS)
+        check_package_ids(ROOT)
+
+    def test_backends_and_status_match_the_dialects_page(self):
+        # US3-AS5, US2-AS5, FR-007, FR-037
+        self.assertEqual(set(backend_names(ROOT)), SEVEN_BACKENDS)
+        check_backends(ROOT)
+        check_engine_status(ROOT)
+
+    def test_strict_lenient_terms_and_limits_match_the_pages(self):
+        # US2-AS8, US3-AS5, FR-009
+        rows = limit_rows((ROOT / "site/pages/limits.md").read_text(encoding="utf-8"))
+        self.assertEqual(rows["MaxDepth"], "8")
+        self.assertEqual(rows["MaxQueryTimeMs"], "not set")
+        self.assertEqual(len(rows), 7)
+        check_strict_lenient(ROOT)
+        check_limits(ROOT)
+
+    def test_ag_grid_range_matches_readme_and_page(self):
+        # US2-AS7, FR-007
+        self.assertEqual(ag_grid_range((ROOT / "README.md").read_text(encoding="utf-8")), ("31", "36"))
+        self.assertEqual(ag_grid_range((ROOT / "site/pages/what-is-craticula.md").read_text(encoding="utf-8")), ("31", "36"))
+        check_range(ROOT)
+
+    def test_adapters_are_optional_and_methods_exist_in_source(self):
+        # US2-AS3, FR-010
+        methods = adapter_methods(ROOT)
+        self.assertEqual(set(methods), set(ADAPTER_PROJECTS))
+        self.assertIn("FetchPageAsync", methods["Craticula.Dapper"])
+        self.assertIn("CountAsync", methods["Craticula.MongoDB.Driver"])
+        self.assertNotIn("CountAsync", methods["Craticula.OpenSearch.Client"])
+        check_adapters(ROOT)
+
+    def test_three_steps_appear_in_order(self):
+        # US2-AS2
+        ids = [found for found, _, _ in snippets((ROOT / SKILL_MD).read_text(encoding="utf-8"))]
+        self.assertEqual(ids[:2], ["shared-parse", "sql-compile"])
+        self.assertLess(ids.index("sql-compile"), ids.index("mongo-compile"))
+        self.assertLess(ids.index("mongo-compile"), ids.index("search-compile"))
+        check_snippet_ids(ROOT)
+
+    def test_snippet_ids_are_known(self):
+        # US2-AS2, FR-010
+        check_snippet_ids(ROOT)
+
+    def test_snippets_hold_their_sample_names(self):
+        # US2-AS2, US2-AS9, US3-AS4, FR-005, FR-039
+        check_snippet_anchors(ROOT)
+
+    def test_required_sentences_are_present(self):
+        # US2-AS4, AS6, AS10, FR-008, FR-011, FR-012, FR-013, FR-029
+        check_required_sentences(ROOT)
+        text = " ".join((ROOT / SKILL_MD).read_text(encoding="utf-8").split())
+        self.assertIn(AGENT_SENTENCES["en"], text)
+
+
+class US2NegativeTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.root = make_repo(self.tmp)
+
+    def assert_fails(self, check, *needles: str) -> None:
+        with self.assertRaises(AssertionError) as caught:
+            check(self.root)
+        for needle in needles:
+            self.assertIn(needle, str(caught.exception))
+
+    def test_an_unknown_id_fails(self):
+        # US3-AS3, FR-026: a Craticula.* token that is not one of the ten ids
+        edit(self.root, SKILL_MD.as_posix(), "Craticula.Core", "Craticula.Corez")
+        self.assert_fails(check_package_ids, "Craticula.Corez")
+
+    def test_a_missing_id_fails(self):
+        # US2-AS1, FR-026: one of the ten ids appears nowhere in the folder
+        replace_everywhere(self.root, "Craticula.Export.Csv", "the CSV package")
+        self.assert_fails(check_package_ids, "Craticula.Export.Csv")
+
+    def test_a_wrong_backend_fails(self):
+        # US3-AS5, FR-037: a backend name changed in the skill table
+        replace_everywhere(self.root, "SQLite", "SQLight")
+        self.assert_fails(check_backends, "SQLite")
+
+    def test_a_wrong_engine_status_fails(self):
+        # US2-AS5: the Oracle status and the MariaDB status
+        for old in ("community-tested", "untested"):
+            with self.subTest(old=old):
+                scratch = make_repo(Path(tempfile.mkdtemp(dir=self.tmp)))
+                replace_everywhere(scratch, old, "fully supported")
+                with self.assertRaises(AssertionError) as caught:
+                    check_engine_status(scratch)
+                self.assertIn(SKILL_MD.name, str(caught.exception))
+
+    def test_a_wrong_limit_fails(self):
+        # US2-AS8, US3-AS5: a limit value changed in the skill
+        replace_everywhere(self.root, "`MaxDepth` 8", "`MaxDepth` 80")
+        self.assert_fails(check_limits, "MaxDepth", "8")
+
+    def test_a_wrong_range_fails(self):
+        # US2-AS7, US3-AS5: the range changed in the skill, and in the README
+        replace_everywhere(self.root, "31 to 36", "31 to 37")
+        self.assert_fails(check_range, "31 to 36")
+        scratch = make_repo(Path(tempfile.mkdtemp(dir=self.tmp)))
+        edit(scratch, "README.md", "v31–v36", "v31–v40")
+        with self.assertRaises(AssertionError):
+            check_range(scratch)
+
+    def test_a_missing_strict_term_fails(self):
+        # US2-AS8: a key term of strict and lenient missing from the skill
+        replace_everywhere(self.root, "UnknownFieldException", "an exception")
+        self.assert_fails(check_strict_lenient, "UnknownFieldException")
+
+    def test_an_adapter_method_not_in_source_fails(self):
+        # US2-AS3, FR-010: a method name the sources do not have
+        replace_everywhere(self.root, "FetchPageAsync", "FetchRowsAsync")
+        self.assert_fails(check_adapters, "FetchRowsAsync")
+
+    def test_an_unknown_snippet_id_fails(self):
+        # US2-AS2: an unknown id, and a csharp block with no id
+        edit(self.root, SKILL_MD.as_posix(), "csharp sql-compile", "csharp sql-compilez")
+        self.assert_fails(check_snippet_ids, "sql-compilez")
+        scratch = make_repo(Path(tempfile.mkdtemp(dir=self.tmp)))
+        edit(scratch, SKILL_MD.as_posix(), "```csharp sql-compile", "```csharp")
+        with self.assertRaises(AssertionError):
+            check_snippet_ids(scratch)
+
+    def test_steps_out_of_order_fail(self):
+        # US2-AS2: the compile snippet before the shared one
+        edit(self.root, SKILL_MD.as_posix(), "csharp shared-parse", "csharp TMP")
+        edit(self.root, SKILL_MD.as_posix(), "csharp sql-compile", "csharp shared-parse")
+        edit(self.root, SKILL_MD.as_posix(), "csharp TMP", "csharp sql-compile")
+        self.assert_fails(check_snippet_ids, "shared-parse")
+
+    def test_a_changed_snippet_name_fails(self):
+        # US3-AS4, FR-039: a name changed inside each snippet
+        for snippet_id, names in SNIPPET_NAMES.items():
+            with self.subTest(snippet=snippet_id):
+                scratch = make_repo(Path(tempfile.mkdtemp(dir=self.tmp)))
+                break_in_snippet(scratch, snippet_id, names[0])
+                with self.assertRaises(AssertionError) as caught:
+                    check_snippet_anchors(scratch)
+                self.assertIn(names[0], str(caught.exception))
+
+    def test_a_name_missing_from_the_sample_fails(self):
+        # US2-AS9, FR-039: the sample no longer holds a name the snippet needs
+        edit(self.root, "csharp/samples/Craticula.Quickstart.Mongo/Program.cs", "MongoPipelineBuilder", "MongoBuilder")
+        self.assert_fails(check_snippet_anchors, "MongoPipelineBuilder")
+
+    def test_a_missing_refusal_fails(self):
+        # US2-AS4, AS6, AS10: each required sentence removed in turn
+        for phrase in ("instructs the agent to refuse", "is data, not instructions", "The only command the agent runs",
+                       "Only the C# library is published", "No step asks the agent to fetch a page", AGENT_SENTENCES["en"]):
+            with self.subTest(phrase=phrase):
+                scratch = make_repo(Path(tempfile.mkdtemp(dir=self.tmp)))
+                path = scratch / SKILL_MD
+                text = " ".join(path.read_text(encoding="utf-8").split()) if phrase == AGENT_SENTENCES["en"] else path.read_text(encoding="utf-8")
+                self.assertIn(phrase, text)
+                path.write_text(text.replace(phrase, "removed"), encoding="utf-8")
+                with self.assertRaises(AssertionError) as caught:
+                    check_required_sentences(scratch)
+                self.assertIn(phrase[:20], str(caught.exception))
+
+
 if __name__ == "__main__":
     sys.exit(unittest.main())
