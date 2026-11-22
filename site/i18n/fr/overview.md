@@ -2,9 +2,9 @@
 translates: overview
 title: Vue d'ensemble
 description: Ce qu'est Craticula, ce qu'il compile et où il en est.
-source_fingerprint: 3929869b5367531388935cc42945f515177b84bf6d3ffe925cbccd06c8cf38e0
+source_fingerprint: c3dad5cf6df4a66c49bd0d2e9d8c4a27f6d981379f463a98eadd2a7b96c4a407
 drafter: claude
-drafted_on: 2026-11-19
+drafted_on: 2026-11-22
 status: approved
 ---
 # Craticula {#craticula}
@@ -88,6 +88,17 @@ L'implémentation C# est répartie en dix paquets NuGet, tous publiés sur nuget
 [`Craticula.OpenSearch.Client`](https://www.nuget.org/packages/Craticula.OpenSearch.Client).
 Installez-en un avec `dotnet add package <name>`. Pour vérifier que les paquets se compilent et qu'un consommateur propre se compile contre eux, exécutez
 `bash scripts/pack-smoke.sh` (Python 3.10+ et le SDK .NET 10 ; environ 3 minutes).
+
+## Compétence Claude {#claude-skill}
+
+Une compétence pour Claude vous guide de zéro jusqu'à une première requête de grille compilée et demande à Claude de refuser les raccourcis dangereux. Installez-la comme plugin Claude Code :
+
+```text
+claude plugin marketplace add pluries/craticula
+claude plugin install craticula@craticula
+```
+
+Ou copiez le dossier [`skills/craticula`](skills/craticula/SKILL.md) dans `~/.claude/skills/craticula/`. La compétence est du texte : le comportement de Claude n'est pas garanti. Voir la [page de la compétence Claude](https://craticula.pluries.dev/claude-skill.html).
 
 ## Licences des dépendances {#dependency-licenses}
 

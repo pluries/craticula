@@ -5,7 +5,7 @@ description: Craticula 编译什么、绝不做什么，以及目前的进展。
 source_fingerprint: 512000cfdae7ff06fd1d3cb96ba4f1892294a7fd2212e266fc84104c3017b36c
 drafter: claude
 drafted_on: 2026-11-22
-status: machine-drafted
+status: approved
 ---
 # Craticula 是什么 {#what-craticula-is}
 

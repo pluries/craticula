@@ -5,7 +5,7 @@ description: Une compétence pour Claude qui lui apprend à ajouter Craticula à
 source_fingerprint: 63b1738da63b9355a6d5c64ab072a81d4f2fa969df1e3817fc06403b6cb6dba0
 drafter: claude
 drafted_on: 2026-11-22
-status: machine-drafted
+status: approved
 ---
 # Compétence Claude {#claude-skill}
 

@@ -2,9 +2,9 @@
 translates: overview
 title: Visión general
 description: Qué es Craticula, qué compila y en qué punto se encuentra.
-source_fingerprint: 3929869b5367531388935cc42945f515177b84bf6d3ffe925cbccd06c8cf38e0
+source_fingerprint: c3dad5cf6df4a66c49bd0d2e9d8c4a27f6d981379f463a98eadd2a7b96c4a407
 drafter: claude
-drafted_on: 2026-11-19
+drafted_on: 2026-11-22
 status: approved
 ---
 # Craticula {#craticula}
@@ -88,6 +88,17 @@ La implementación en C# se divide en diez paquetes NuGet, todos publicados en n
 [`Craticula.OpenSearch.Client`](https://www.nuget.org/packages/Craticula.OpenSearch.Client).
 Instale uno con `dotnet add package <name>`. Para comprobar que los paquetes compilan y que un consumidor limpio compila contra ellos, ejecute
 `bash scripts/pack-smoke.sh` (Python 3.10+ y el SDK de .NET 10; unos 3 minutos).
+
+## Skill de Claude {#claude-skill}
+
+Una skill para Claude le guía desde cero hasta una primera solicitud de grid compilada y le indica a Claude que rechace los atajos inseguros. Instálela como plugin de Claude Code:
+
+```text
+claude plugin marketplace add pluries/craticula
+claude plugin install craticula@craticula
+```
+
+O copie la carpeta [`skills/craticula`](skills/craticula/SKILL.md) en `~/.claude/skills/craticula/`. La skill es texto: el comportamiento de Claude no está garantizado. Consulte la [página de la skill de Claude](https://craticula.pluries.dev/claude-skill.html).
 
 ## Licencias de las dependencias {#dependency-licenses}
 

@@ -5,7 +5,7 @@ description: Qué compila Craticula, qué no hace nunca y en qué estado se encu
 source_fingerprint: 512000cfdae7ff06fd1d3cb96ba4f1892294a7fd2212e266fc84104c3017b36c
 drafter: claude
 drafted_on: 2026-11-22
-status: machine-drafted
+status: approved
 ---
 # Qué es Craticula {#what-craticula-is}
 
