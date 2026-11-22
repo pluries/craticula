@@ -1,1 +1,7 @@
-EXPECTED: not recorded
+-- collection: tickets
+-- page
+[{"$match":{"$and":[{"subject":{"$regex":"refund","$options":"i"}},{"priority":{"$gt":2}}]}},{"$addFields":{"__priorityNullBucket":{"$cond":[{"$eq":["$priority",null]},1,0]},"__idNullBucket":{"$cond":[{"$eq":["$id",null]},1,0]}}},{"$sort":{"__priorityNullBucket":-1,"priority":-1,"__idNullBucket":1,"id":1}},{"$unset":["__priorityNullBucket","__idNullBucket"]},{"$skip":0},{"$limit":50}]
+-- count
+[{"$match":{"$and":[{"subject":{"$regex":"refund","$options":"i"}},{"priority":{"$gt":2}}]}},{"$count":"count"}]
+
+-- refused: UnknownFieldException: Field allowlist check failed (SC-1/SC-2) for 1 colId(s): password

@@ -11,6 +11,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 from collections import Counter
 from pathlib import Path
 
@@ -51,6 +52,7 @@ PUBLIC_INPUTS = (
 
 ADAPTER_PROJECTS = ("Craticula.Dapper", "Craticula.EntityFrameworkCore", "Craticula.MongoDB.Driver", "Craticula.OpenSearch.Client")
 SAMPLE_COMPILERS = ("Craticula.Sql", "Craticula.Mongo", "Craticula.Search")
+SAMPLE_COMPILER_OF = dict(zip(("Craticula.Quickstart", "Craticula.Quickstart.Mongo", "Craticula.Quickstart.Search"), SAMPLE_COMPILERS))
 COMMON_NAMES = ("GridSchema", "AgGridRequestParser", "AgGridParseOptions", "GridFilterPipeline", "ResourceLimits")
 SNIPPET_NAMES = {
     "shared-parse": COMMON_NAMES,
@@ -299,8 +301,25 @@ def check_marketplace(root: Path) -> None:
     raise NotImplementedError
 
 
+def _reference_name(include: str) -> str:
+    return include.replace("\\", "/").rsplit("/", 1)[-1].removesuffix(".csproj")
+
+
 def check_sample_references(root: Path) -> None:
-    raise NotImplementedError
+    """FR-038, US6-AS5: a sample compiles only through Core, AgGrid and its own compiler: no package, no adapter."""
+    projects = sorted((root / "csharp" / "samples").glob("*/*.csproj"))
+    assert projects, "no sample project under csharp/samples"
+    for project in projects:
+        label = project.relative_to(root).as_posix()
+        own = SAMPLE_COMPILER_OF.get(project.parent.name)
+        assert own, f"{label}: no compiler is declared for this sample (add it to SAMPLE_COMPILER_OF)"
+        allowed = {"Craticula.Core", "Craticula.AgGrid", own}
+        for element in ET.parse(project).getroot().iter():
+            include = element.get("Include", "")
+            if element.tag == "PackageReference":
+                raise AssertionError(f"{label}: PackageReference {include} (a sample references no package)")
+            if element.tag == "ProjectReference" and _reference_name(include) not in allowed:
+                raise AssertionError(f"{label}: ProjectReference {_reference_name(include)} is not Core, AgGrid or the compiler of this sample")
 
 
 def main(root: Path = ROOT) -> int:
@@ -338,6 +357,19 @@ class CheckerNegativeTests(unittest.TestCase):
                 message = str(caught.exception)
                 self.assertIn("Craticula.Quickstart.Mongo.csproj", message)
                 self.assertIn(reference.split("\"")[1].split("/")[-1].removesuffix(".csproj"), message)
+
+    def test_a_sample_referencing_another_samples_compiler_fails(self):
+        # US6-AS5, FR-038: a sample references only Core, AgGrid and ITS OWN compiler, not the compiler of another backend.
+        for sample, own in SAMPLE_COMPILER_OF.items():
+            project = f"csharp/samples/{sample}/{sample}.csproj"
+            for other in (name for name in SAMPLE_COMPILERS if name != own):
+                with self.subTest(sample=sample, other=other):
+                    scratch = make_repo(Path(tempfile.mkdtemp(dir=self.tmp)))
+                    edit(scratch, project, "</ItemGroup>", f"  <ProjectReference Include=\"../../src/{other}/{other}.csproj\" />\n  </ItemGroup>")
+                    with self.assertRaises(AssertionError) as caught:
+                        check_sample_references(scratch)
+                    self.assertIn(f"{sample}.csproj", str(caught.exception))
+                    self.assertIn(other, str(caught.exception))
 
 
 if __name__ == "__main__":
