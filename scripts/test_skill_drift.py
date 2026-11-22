@@ -21,7 +21,7 @@ import xml.etree.ElementTree as ET
 from collections import Counter
 from pathlib import Path
 from unittest import mock
-from urllib.parse import urlunsplit
+from urllib.parse import urlsplit, urlunsplit
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -431,16 +431,168 @@ def snippets(text: str) -> list[tuple[str, str, int]]:
     return sorted(found, key=lambda item: item[2])
 
 
+VERSION_SEPARATORS = "/,(@=:"
+VERSION_FLAGS = ("--version", "-v", "version=")
+DIGITS = "0123456789"
+SENTENCE_ENDS = ".!?"
+CJK_ENDS = "。!?"
+
+
+def _word_tokens(text: str, extra: str) -> list[str]:
+    tokens: list[str] = []
+    token = ""
+    for char in text + " ":
+        if char.isalnum() or (char and char in extra):
+            token += char
+        elif token:
+            tokens.append(token)
+            token = ""
+    return tokens
+
+
+def _all_digits(parts: list[str]) -> bool:
+    return all(part and all(char in DIGITS for char in part) for part in parts)
+
+
+def _dotted_numbers(text: str) -> list[str]:
+    found: list[str] = []
+    run = ""
+    for char in text + " ":
+        if char in DIGITS or char == ".":
+            run += char
+            continue
+        number = run.strip(".")
+        if len(number.split(".")) >= 3 and _all_digits(number.split(".")):
+            found.append(number)
+        run = ""
+    return found
+
+
+def _v_tags(text: str) -> list[str]:
+    found: list[str] = []
+    for token in _word_tokens(text, "."):
+        body = token[1:].rstrip(".")
+        if token[:1] in ("v", "V") and "." in body and _all_digits(body.split(".")):
+            found.append(token.rstrip("."))
+    return found
+
+
+def _leading_number(text: str) -> str:
+    end = 0
+    while end < len(text) and (text[end] in DIGITS or (text[end] == "." and text[end + 1:end + 2] in tuple(DIGITS))):
+        end += 1
+    return text[:end]
+
+
+def _version_after(rest: str) -> str:
+    stripped = rest.lstrip()
+    if stripped[:1] and stripped[:1] in VERSION_SEPARATORS:
+        return _leading_number(stripped[1:].lstrip())
+    if stripped[:7].lower() == "version":
+        return _leading_number(stripped[7:].lstrip())
+    number = _leading_number(stripped) if rest[:1].isspace() else ""
+    return number if "." in number else ""
+
+
+def _after_craticula_token(text: str) -> list[str]:
+    found: list[str] = []
+    start = text.find("Craticula")
+    while start != -1:
+        end = start + len("Craticula")
+        while end < len(text) and (text[end].isalnum() or text[end] in "._"):
+            end += 1
+        while text[end - 1] == ".":
+            end -= 1
+        number = _version_after(text[end:])
+        if number:
+            found.append(number)
+        start = text.find("Craticula", end)
+    return found
+
+
+def _after_version_flag(text: str) -> list[str]:
+    lowered = text.lower()
+    found: list[str] = []
+    for flag in VERSION_FLAGS:
+        start = lowered.find(flag)
+        while start != -1:
+            before = lowered[start - 1:start]
+            if flag == "version=" or not before or before.isspace():
+                number = _leading_number(text[start + len(flag):].lstrip(" =\"'"))
+                if number:
+                    found.append(number)
+            start = lowered.find(flag, start + len(flag))
+    return found
+
+
 def find_versions(line: str) -> list[str]:
-    raise NotImplementedError
+    text = unicodedata.normalize("NFKC", line)
+    found: list[str] = []
+    for item in (*_dotted_numbers(text), *_v_tags(text), *_after_craticula_token(text), *_after_version_flag(text)):
+        if item not in found:
+            found.append(item)
+    return found
 
 
 def hostile_tokens(line: str) -> list[str]:
-    raise NotImplementedError
+    text = unicodedata.normalize("NFKC", line).lower()
+    found = [token for token in _word_tokens(text, "") if token in HOSTILE_TOKENS]
+    return found + [part for part in HOSTILE_SUBSTRINGS if part in text]
+
+
+def _starts_block(stripped: str) -> bool:
+    return stripped.startswith(("#", "|")) or _is_list_item(stripped)
+
+
+def _split_blocks(text: str) -> list[tuple[str, int]]:
+    blocks: list[tuple[str, int]] = []
+    current: list[str] = []
+    first = 0
+    for number, line in enumerate(text.splitlines(), 1):
+        stripped = line.strip()
+        if (not stripped or _starts_block(stripped)) and current:
+            blocks.append((" ".join(current), first))
+            current = []
+        if not stripped:
+            continue
+        if not current:
+            first = number
+        current.append(stripped)
+        if stripped.startswith(("#", "|")):
+            blocks.append((" ".join(current), first))
+            current = []
+    if current:
+        blocks.append((" ".join(current), first))
+    return blocks
+
+
+def _ends_sentence(block: str, index: int, lang: str) -> bool:
+    char = block[index]
+    if lang == "zh" and char in CJK_ENDS:
+        return True
+    return char in SENTENCE_ENDS and (index + 1 == len(block) or block[index + 1].isspace())
+
+
+def _split_sentences(block: str, lang: str) -> list[str]:
+    parts: list[str] = []
+    start = 0
+    for index in range(len(block)):
+        if _ends_sentence(block, index, lang):
+            parts.append(block[start:index + 1])
+            start = index + 1
+    parts.append(block[start:])
+    return [part.strip() for part in parts if part.strip()]
+
+
+def _sentences_at(text: str, lang: str) -> list[tuple[str, int]]:
+    found: list[tuple[str, int]] = []
+    for block, line in _split_blocks(unicodedata.normalize("NFKC", text)):
+        found.extend((sentence, line) for sentence in _split_sentences(block, lang))
+    return found
 
 
 def sentences(text: str, lang: str) -> list[str]:
-    raise NotImplementedError
+    return [sentence for sentence, _ in _sentences_at(text, lang)]
 
 
 def check_front_matter(root: Path) -> None:
@@ -722,48 +874,390 @@ def check_required_sentences(root: Path) -> None:
     COUNTS["required sentences"] = len(REQUIRED_SENTENCES)
 
 
+ASCII_LETTERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+TOKEN_DELIMITERS = "()[]<>\"'`,;"
+URL_STOPS = "()[]<>\"'`"
+UNSAFE_SUBSTRINGS = ('$@"', "string.format", "string.concat", "stringbuilder", "fromsqlraw", "executesqlraw", "+ request")
+REMOVED_PHRASES = ("row model", "filter model", "sort model")
+LIMIT_ALWAYS = ("unlimited", "maxvalue")
+STRICT_CATEGORIES = ("Cf", "Cc", "Co", "Zl", "Zp", "Mn", "Me")
+PAGE_CATEGORIES = ("Cf", "Cc")
+SYMLINK_ROOTS = (SKILL_DIR, Path(".claude-plugin"))
+GIT_SYMLINK_MODE = "120000"
+OPTIONAL_KINDS = {"check_marketplace": "marketplace", "check_page": "page", "check_install_commands": "install commands"}
+# kind -> (floor, exact); each floor is the count measured on the real tree, ids and backends are fixed by FR-037.
+FLOORS: dict[str, tuple[int, bool]] = {
+    "package ids": (10, True), "backends": (7, True), "engine statuses": (2, False), "strict terms": (4, False),
+    "limits": (7, False), "range": (1, False), "adapter methods": (2, False), "snippets": (4, False),
+    "snippet anchors": (13, False), "required sentences": (6, False), "urls": (3, False), "command lines": (4, False),
+    "text files": (4, False),
+}
+
+
+def _page_body(text: str) -> str:
+    """The page without its `---` header block; the header lines become blank lines so line numbers stay true."""
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != FRONT_MATTER_FENCE:
+        return text
+    for index in range(1, len(lines)):
+        if lines[index].strip() == FRONT_MATTER_FENCE:
+            return "\n" * (index + 1) + "\n".join(lines[index + 1:])
+    return text
+
+
+def _page_files(root: Path) -> list[tuple[str, str]]:
+    found = [(PAGE.as_posix(), "en")]
+    found += [(f"site/i18n/{lang}/claude-skill.md", lang) for lang in LANGS[1:]]
+    return [(rel, lang) for rel, lang in found if (root / rel).is_file()]
+
+
+def _text_inputs(root: Path) -> list[tuple[str, str, str, str]]:
+    """Every text the scans read as (label, text, group, language): the skill folder, the page and drafts (body only), the marketplace file."""
+    items = [(path.relative_to(root).as_posix(), text, "skill", "en") for path, text in _skill_texts(root)]
+    assert items, f"{SKILL_DIR.as_posix()}: no markdown file; the skill folder is never an optional input"
+    items += [(rel, _page_body(_read(root, rel)), "page", lang) for rel, lang in _page_files(root)]
+    if (root / MARKETPLACE).is_file():
+        items.append((MARKETPLACE.as_posix(), _read(root, MARKETPLACE), "marketplace", "en"))
+    return items
+
+
 def check_no_versions(root: Path) -> None:
-    raise NotImplementedError
+    for label, text, _, _ in _text_inputs(root):
+        for number, line in enumerate(text.splitlines(), 1):
+            found = find_versions(line)
+            assert not found, f"{label}:{number}: version literal {found}; a version is never written in the text"
+
+
+def _phrase_hit(text: str) -> tuple[str, int] | None:
+    words: list[str] = []
+    lines: list[int] = []
+    for number, line in enumerate(unicodedata.normalize("NFKC", text).lower().splitlines(), 1):
+        for word in line.split():
+            words.append(word)
+            lines.append(number)
+    folded = " ".join(words)
+    for phrase in HOSTILE_PHRASES:
+        at = folded.find(phrase)
+        if at != -1:
+            return phrase, lines[folded.count(" ", 0, at)]
+    return None
 
 
 def check_hostile(root: Path) -> None:
-    raise NotImplementedError
+    for label, text, _, _ in _text_inputs(root):
+        for number, line in enumerate(text.splitlines(), 1):
+            found = hostile_tokens(line)
+            assert not found, f"{label}:{number}: hostile token {found}"
+        hit = _phrase_hit(text)
+        assert hit is None, f"{label}:{hit[1] if hit else 0}: hostile phrase {hit[0] if hit else ''!r}"
+
+
+def _allowlist(root: Path) -> list[tuple[str, str]]:
+    """(host, path prefix) pairs from site/site.json; an empty prefix allows any path."""
+    site = json.loads(_read(root, "site/site.json"))
+    repo = urlsplit(site["repo"])
+    nuget = urlsplit(site["packages"]["nuget"]).hostname or ""
+    entries = [(urlsplit(site["baseUrl"]).hostname or "", ""), (repo.hostname or "", repo.path.rstrip("/"))]
+    return entries + [(nuget, f"/packages/{name}") for name in package_ids(root)]
+
+
+def _url_tokens(text: str) -> list[tuple[str, int]]:
+    found: list[tuple[str, int]] = []
+    for number, line in enumerate(text.splitlines(), 1):
+        start = line.find("https://")
+        while start != -1:
+            end = start
+            while end < len(line) and not line[end].isspace() and line[end] not in URL_STOPS:
+                end += 1
+            found.append((line[start:end].rstrip(".,;:!?"), number))
+            start = line.find("https://", end)
+    return found
+
+
+def _under(path: str, prefix: str) -> bool:
+    return not prefix or path == prefix or path.startswith(prefix + "/")
+
+
+def _url_allowed(url: str, allowlist: list[tuple[str, str]]) -> bool:
+    try:
+        parts = urlsplit(url)
+        port = parts.port
+    except ValueError:
+        return False
+    if parts.scheme != "https" or port is not None or parts.username is not None or not parts.hostname:
+        return False
+    return any(parts.hostname == host and _under(parts.path, prefix) for host, prefix in allowlist)
 
 
 def check_urls(root: Path) -> None:
-    raise NotImplementedError
+    allowlist = _allowlist(root)
+    count = 0
+    for label, text, _, _ in _text_inputs(root):
+        for url, number in _url_tokens(text):
+            assert _url_allowed(url, allowlist), f"{label}:{number}: {url} is not an allowlisted https URL"
+            count += 1
+    COUNTS["urls"] = count
+
+
+def _link_tokens(line: str) -> list[str]:
+    cleaned = "".join(" " if char.isspace() or char in TOKEN_DELIMITERS else char for char in line)
+    return [token.rstrip(".:!?") for token in cleaned.split()]
+
+
+def _bare_host_problem(token: str, allowlist: list[tuple[str, str]]) -> str:
+    host, slash, _ = token.partition("/")
+    if not slash or "." not in host or host.rsplit(".", 1)[1].lower() not in KNOWN_TLDS:
+        return ""
+    return "" if host.lower() in {allowed for allowed, _ in allowlist} else "bare host outside the allowlist"
+
+
+def _scheme_problem(token: str, allowlist: list[tuple[str, str]]) -> str:
+    letters = len(token) - len(token.lstrip(ASCII_LETTERS))
+    if letters and token[letters:letters + 1] == ":" and len(token) > letters + 1:
+        return "" if token.startswith("https://") and _url_allowed(token, allowlist) else "scheme other than an allowlisted https URL"
+    if token.startswith("//") and token[2:3].isalnum():
+        return "scheme-relative URL"
+    if token.lower().startswith("www."):
+        return "www host"
+    return _bare_host_problem(token, allowlist)
 
 
 def check_schemes(root: Path) -> None:
-    raise NotImplementedError
+    allowlist = _allowlist(root)
+    for label, text, _, _ in _text_inputs(root):
+        for number, line in enumerate(text.splitlines(), 1):
+            for token in _link_tokens(line):
+                problem = _scheme_problem(token, allowlist)
+                assert not problem, f"{label}:{number}: {token!r}: {problem}"
+
+
+def _interpolates(line: str) -> bool:
+    start = line.find('$"')
+    while start != -1:
+        rest = line[start + 2:]
+        end = rest.find('"')
+        if "{" in (rest if end == -1 else rest[:end]):
+            return True
+        start = line.find('$"', start + 2)
+    return False
+
+
+def _unsafe_pattern(line: str) -> str:
+    text = unicodedata.normalize("NFKC", line)
+    if _interpolates(text):
+        return '$" with {'
+    lowered = text.lower()
+    return next((pattern for pattern in UNSAFE_SUBSTRINGS if pattern in lowered), "")
 
 
 def check_unsafe_snippets(root: Path) -> None:
-    raise NotImplementedError
+    for path, text in _skill_texts(root):
+        label = path.relative_to(root).as_posix()
+        for snippet_id, body, line in snippets(text):
+            for offset, code in enumerate(body.splitlines(), 1):
+                pattern = _unsafe_pattern(code)
+                assert not pattern, f"{label}:{line + offset}: {pattern} in snippet {snippet_id or '(no id)'}"
+
+
+def _fold(text: str) -> str:
+    return " ".join(unicodedata.normalize("NFKC", text).lower().split())
+
+
+def _plain(sentence: str) -> str:
+    return sentence.strip().lstrip("-*+>#| ").rstrip("|* ")
+
+
+def _ascii_tokens(text: str) -> list[str]:
+    return _word_tokens("".join(char if char.isascii() else " " for char in text), "")
+
+
+def _contains_word(folded: str, words: tuple[str, ...], lang: str) -> bool:
+    tokens = set(_ascii_tokens(folded) if lang == "zh" else _word_tokens(folded, ""))
+    return any(word in folded if lang == "zh" and not word.isascii() else word in tokens for word in words)
+
+
+def _is_claim(sentence: str, lang: str) -> bool:
+    folded = _fold(sentence)
+    for phrase in REMOVED_PHRASES:
+        folded = folded.replace(phrase, " ")
+    return _contains_word(folded, TRIGGERS[lang], lang) and _contains_word(folded, AGENT_WORDS[lang], lang)
+
+
+def _marketplace_descriptions(root: Path) -> list[str]:
+    path = root / MARKETPLACE
+    if not path.is_file():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError as problem:
+        raise AssertionError(f"{MARKETPLACE.as_posix()}: not valid JSON ({problem})") from None
+    meta = data.get("metadata") if isinstance(data, dict) else None
+    plugins = data.get("plugins") if isinstance(data, dict) else None
+    values = [meta.get("description") if isinstance(meta, dict) else None]
+    values += [plugin.get("description") for plugin in plugins if isinstance(plugin, dict)] if isinstance(plugins, list) else []
+    return [value for value in values if isinstance(value, str)]
 
 
 def check_agent_claims(root: Path) -> None:
-    raise NotImplementedError
+    inputs = [(label, text, lang) for label, text, group, lang in _text_inputs(root) if group != "marketplace"]
+    inputs += [(MARKETPLACE.as_posix(), text, "en") for text in _marketplace_descriptions(root)]
+    for label, text, lang in inputs:
+        allowed = _fold(AGENT_SENTENCES[lang])
+        for sentence, number in _sentences_at(text, lang):
+            plain = _plain(sentence)
+            assert _fold(plain) == allowed or not _is_claim(plain, lang), f"{label}:{number}: unlisted agent claim: {plain!r}"
+
+
+def _command_like(span: str) -> bool:
+    return any(char.isspace() or char in "|;&" for char in span)
+
+
+def _expect_command(label: str, number: int, text: str, ids: set[str]) -> int:
+    ok = text.isascii() and text.startswith(PACKAGE_COMMAND) and text[len(PACKAGE_COMMAND):] in ids
+    assert ok, f"{label}:{number}: {text!r} is not exactly `{PACKAGE_COMMAND}<one of the ten package ids>`"
+    return 1
+
+
+def _fence_lines(body: str, first: int) -> list[tuple[str, int]]:
+    return [(line.strip(), first + offset) for offset, line in enumerate(body.splitlines()) if line.strip()]
+
+
+def _fence_name(lines: list[str], number: int) -> str:
+    words = lines[number - 1].strip().lstrip("`~").split()
+    return words[0] if words else ""
+
+
+def _banned_calls(label: str, body: str, first: int) -> None:
+    for text, number in _fence_lines(body, first):
+        for call in CSHARP_BANNED:
+            assert call not in text, f"{label}:{number}: {call} in a csharp fence"
+
+
+def _check_block(label: str, lines: list[str], span: tuple[str, str, int], ids: set[str]) -> int:
+    kind, body, number = span
+    name = _fence_name(lines, number) if kind == "fence" else ""
+    first = number + 1 if kind == "fence" else number
+    if name == "csharp":
+        _banned_calls(label, body, first)
+        return 0
+    if name == "json":
+        try:
+            json.loads(body)
+        except ValueError:
+            raise AssertionError(f"{label}:{number}: the json fence does not parse") from None
+        return 0
+    return sum(_expect_command(label, at, text, ids) for text, at in _fence_lines(body, first))
 
 
 def check_commands(root: Path) -> None:
-    raise NotImplementedError
+    ids = set(package_ids(root))
+    count = 0
+    for path, text in _skill_texts(root):
+        label = path.relative_to(root).as_posix()
+        lines = text.splitlines()
+        for span in code_spans(text):
+            if span[0] != "inline":
+                count += _check_block(label, lines, span, ids)
+            elif _command_like(span[1].strip()):
+                count += _expect_command(label, span[2], span[1].strip(), ids)
+    COUNTS["command lines"] = count
+
+
+def _bad_characters(text: str, categories: tuple[str, ...]) -> tuple[int, str] | None:
+    normal = unicodedata.normalize("NFKC", text).replace("\r\n", "\n")
+    for number, line in enumerate(normal.split("\n"), 1):
+        for char in line:
+            if char != "\t" and unicodedata.category(char) in categories:
+                return number, char
+    return None
+
+
+def _hidden_html(text: str) -> tuple[int, str] | None:
+    chars: list[str] = []
+    lines: list[int] = []
+    for number, line in enumerate(unicodedata.normalize("NFKC", text).splitlines(), 1):
+        for char in line:
+            if not char.isspace():
+                chars.append(char.lower())
+                lines.append(number)
+    flat = "".join(chars)
+    for pattern in HIDDEN_HTML:
+        at = flat.find("".join(pattern.split()).lower())
+        if at != -1:
+            return lines[at], pattern
+    return None
 
 
 def check_hidden_text(root: Path) -> None:
-    raise NotImplementedError
+    inputs = _text_inputs(root)
+    for label, text, group, _ in inputs:
+        bad = _bad_characters(text, PAGE_CATEGORIES if group == "page" else STRICT_CATEGORIES)
+        assert bad is None, f"{label}:{bad[0] if bad else 0}: hidden or control character U+{ord(bad[1]) if bad else 0:04X}"
+        html = _hidden_html(text) if group != "page" else None
+        assert html is None, f"{label}:{html[0] if html else 0}: hidden HTML {html[1] if html else ''!r}"
+    COUNTS["text files"] = len(inputs)
+
+
+def _git_symlinks(root: Path) -> list[str] | None:
+    command = ["git", "ls-files", "-s", "-z", "--", *(path.as_posix() for path in SYMLINK_ROOTS)]
+    try:
+        done = subprocess.run(command, cwd=root, capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as problem:
+        print(f"git mode check skipped: {problem}", file=sys.stderr)
+        return None
+    if done.returncode != 0:
+        print("git mode check skipped: not a git repository", file=sys.stderr)
+        return None
+    entries = [entry.split("\t", 1) for entry in done.stdout.split("\0") if "\t" in entry]
+    return [path for meta, path in entries if meta.split()[0] == GIT_SYMLINK_MODE]
 
 
 def check_no_symlinks(root: Path) -> None:
-    raise NotImplementedError
+    for start in SYMLINK_ROOTS:
+        assert not os.path.islink(root / start), f"{start.as_posix()}: is a link"
+        for folder, folders, names in os.walk(root / start):
+            for name in folders + names:
+                path = Path(folder) / name
+                assert not os.path.islink(path), f"{path.relative_to(root).as_posix()}: is a link"
+    linked = _git_symlinks(root)
+    assert not linked, f"{linked[0] if linked else ''}: git mode {GIT_SYMLINK_MODE} (a link)"
+
+
+def _has_stem(stem: str, folded: str, tokens: list[str]) -> bool:
+    return stem in folded if " " in stem else any(token.startswith(stem) for token in tokens)
+
+
+def _limit_problem(folded: str, names: list[str]) -> str:
+    tokens = _word_tokens(folded, "")
+    for stem in LIMIT_ALWAYS:
+        if _has_stem(stem, folded, tokens):
+            return stem
+    for name in names:
+        if f"set {name} to" in folded:
+            return f"set {name} to"
+    if "limit" in folded or any(name in folded for name in names):
+        return next((stem for stem in RAISE_STEMS if _has_stem(stem, folded, tokens)), "")
+    return ""
 
 
 def check_limit_prose(root: Path) -> None:
-    raise NotImplementedError
+    names = [name.lower() for name in limit_rows(_read(root, "site/pages/limits.md"))]
+    exempt = {_fold(sentence) for sentence in FORBID_SENTENCES}
+    for path, text in _skill_texts(root):
+        label = path.relative_to(root).as_posix()
+        for sentence, number in _sentences_at(text, "en"):
+            folded = _fold(_plain(sentence))
+            problem = "" if folded in exempt else _limit_problem(folded, names)
+            assert not problem, f"{label}:{number}: limit-raising prose ({problem}): {folded[:80]!r}"
 
 
 def check_floors(counts: Counter) -> None:
-    raise NotImplementedError
+    for kind, (floor, exact) in FLOORS.items():
+        assert kind in counts, f"{kind}: not counted (floor {floor})"
+        if exact:
+            assert counts[kind] == floor, f"{kind}: counted {counts[kind]}, expected exactly {floor}"
+        else:
+            assert counts[kind] >= floor, f"{kind}: counted {counts[kind]}, floor {floor}"
 
 
 def check_page(root: Path) -> None:
@@ -839,8 +1333,32 @@ def split_skill(text: str) -> tuple[str, str]:
     return front, body
 
 
+CHECKS = (
+    check_front_matter, check_inside_folder, check_not_under_claude, check_licence_files, check_no_language_variants,
+    check_package_ids, check_backends, check_engine_status, check_strict_lenient, check_limits, check_range, check_adapters,
+    check_snippet_ids, check_snippet_anchors, check_required_sentences, check_no_versions, check_hostile, check_urls,
+    check_schemes, check_unsafe_snippets, check_agent_claims, check_commands, check_hidden_text, check_no_symlinks,
+    check_limit_prose, check_page, check_install_commands, check_marketplace, check_sample_references,
+)
+
+
 def main(root: Path = ROOT) -> int:
-    raise NotImplementedError
+    COUNTS.clear()
+    assert (root / SKILL_MD).is_file(), f"{SKILL_MD.as_posix()}: missing; the skill folder is never an optional input"
+    for check in CHECKS:
+        optional = OPTIONAL_INPUTS.get(check.__name__)
+        if optional is not None and not (root / optional).is_file():
+            print(f"{OPTIONAL_KINDS[check.__name__]}: absent")
+            continue
+        check(root)
+    for kind in sorted(COUNTS):
+        print(f"{kind}: {COUNTS[kind]}")
+    if root is ROOT:
+        check_floors(COUNTS)
+        print("floors: ok")
+    else:
+        print("floors: skipped")
+    return 0
 
 
 class RealRepoTests(unittest.TestCase):
