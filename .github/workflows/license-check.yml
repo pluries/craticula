@@ -45,9 +45,14 @@ jobs:
         working-directory: csharp
         run: dotnet restore Craticula.sln -p:NuGetAudit=false
 
-      - name: Restore the pinned nuget-license tool
-        run: dotnet tool restore --tool-manifest csharp/.config/dotnet-tools.json
+      # The tool is installed to an explicit folder at the version the manifest pins and is called by its path, so the check does not
+      # depend on `dotnet tool run` finding the manifest: on the hosted runner that lookup failed with "Run dotnet tool restore"
+      # although the restore had succeeded (#3945).
+      - name: Install the pinned nuget-license tool
+        run: |
+          version="$(python3 -c "import json; print(json.load(open('csharp/.config/dotnet-tools.json'))['tools']['nuget-license']['version'])")"
+          dotnet tool install nuget-license --version "$version" --tool-path "$RUNNER_TEMP/nuget-license"
 
       # Exit 0 clean, 1 a license outside the policy or a stale override, 2 an environment error (tool missing, no project).
       - name: Check dependency licenses
-        run: python3 scripts/check-licenses.py
+        run: python3 scripts/check-licenses.py --tool "$RUNNER_TEMP/nuget-license/nuget-license"
