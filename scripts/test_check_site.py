@@ -55,6 +55,8 @@ class Stub(BaseHTTPRequestHandler):
         mode = self.server.mode
         host = host_header.split(":")[0]
         base = f"https://{PRIMARY}:{self.server.https_port}"
+        if mode.startswith("edge") and self.server.plain:
+            return self._edge_plain(host, host_header, path)
         if host == PRIMARY and self.server.plain:
             return (301 if mode == "wrong301" else 308), self._open_path(path, base + ("/" if mode == "path_lost" else path))
         if host in REDIRECTORS:
@@ -64,6 +66,18 @@ class Stub(BaseHTTPRequestHandler):
         if mode == "open_host":
             return 302, f"https://{host_header}{path}"
         return 404, None
+
+    def _edge_plain(self, host, host_header, path):
+        """Cloudflare's Always Use HTTPS: every known host is answered over http with a redirect to itself over https."""
+        mode, port = self.server.mode, self.server.https_port
+        if host not in (PRIMARY, *REDIRECTORS):
+            return (301, f"https://{host_header}{path}") if mode == "edge_forged" else (404, None)
+        location = f"https://{host}:{port}{path}"
+        if path[:2] in ("//", "/\\", "/h"):
+            location = {"edge_other": "https://evil.example/",
+                        "edge_suffix": f"https://{host}.evil.example:{port}/",
+                        "edge_userinfo": f"https://{host}:{port}@evil.example/"}.get(mode, location)
+        return {"edge_308": 308, "edge_302": 302}.get(mode, 301), location
 
     def _open_path(self, path, location):
         if self.server.mode == "open_path" and path[:2] in ("//", "/\\", "/h"):
@@ -81,7 +95,7 @@ class Stub(BaseHTTPRequestHandler):
 
     def _answer(self):
         host, target = self.headers.get("Host", ""), self._target()
-        if host.split(":")[0] == PRIMARY and not self.server.plain and self.server.mode == "good":
+        if host.split(":")[0] == PRIMARY and not self.server.plain and (self.server.mode == "good" or self.server.mode.startswith("edge")):
             self._serve_site(target.split("?")[0])
             return
         status, location = self._decide(host, target)
@@ -275,6 +289,48 @@ class CheckSiteTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
                 self.assertIn(f"{tool} is not installed", result.stderr)
                 self.assertNotIn("passed", result.stdout)
+
+    # --- opt-in edge mode: CHECK_SITE_EDGE_HTTPS=on (Cloudflare's Always Use HTTPS answers http with a 301 to the same host) ---
+
+    EDGE = {"CHECK_SITE_EDGE_HTTPS": "on"}
+
+    def test_edge_a_good_edge_site_exits_0(self):
+        self.start(mode="edge")
+        result = self.run_script(**self.EDGE)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn("FAIL", result.stdout)
+
+    def test_edge_a_308_or_302_where_301_is_expected_exits_1_and_names_the_url(self):
+        for mode, got in (("edge_308", 308), ("edge_302", 302)):
+            with self.subTest(mode=mode):
+                self.start(mode=mode)
+                result = self.run_script(**self.EDGE)
+                self.assertEqual(result.returncode, 1, result.stdout)
+                self.assertRegex(result.stdout, rf"FAIL http://craticula\.pluries\.dev:\d+/some/page.*expected status 301, got {got}")
+                self.assertRegex(result.stdout, rf"FAIL http://pluries\.dev:\d+/some/page.*expected status 301, got {got}")
+
+    def test_edge_a_location_built_from_the_forged_host_header_is_still_an_open_redirect(self):
+        self.start(mode="edge_forged")
+        result = self.run_script(**self.EDGE)
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("forged Host: evil.example", result.stdout)
+        self.assertIn("open redirect, Location is https://evil.example", result.stdout)
+
+    def test_edge_a_location_on_another_host_or_a_lookalike_is_an_open_redirect(self):
+        for mode in ("edge_other", "edge_suffix", "edge_userinfo"):
+            with self.subTest(mode=mode):
+                self.start(mode=mode)
+                result = self.run_script(**self.EDGE)
+                self.assertEqual(result.returncode, 1, result.stdout)
+                self.assertIn("(crafted path)", result.stdout)
+                self.assertIn("open redirect, Location is https://", result.stdout)
+                self.assertIn("evil.example", result.stdout)
+
+    def test_edge_a_bad_value_exits_2_and_names_the_variable(self):
+        self.start(mode="edge")
+        result = self.run_script(CHECK_SITE_EDGE_HTTPS="yes")
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("CHECK_SITE_EDGE_HTTPS", result.stderr)
 
     # --- per-language live checks (spec 004, US4-AS1, US4-AS3, FR-016, FR-022) ---
     # Contract: CHECK_SITE_LANGUAGES = the enabled language codes, space separated, default empty (English only). English is always
