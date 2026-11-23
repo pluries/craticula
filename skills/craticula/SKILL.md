@@ -1,6 +1,6 @@
 ---
 name: craticula
-description: Use when a developer adds Craticula to a C# project, wants a backend for the AG Grid server-side row model, compiles a grid request to SQL, MongoDB, OpenSearch or Elasticsearch queries, or asks how to keep that compile step injection-safe. Do NOT use for changing Craticula itself (spec, fixtures, compilers, releases), for TypeScript, Python or Go ports, for AG Grid user-interface questions, or for other libraries.
+description: Use when a developer adds Craticula to a C# project, wants a backend for the AG Grid server-side row model, compiles a grid request to SQL, MongoDB, OpenSearch or Elasticsearch queries, or asks how to keep that compile step injection-safe. Do NOT use for changing Craticula itself (spec, fixtures, compilers, releases), for AG Grid user-interface questions, or for other libraries. Also use it when someone asks for a TypeScript, Python or Go package of Craticula, to say that none is published and to offer the C# library.
 license: Apache-2.0
 ---
 
@@ -163,6 +163,8 @@ A request over a limit is refused before a query is built. The host owns account
 ## Range and languages
 
 Craticula reads AG Grid server-side row model requests from version 31 to 36, and the Community infinite row model for flat grids. Pivot mode is refused. Only the C# library is published: no TypeScript, Python or Go package exists.
+
+When the user asks for a Python, TypeScript or Go package, say in one sentence that none exists and offer the C# library. Do not write an install command for a package name you have not seen.
 
 ## Edge cases
 
