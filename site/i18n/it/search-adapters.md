@@ -2,9 +2,9 @@
 translates: search-adapters
 title: Adattatori MongoDB e OpenSearch
 description: Eseguire le query MongoDB e OpenSearch compilate con gli adattatori facoltativi, inclusa la paginazione profonda.
-source_fingerprint: 618600df4a1917b0cc73ce2d38c6271b34127199cecf4189a7fd45355ccb2ac7
+source_fingerprint: 1e0376b06a8003383dd7effa6610d3efd908287637f20d9f94dff2c5a69ef485
 drafter: claude
-drafted_on: 2026-11-20
+drafted_on: 2026-11-23
 status: approved
 ---
 # Adattatori MongoDB e OpenSearch {#mongodb-and-opensearch-adapters}
@@ -24,7 +24,7 @@ Gli adattatori lo eseguono al posto dello sviluppatore. Installarli da NuGet: `d
 
 ## MongoDB {#mongodb}
 
-`Craticula.MongoDB.Driver` compila con `Craticula.Mongo` ed esegue la pipeline tramite il driver ufficiale di MongoDB, nell'intervallo `[3.14.0, 4.0)`.
+`Craticula.MongoDB.Driver` compila con `Craticula.Mongo` ed esegue la pipeline tramite il driver ufficiale di MongoDB, nell'intervallo `[3.14.1, 4.0)`.
 
 ```csharp
 MongoGridPage result = await MongoGridQuery.FetchPageAsync(
