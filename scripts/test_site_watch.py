@@ -13,11 +13,11 @@ import os
 import shutil
 import subprocess
 import tempfile
-import threading
 import unittest
 import xml.etree.ElementTree as ET
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+import test_check_demos as demos
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
@@ -50,30 +50,7 @@ class SiteWatchTests(unittest.TestCase):
     def attempts(self):
         return len(self.counter.read_text().split()) if self.counter.exists() else 0
 
-    def notify_server(self, path="/secret-topic"):
-        bodies = []
-        self.notify_types = types = []
-
-        class Handler(BaseHTTPRequestHandler):
-            def do_POST(handler):  # noqa: N805
-                length = int(handler.headers.get("Content-Length", "0"))
-                types.append(handler.headers.get("Content-Type", ""))
-                bodies.append(handler.rfile.read(length).decode("utf-8"))
-                handler.send_response(200)
-                handler.end_headers()
-
-            def log_message(handler, *args):  # noqa: N805
-                pass
-
-        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        threading.Thread(target=server.serve_forever, daemon=True).start()
-
-        def stop():
-            server.shutdown()
-            server.server_close()
-
-        self.addCleanup(stop)
-        return f"http://127.0.0.1:{server.server_address[1]}{path}", bodies
+    notify_server = demos.DemoWatchTests.notify_server
 
     def test_all_pass_exits_0_and_posts_nothing(self):
         url, bodies = self.notify_server()
