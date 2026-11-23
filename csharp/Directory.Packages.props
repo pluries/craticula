@@ -29,7 +29,9 @@
     <!-- Moved to 3.14.0 on 2026-11-20, a second recorded exception to the two-week rule (published 2026-11-12, 8 days old):
          3.14.0 fixes CVE-2026-126982 (BSON type allow-list bypass, HIGH, versions 3.2.0 up to 3.14.0 are affected), which failed the
          Dependency-Track gate of build 150 (maker's decision, 2026-11-20). 3.14.1 (2026-11-19) is not needed for the fix. -->
-    <PackageVersion Include="MongoDB.Driver" Version="3.14.0" />
+    <!-- Moved to 3.14.1 on 2026-11-23, a third recorded exception to the two-week rule (published 2026-11-19, 4 days old): 3.14.0 carries
+         CVE-2026-129938 (CRITICAL), which failed the Dependency-Track gate of build 157 (maker's decision, 2026-11-23). -->
+    <PackageVersion Include="MongoDB.Driver" Version="3.14.1" />
     <!-- #1648: Craticula.OpenSearch.Client's one runtime dependency. Moved to 2.2.0 by #3031 (the newest release at least two
          weeks old on 2026-10-25, published 2026-09-23). Craticula.OpenSearch.Client.Tests
          references the SAME package directly (as the host owning the real connection), mirroring

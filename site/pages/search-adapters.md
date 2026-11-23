@@ -15,7 +15,7 @@ The adapters run it for you. Install them from NuGet: `dotnet add package Cratic
 
 ## MongoDB
 
-`Craticula.MongoDB.Driver` compiles with `Craticula.Mongo` and runs the pipeline through the official MongoDB driver, in the range `[3.14.0, 4.0)`.
+`Craticula.MongoDB.Driver` compiles with `Craticula.Mongo` and runs the pipeline through the official MongoDB driver, in the range `[3.14.1, 4.0)`.
 
 ```csharp
 MongoGridPage result = await MongoGridQuery.FetchPageAsync(

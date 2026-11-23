@@ -17,7 +17,7 @@
          ADO.NET abstraction (any provider), MongoDB has exactly one .NET driver, so this reference is
          both the wire protocol AND the document model (BsonDocument/BsonValue) this package reads
          values back through. -->
-    <PackageReference Include="MongoDB.Driver" VersionOverride="[3.14.0,4.0)" />
+    <PackageReference Include="MongoDB.Driver" VersionOverride="[3.14.1,4.0)" />
   </ItemGroup>
 
   <ItemGroup>

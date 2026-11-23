@@ -27,7 +27,7 @@
     <!-- Oracle's MySQL provider (GPL-2.0-only WITH Universal-FOSS-exception-1.0), demo only; it needs EF Core 10.0.12. -->
     <PackageVersion Include="MySql.EntityFrameworkCore" Version="10.0.12" />
     <PackageVersion Include="Dapper" Version="2.1.89" />
-    <PackageVersion Include="MongoDB.Driver" Version="3.14.0" />
+    <PackageVersion Include="MongoDB.Driver" Version="3.14.1" />
     <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Data.SqlClient" Version="7.1.0" />
     <PackageVersion Include="MySqlConnector" Version="2.6.2" />

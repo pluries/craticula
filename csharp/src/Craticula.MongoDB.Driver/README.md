@@ -9,7 +9,7 @@ aggregation pipeline through the official MongoDB .NET driver, with paging, coun
 dotnet add package Craticula.MongoDB.Driver
 ```
 
-Depends on `MongoDB.Driver` `[3.14.0, 4.0)` and `Craticula.Mongo`.
+Depends on `MongoDB.Driver` `[3.14.1, 4.0)` and `Craticula.Mongo`.
 
 ## Example
 

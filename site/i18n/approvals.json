@@ -145,14 +145,6 @@
   },
   {
     "language": "fr",
-    "document": "search-adapters",
-    "source_fingerprint": "618600df4a1917b0cc73ce2d38c6271b34127199cecf4189a7fd45355ccb2ac7",
-    "translation_hash": "bec4b82d14ff08daf8e8f8c01e5c064c4c0058734129e0c9c3605f0566cb1fbf",
-    "approved_by": "Christian Stephan",
-    "approved_on": "2026-11-21"
-  },
-  {
-    "language": "fr",
     "document": "the-gridschema",
     "source_fingerprint": "cdf6e47e0fa6a2ef7b974c3b2ac02ea7892b7f9a31ffa33a18595708e80d8a45",
     "translation_hash": "bd4edb5c7a87ea5c576f744a38d29ea37a41b3003a9a2caea5dcf5849d3a593e",
@@ -284,14 +276,6 @@
     "document": "relational-adapters",
     "source_fingerprint": "c7c6226b52fe85563de296ccf30f4b6133346e53ef471b90257c33696e64481f",
     "translation_hash": "c5110cde3d55045e93489e9f857b5254c290c700e2e51478008352ad15da7968",
-    "approved_by": "Christian Stephan",
-    "approved_on": "2026-11-21"
-  },
-  {
-    "language": "de",
-    "document": "search-adapters",
-    "source_fingerprint": "618600df4a1917b0cc73ce2d38c6271b34127199cecf4189a7fd45355ccb2ac7",
-    "translation_hash": "edf0c742e7840094e329e6344aae104a3496e6332db1a991dee2a9b45f921d3c",
     "approved_by": "Christian Stephan",
     "approved_on": "2026-11-21"
   },
@@ -433,14 +417,6 @@
   },
   {
     "language": "it",
-    "document": "search-adapters",
-    "source_fingerprint": "618600df4a1917b0cc73ce2d38c6271b34127199cecf4189a7fd45355ccb2ac7",
-    "translation_hash": "47f89a452be7d07ed34f10c637486cdbb8a31ff3f8b6b7f4e2efd756151b00e6",
-    "approved_by": "Christian Stephan",
-    "approved_on": "2026-11-21"
-  },
-  {
-    "language": "it",
     "document": "the-gridschema",
     "source_fingerprint": "cdf6e47e0fa6a2ef7b974c3b2ac02ea7892b7f9a31ffa33a18595708e80d8a45",
     "translation_hash": "e58cbe18127f2ecc96e726748827b63690803ac8e4d45ef87913892f2c1046d8",
@@ -577,14 +553,6 @@
   },
   {
     "language": "es",
-    "document": "search-adapters",
-    "source_fingerprint": "618600df4a1917b0cc73ce2d38c6271b34127199cecf4189a7fd45355ccb2ac7",
-    "translation_hash": "83a33c0ea0dd8dbbecb513d89977a9249aa02aeec49998f30332ab0e1ce43873",
-    "approved_by": "Christian Stephan",
-    "approved_on": "2026-11-21"
-  },
-  {
-    "language": "es",
     "document": "the-gridschema",
     "source_fingerprint": "cdf6e47e0fa6a2ef7b974c3b2ac02ea7892b7f9a31ffa33a18595708e80d8a45",
     "translation_hash": "856b87095967894108c1eaeaf29bde912ed2bbd2e52cad1982c679eccfe4c66e",
@@ -716,14 +684,6 @@
     "document": "relational-adapters",
     "source_fingerprint": "c7c6226b52fe85563de296ccf30f4b6133346e53ef471b90257c33696e64481f",
     "translation_hash": "c0e9ddb9e99f23fd0e7802273c02256bb140e5966f0c22e8bd4546535b325ce7",
-    "approved_by": "Christian Stephan",
-    "approved_on": "2026-11-21"
-  },
-  {
-    "language": "zh",
-    "document": "search-adapters",
-    "source_fingerprint": "618600df4a1917b0cc73ce2d38c6271b34127199cecf4189a7fd45355ccb2ac7",
-    "translation_hash": "960f9f40bc380ee50a0f881a7fd101d1dd209e6ef90b75d28b4ea69c3245850a",
     "approved_by": "Christian Stephan",
     "approved_on": "2026-11-21"
   },
@@ -878,5 +838,45 @@
     "translation_hash": "314d26f0ff61bb0f3a4a8406e81e73efe30bd395855df9f927aad2453b141532",
     "approved_by": "Christian Stephan",
     "approved_on": "2026-11-22"
+  },
+  {
+    "language": "fr",
+    "document": "search-adapters",
+    "source_fingerprint": "1e0376b06a8003383dd7effa6610d3efd908287637f20d9f94dff2c5a69ef485",
+    "translation_hash": "14ae4de7f3ba67622da80dac21cea43e16114b07181cb8e38f1db09e001c86aa",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-23"
+  },
+  {
+    "language": "de",
+    "document": "search-adapters",
+    "source_fingerprint": "1e0376b06a8003383dd7effa6610d3efd908287637f20d9f94dff2c5a69ef485",
+    "translation_hash": "97851e5a17452cb1d7cfcb1cc7a3894c09c17d6b0b43e89f3cd18cc19b1d2903",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-23"
+  },
+  {
+    "language": "it",
+    "document": "search-adapters",
+    "source_fingerprint": "1e0376b06a8003383dd7effa6610d3efd908287637f20d9f94dff2c5a69ef485",
+    "translation_hash": "6da039343c9145adc22abe629c752ec6ee085dd5335a60aebd6628117a888290",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-23"
+  },
+  {
+    "language": "es",
+    "document": "search-adapters",
+    "source_fingerprint": "1e0376b06a8003383dd7effa6610d3efd908287637f20d9f94dff2c5a69ef485",
+    "translation_hash": "dcc5400c5c12121777d7e00d1291890fd439e3dd484f68a3e13585466c3b0ebe",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-23"
+  },
+  {
+    "language": "zh",
+    "document": "search-adapters",
+    "source_fingerprint": "1e0376b06a8003383dd7effa6610d3efd908287637f20d9f94dff2c5a69ef485",
+    "translation_hash": "bc10926c08681c9be2d93cfb55a3dee7f33ec14caf8959aef142c72bf9889d9e",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-23"
   }
 ]

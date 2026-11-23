@@ -2,9 +2,9 @@
 translates: search-adapters
 title: MongoDB- und OpenSearch-Adapter
 description: Kompilierte MongoDB- und OpenSearch-Abfragen mit den optionalen Adaptern ausführen, einschließlich Deep Paging.
-source_fingerprint: 618600df4a1917b0cc73ce2d38c6271b34127199cecf4189a7fd45355ccb2ac7
+source_fingerprint: 1e0376b06a8003383dd7effa6610d3efd908287637f20d9f94dff2c5a69ef485
 drafter: claude
-drafted_on: 2026-11-20
+drafted_on: 2026-11-23
 status: approved
 ---
 # MongoDB- und OpenSearch-Adapter {#mongodb-and-opensearch-adapters}
@@ -24,7 +24,7 @@ Die Adapter führen sie für Sie aus. Installieren Sie sie über NuGet: `dotnet 
 
 ## MongoDB {#mongodb}
 
-`Craticula.MongoDB.Driver` kompiliert mit `Craticula.Mongo` und führt die Pipeline über den offiziellen MongoDB-Treiber aus, im Bereich `[3.14.0, 4.0)`.
+`Craticula.MongoDB.Driver` kompiliert mit `Craticula.Mongo` und führt die Pipeline über den offiziellen MongoDB-Treiber aus, im Bereich `[3.14.1, 4.0)`.
 
 ```csharp
 MongoGridPage result = await MongoGridQuery.FetchPageAsync(
