@@ -25,6 +25,11 @@
 #                              elsewhere (a test stub); the certificate probe follows the mapping of <primary>:<https port>
 #   CHECK_SITE_LANGUAGES       enabled language codes besides English, space separated (empty: English only); each ^[a-z]{2,3}$, not en
 #   CHECK_SITE_CURL_OPTS       extra curl options, space separated (e.g. --cacert file)
+#   CHECK_SITE_EDGE_HTTPS      on|off (default off). on is for a site where Cloudflare's Always Use HTTPS answers every http request
+#                              itself, before the origin: checks 1 and 2 then expect 301 (not 308 / 302) on http, with Location
+#                              https://<same host> plus the same path and query (the https answers stay as above), and check 5 also
+#                              accepts a Location that starts with https://<probed host>/ (the host of the URL fetched, never the
+#                              forged Host header); a lookalike host, user info or another host stays an open redirect.
 set -euo pipefail
 
 die() { echo "check-site: $*" >&2; exit 2; }
@@ -34,6 +39,7 @@ REDIRECT_HOSTS="${CHECK_SITE_REDIRECT_HOSTS:-pluries.dev www.pluries.dev}"
 MIN_DAYS="${CHECK_SITE_MIN_DAYS:-30}"
 HTTP_PORT="${CHECK_SITE_HTTP_PORT:-80}"
 HTTPS_PORT="${CHECK_SITE_HTTPS_PORT:-443}"
+EDGE_HTTPS="${CHECK_SITE_EDGE_HTTPS:-off}"
 MAX_TIME=10
 PAGE_PATH="/some/page?a=1"
 PROBES=('//evil.example/' '/\evil.example' '/https://evil.example/')
@@ -58,6 +64,7 @@ require_environment() {
   date -d '@0' +%s >/dev/null 2>&1 || die "this date is not GNU date (date -d is needed for the certificate expiry)"
   [[ "$MIN_DAYS" =~ ^[0-9]+$ ]] || die "CHECK_SITE_MIN_DAYS must be a whole number"
   [[ "$HTTP_PORT" =~ ^[0-9]+$ && "$HTTPS_PORT" =~ ^[0-9]+$ ]] || die "the ports must be whole numbers"
+  [[ "$EDGE_HTTPS" == on || "$EDGE_HTTPS" == off ]] || die "CHECK_SITE_EDGE_HTTPS must be on or off"
   [ ${#REDIRECTORS[@]} -gt 0 ] || die "CHECK_SITE_REDIRECT_HOSTS is empty"
   [[ "$RAW_LANGUAGES" != *$'\n'* ]] || die "CHECK_SITE_LANGUAGES must be one line of language codes"
   local code
@@ -113,16 +120,21 @@ expect_redirect() {
 }
 
 check_primary_http_redirect() {
-  local base; base="$(expected_base)"
-  expect_redirect "$(url http "$PRIMARY" "$PAGE_PATH")" 308 "$base$PAGE_PATH"
-  expect_redirect "$(url http "$PRIMARY" "/")" 308 "$base/"
+  local base status=308; base="$(expected_base)"
+  if [ "$EDGE_HTTPS" = on ]; then status=301; fi
+  expect_redirect "$(url http "$PRIMARY" "$PAGE_PATH")" "$status" "$base$PAGE_PATH"
+  expect_redirect "$(url http "$PRIMARY" "/")" "$status" "$base/"
 }
 
 check_redirect_hosts() {
   local base host scheme; base="$(expected_base)"
   for host in "${REDIRECTORS[@]}"; do
     for scheme in http https; do
-      expect_redirect "$(url "$scheme" "$host" "$PAGE_PATH")" 302 "$base$PAGE_PATH"
+      if [ "$scheme" = http ] && [ "$EDGE_HTTPS" = on ]; then
+        expect_redirect "$(url http "$host" "$PAGE_PATH")" 301 "$(url https "$host" "$PAGE_PATH")"
+      else
+        expect_redirect "$(url "$scheme" "$host" "$PAGE_PATH")" 302 "$base$PAGE_PATH"
+      fi
     done
   done
 }
@@ -240,16 +252,17 @@ check_languages() {
   for code in ${LANGUAGES[@]+"${LANGUAGES[@]}"}; do check_language "$code"; done
 }
 
-# A Location is safe when it is the site itself or a path under it.
+# location_is_safe <probed host>: safe is the site itself or a path under it; in edge mode also a path under the probed host over https.
 location_is_safe() {
-  local base; base="$(expected_base)"
-  [[ "$LOCATION" == "$base" || "$LOCATION" == "$base/"* ]]
+  local base probed; base="$(expected_base)"; probed="$(url https "$1" "")"
+  [[ "$LOCATION" == "$base" || "$LOCATION" == "$base/"* ]] && return 0
+  [ "$EDGE_HTTPS" = on ] && [[ "$LOCATION" == "$probed/"* ]]
 }
 
 assess_open_redirect() {
-  local what="$1"
+  local what="$1" probed_host="$2"
   if [ -n "$LOCATION" ]; then
-    if location_is_safe; then ok; else fail "$what: open redirect, Location is $LOCATION"; fi
+    if location_is_safe "$probed_host"; then ok; else fail "$what: open redirect, Location is $LOCATION"; fi
   elif [[ "$STATUS" == 4* ]]; then
     ok
   else
@@ -265,11 +278,11 @@ check_open_redirects() {
     for probe in "${PROBES[@]}"; do
       target="$(url "$scheme" "$host" "$probe")"
       fetch "$target"
-      assess_open_redirect "$target (crafted path)"
+      assess_open_redirect "$target (crafted path)" "$host"
     done
     target="$(url "$scheme" "$host" "/")"
     fetch "$target" -H "Host: evil.example"
-    assess_open_redirect "$target (forged Host: evil.example)"
+    assess_open_redirect "$target (forged Host: evil.example)" "$host"
   done
 }
 
