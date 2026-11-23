@@ -839,6 +839,19 @@ def check_snippet_ids(root: Path) -> None:
     COUNTS["snippets"] = count
 
 
+def _check_named_snippet(root: Path, label: str, line: int, snippet_id: str, tokens: set) -> None:
+    for name in SNIPPET_NAMES[snippet_id]:
+        assert name in tokens, f"{label}:{line}: snippet {snippet_id} must hold {name}"
+        for sample in SAMPLES_OF[snippet_id]:
+            program = _read(root, f"csharp/samples/{sample}/Program.cs")
+            assert name in _identifiers(program), f"csharp/samples/{sample}/Program.cs: {name} (needed by snippet {snippet_id}) is gone"
+
+
+def _check_async_tokens(label: str, line: int, tokens: set, methods: set) -> None:
+    for token in sorted(tokens):
+        assert not token.endswith("Async") or token in methods, f"{label}:{line}: {token} is not an adapter method"
+
+
 def check_snippet_anchors(root: Path) -> None:
     methods = set().union(*adapter_methods(root).values())
     for path, text in _skill_texts(root):
@@ -846,14 +859,9 @@ def check_snippet_anchors(root: Path) -> None:
         for snippet_id, body, line in snippets(text):
             tokens = _identifiers(body)
             if snippet_id in SNIPPET_NAMES:
-                for name in SNIPPET_NAMES[snippet_id]:
-                    assert name in tokens, f"{label}:{line}: snippet {snippet_id} must hold {name}"
-                    for sample in SAMPLES_OF[snippet_id]:
-                        program = _read(root, f"csharp/samples/{sample}/Program.cs")
-                        assert name in _identifiers(program), f"csharp/samples/{sample}/Program.cs: {name} (needed by snippet {snippet_id}) is gone"
+                _check_named_snippet(root, label, line, snippet_id, tokens)
             else:
-                for token in sorted(tokens):
-                    assert not token.endswith("Async") or token in methods, f"{label}:{line}: {token} is not an adapter method"
+                _check_async_tokens(label, line, tokens, methods)
     COUNTS["snippet anchors"] = sum(len(names) for names in SNIPPET_NAMES.values())
 
 
@@ -2025,7 +2033,7 @@ UNLISTED_CLAIMS = {
     "es": "El agente fue probado.",
     "zh": "智能体已经通过测试。",
 }
-HIDDEN_CHARACTERS = ("​", "‮", "\u0007", "", " ", " ", "́", "⃝")
+HIDDEN_CHARACTERS = ("\u200b", "\u202e", "\u0007", "\ue000", "\u2028", "\u2029", "\u0301", "\u20dd")
 
 
 def page_rel(lang: str) -> str:
@@ -2052,7 +2060,7 @@ def run_main(root: Path) -> tuple[object, str]:
     return result, out.getvalue()
 
 
-class ScratchCase(unittest.TestCase):
+class ScratchCase:
     """A scratch copy of the public inputs (`self.root`) and probes that append text to one file, run a check and restore the file."""
 
     def setUp(self):
@@ -2245,7 +2253,7 @@ class US3VersionAndHostileTests(unittest.TestCase):
         self.assertEqual(len(sentences("智能体很好！测试好？完", "zh")), 3)
 
 
-class US3NegativeTests(ScratchCase):
+class US3NegativeTests(ScratchCase, unittest.TestCase):
     """US3: one fact broken at a time on a scratch copy."""
 
     def test_an_empty_skill_folder_fails(self):
@@ -2526,7 +2534,7 @@ class US3NegativeTests(ScratchCase):
         for character in HIDDEN_CHARACTERS:
             with self.subTest(character=f"U+{ord(character):04X}", where="skill"):
                 self.assert_fails(check_hidden_text, f"Word x{character}y here.")
-        for character in ("​", "‮", "", "́"):
+        for character in ("\u200b", "\u202e", "\ue000", "\u0301"):
             with self.subTest(character=f"U+{ord(character):04X}", where="marketplace"):
                 scratch = self.fresh()
                 self.write_marketplace(scratch, entry=f"Adds x{character} here.")
@@ -2538,7 +2546,7 @@ class US3NegativeTests(ScratchCase):
         check_hidden_text(self.root)
         for lang in LANGS:
             with self.subTest(where=page_rel(lang)):
-                self.assert_fails(check_hidden_text, "Word x​y here.", page_rel(lang))
+                self.assert_fails(check_hidden_text, "Word x\u200by here.", page_rel(lang))
         self.assert_passes(check_hidden_text, "Word x́ here.", page_rel("en"))
 
     def test_hidden_html_fails(self):
@@ -2625,7 +2633,7 @@ class US3NegativeTests(ScratchCase):
 
 
 
-class US5MarketplaceTests(ScratchCase):
+class US5MarketplaceTests(ScratchCase, unittest.TestCase):
     """US5: the marketplace file, the skill folder it points at and the scans over its text, one fact broken at a time."""
 
     def load(self, root: Path | None = None) -> dict:
@@ -2683,7 +2691,7 @@ class US5MarketplaceTests(ScratchCase):
 
     def test_there_is_no_second_copy_of_the_skill(self):
         # US5-AS2, US5-AS5 (the plugin is the same text: no second copy), FR-017: one SKILL.md in the tree, the one the entry points at; a SKILL.md under .claude-plugin fails.
-        found = [item for item in self.root.rglob("SKILL.md")]
+        found = list(self.root.rglob("SKILL.md"))
         self.assertEqual(found, [self.root / SKILL_MD])
         target = self.root / ".claude-plugin" / "SKILL.md"
         shutil.copyfile(self.root / SKILL_MD, target)
@@ -2796,7 +2804,7 @@ US4_OLD_STATE = "Craticula is pre-release. No package is published yet, and nobo
 US4_NEW_STATE = "The C# packages are published on nuget.org, and nobody runs a demo for visitors."
 
 
-class US4PageTests(ScratchCase):
+class US4PageTests(ScratchCase, unittest.TestCase):
     """US4: the page, its five drafts and the install commands, on scratch pages (the real page is tested after it exists)."""
 
     def commands(self) -> tuple[str, str]:

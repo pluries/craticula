@@ -152,24 +152,31 @@ def _leaks_command(objects_file: str, entry: str) -> int:
     return EXIT_REFUSED if found else EXIT_OK
 
 
+def _run_command(command: str, argv):
+    if command == "check-extra" and len(argv) == 5:
+        code, message, _sha = check_extra(argv[2], argv[3], argv[4])
+        if message:
+            print(("\u26d4 " if code == EXIT_REFUSED else "") + message, file=sys.stderr)
+        return code
+    if command == "merge-message" and len(argv) == 2:
+        sys.stdout.write(merge_message())
+        return 0
+    if command == "leaks" and len(argv) == 4:
+        return _leaks_command(argv[2], argv[3])
+    if command == "is-recorded" and len(argv) == 5:
+        return 0 if argv[4] in recorded_syncs(argv[2], argv[3]) else 1
+    return None
+
+
 def main(argv):
     command = argv[1] if len(argv) > 1 else ""
     try:
-        if command == "check-extra" and len(argv) == 5:
-            code, message, _sha = check_extra(argv[2], argv[3], argv[4])
-            if message:
-                print(("\u26d4 " if code == EXIT_REFUSED else "") + message, file=sys.stderr)
-            return code
-        if command == "merge-message" and len(argv) == 2:
-            sys.stdout.write(merge_message())
-            return 0
-        if command == "leaks" and len(argv) == 4:
-            return _leaks_command(argv[2], argv[3])
-        if command == "is-recorded" and len(argv) == 5:
-            return 0 if argv[4] in recorded_syncs(argv[2], argv[3]) else 1
+        outcome = _run_command(command, argv)
     except RuntimeError as error:
         print(f"\u26d4 {error}", file=sys.stderr)
         return EXIT_REFUSED
+    if outcome is not None:
+        return outcome
     print("usage: publish_mirror.py check-extra <repo> <public> <head> | merge-message | is-recorded <repo> <head> <sha> | leaks <objects.txt> <entry>", file=sys.stderr)
     return 2
 
