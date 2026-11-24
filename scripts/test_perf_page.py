@@ -12,7 +12,9 @@ perf/compare.py reports the spread of two runs: exit 0 = any spread (the differe
 Run: python3 scripts/test_perf_page.py
 """
 import contextlib
+import functools
 import importlib.util
+import itertools
 import json
 import math
 import os
@@ -26,6 +28,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
+sys.path.insert(0, str(HERE))
+import build_site as bs  # noqa: E402
+from test_build_site import with_region  # noqa: E402
 PAGE_SCRIPT = HERE / "perf_page.py"
 COMPILE_JSON = "compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json"
 FIRST_LOAD_MANIFEST = "manifest-postgres-10k.json"
@@ -93,6 +98,18 @@ EXIT_2 = "exit 2"
 OLD_PAGE = "# an earlier page\n"
 OLD_SITE = json.dumps({"pages": [{"slug": "index"}]})
 UNMATCHED = "the two runs do not hold the same measurements"
+COMMITTED_RUNS = ROOT / "perf" / "results"
+REPORT_NAME = "Craticula.Benchmarks.CompileBenchmarks-report-full.json"
+RUN_REPORT = f"perf/results/{COMMITTED_RESULTS}/compile/results/{REPORT_NAME}"
+REPEAT_REPORT = f"perf/results/{COMMITTED_REPEAT}/compile/results/{REPORT_NAME}"
+README_NAME = "README.md"
+PAGE_RELATIVE = "site/pages/performance.md"
+LINK = re.compile(r"\[([^\]]+)\]\(([^)\s]+)\)")
+EXEMPT = ("bench-vm-10c-34g", "2026-11-16", COMMITTED_RESULTS)
+PREPARED, FULL = "prepared-schema", "full-compile"
+TARGET_SENTENCE = "at or above the 50 µs target"
+FILTER_TREE_FULL = "Shape=filter-tree&Backend=postgres&SchemaPath=full-compile"
+TYPED_SENTENCE = "A sentence typed by hand."
 
 
 def load_module():
@@ -185,6 +202,12 @@ def repeatability_section(page):
     return page[page.index(SECTION):].split("\n## ")[0]
 
 
+def seeded_readme():
+    """A README with one marker pair and old text on each side, which a refusal must leave as it is (D-018)."""
+    module = load_module()
+    return f"before the block\n{module.BLOCK_BEGIN}\nold region\n{module.BLOCK_END}\nafter the block\n"
+
+
 def compare_module():
     return load_module().load_compare()
 
@@ -198,9 +221,198 @@ def double_run(results):
             set_load_figure(results, engine, figure, manifest[SUMMARY_KEY][figure] * 2)
 
 
-def fake_pair(tmp):
-    """Two fake runs under separate roots, for the first run and its repeat."""
-    return write_results(Path(tmp) / "one"), write_repeat(Path(tmp) / "two")
+def fake_pair(tmp, both_paths=False):
+    """Two fake runs under separate roots, for the first run and its repeat; `both_paths` gives each the prepared-schema path too."""
+    return write_results(Path(tmp) / "one", both_paths=both_paths), write_repeat(Path(tmp) / "two", both_paths=both_paths)
+
+
+def copy_runs(tmp, *names):
+    """Copies committed run folders under `<tmp>/perf/results/`; returns that folder."""
+    results = Path(tmp) / "perf" / "results"
+    for name in names:
+        shutil.copytree(COMMITTED_RUNS / name, results / name)
+    return results
+
+
+def md_links(markdown):
+    """[(text, target), ...] in order."""
+    return LINK.findall(markdown)
+
+
+def plain(markdown):
+    """The text with each [text](target) replaced by its text."""
+    return LINK.sub(lambda match: match.group(1), markdown)
+
+
+def region_of(readme_text):
+    return bs.left_out_region(readme_text, README_NAME)[1]
+
+
+def table_cells(block):
+    """One list of stripped cells per data row of the block's table (the header and its separator are skipped)."""
+    rows = [line for line in block.splitlines() if line.startswith("|")][2:]
+    return [[cell.strip() for cell in row.strip().strip("|").split("|")] for row in rows]
+
+
+@functools.lru_cache(maxsize=1)
+def committed_block():
+    return load_module().readme_block(COMMITTED_RUNS / COMMITTED_RESULTS, COMMITTED_RUNS / COMMITTED_REPEAT, ROOT)
+
+
+@functools.lru_cache(maxsize=None)
+def tracked_files(root):
+    listing = subprocess.run(["git", "-C", str(root), "ls-files"], capture_output=True, text=True, check=True, timeout=60).stdout
+    return frozenset(listing.splitlines())
+
+
+def unlinked_digits(block, exempt):
+    """The digit strings of the block that are neither a link's text nor "the 50 µs target" nor part of an exempt string."""
+    text = LINK.sub("", block).replace("the 50 µs target", "")
+    for value in sorted(exempt, key=len, reverse=True):
+        text = text.replace(value, "")
+    return re.findall(r"\d+", text)
+
+
+def link_problems(block, root):
+    """One line per link that is not a public, tracked, commit-free path of the repository (or the performance page's address)."""
+    problems = []
+    for _, target in md_links(block):
+        path = target.partition("#")[0]
+        if target.startswith("https:"):
+            reason = None if target == load_module().PERFORMANCE_URL else "an https link other than the performance page"
+        elif path.startswith("/") or ".." in path:
+            reason = "not a path under the repository root"
+        elif any(re.fullmatch(r"[0-9a-f]{7,40}", segment) for segment in path.split("/")):
+            reason = "a commit id in the path"
+        elif path not in tracked_files(root):
+            reason = "not tracked in git"
+        else:
+            reason = "under a private path" if bs._is_private(path) else None
+        if reason:
+            problems.append(f"{target}: {reason}")
+    return problems
+
+
+def wording_problems(block):
+    """The coded references and the forbidden phrases the block holds, as written."""
+    found = [match.group(0) for match in bs.CODED_REFERENCE.finditer(block)]
+    return found + [word for word in ("per request", "per-request", "cost", "pays") if word in block.lower()]
+
+
+def run_name(markdown):
+    match = re.search(r"perf/results/([^/)]+)/compile/", markdown)
+    return match.group(1) if match else None
+
+
+def page_run_pair(page_text):
+    """(run, repeat or None) as folders under perf/results: the run from the compile table's links, the repeat from the second link of the
+    "Largest difference:" line; the repeat is None when the page has no repeatability section."""
+    run = COMMITTED_RUNS / run_name(page_text)
+    if SECTION not in page_text:
+        return run, None
+    largest = next(line for line in page_text.splitlines() if line.startswith(PAGE_LARGEST))
+    return run, COMMITTED_RUNS / re.search(r"perf/results/([^/)]+)/", md_links(largest)[1][1]).group(1)
+
+
+def repo_path(target, folder):
+    return os.path.normpath(os.path.join(folder, target.partition("#")[0])).replace(os.sep, "/")
+
+
+def block_figures(region):
+    """[(path, text, repo path of the file, backend, shape)] for the lowest and the highest figure of each row of the region."""
+    labels = {label: path for path, label in load_module().PATH_LABELS}
+    found = []
+    for cells in table_cells(region):
+        for text, target, backend, shape in re.findall(r"\[([\d.]+ µs)\]\(([^)\s]+)\) \(([\w-]+), ([\w-]+)\)", cells[1]):
+            found.append((labels[plain(cells[0])], text, repo_path(target, ""), backend, shape))
+    return found
+
+
+def page_cell(page_text, backend, shape, path):
+    """(text, repo path of the file) of the compile table's mean for the backend, shape and path, or None."""
+    for line in page_text.splitlines():
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if line.startswith("|") and cells[:2] == [backend, shape]:
+            links = md_links(cells[2 if path == FULL else 5])
+            return (links[0][0], repo_path(links[0][1], "site/pages")) if links else None
+    return None
+
+
+def run_problems(region, page_text, run, repeat):
+    """Group 1 of drift_problems: the block and the page must come from the same run pair."""
+    text_run = re.search(r"run folder `?([\w-]+)", region)
+    block_runs = {name for name in (run_name(region), text_run.group(1) if text_run else None) if name}
+    problems = []
+    if block_runs != {run.name}:
+        problems.append(f"the block and the page come from different runs: block {sorted(block_runs)}, page {run.name}")
+    repeat_links = [target for cells in table_cells(region) for _, target in md_links(cells[2])]
+    if repeat_links and repeat is None:
+        problems.append("the page has no repeatability section but the block shows repeat figures")
+    elif repeat_links and {re.search(r"perf/results/([^/]+)/", target).group(1) for target in repeat_links} != {repeat.name}:
+        problems.append(f"the block's repeat links name another folder than the page's repeat {repeat.name}")
+    return problems
+
+
+def figure_problems(region, page_text, repeat):
+    problems = []
+    for path, text, file, backend, shape in block_figures(region):
+        cell = page_cell(page_text, backend, shape, path)
+        if cell is None or cell != (text, file):
+            problems.append(f"{backend}/{shape} {path}: the block has {text} from {file}, the page has {cell}")
+    reports = sorted((repeat / "compile" / "results").glob("*-report-full.json")) if repeat is not None else []
+    wanted = reports[0].relative_to(ROOT).as_posix() if reports else None
+    page_files = {repo_path(target, "site/pages") for _, target in md_links(page_text)
+                  if repeat is not None and f"perf/results/{repeat.name}/compile/results/" in target}
+    for cells in table_cells(region):
+        for _, target in md_links(cells[2]):
+            if target != wanted or (page_files and repo_path(target, "") not in page_files):
+                problems.append(f"{target}: not the repeat's compile report the page links ({wanted})")
+    return problems
+
+
+def first_difference(region, expected):
+    for (got, _), (want, _) in zip(md_links(region), md_links(expected)):
+        if got != want:
+            return f"{got}, expected {want}"
+    for number, (got, want) in enumerate(itertools.zip_longest(region.splitlines(), expected.splitlines()), start=1):
+        if got != want:
+            return f"line {number}: {got!r}, expected {want!r}"
+    return None
+
+
+def drift_problems(region, page_text):
+    """The disagreements between the README region and the page, from the first group that finds any: (1) the run pair, (2) the figures and
+    the repeat report's file, (3) the region against what the generator writes for the page's pair."""
+    run, repeat = page_run_pair(page_text)
+    problems = run_problems(region, page_text, run, repeat) or figure_problems(region, page_text, repeat)
+    if problems:
+        return problems
+    difference = first_difference(region, load_module().readme_block(run, repeat, ROOT))
+    return [difference] if difference else []
+
+
+def home_block_html(home_html):
+    start = home_html.index(f'<div id="{bs.HOME_BLOCK_ID}">') + len(f'<div id="{bs.HOME_BLOCK_ID}">')
+    return home_html[start:home_html.index("</div>", start)]
+
+
+def home_links(page_html):
+    blob = "https://github.com/pluries/craticula/blob/main/"
+    return [load_module().PERFORMANCE_URL if href == "performance.html" else href.removeprefix(blob)
+            for href in re.findall(r'href="([^"]+)"', page_html)]
+
+
+def home_problems(home_html, region):
+    """The first difference between the home page's block and the README region rendered the way the site renders it."""
+    found = home_block_html(home_html)
+    expected = bs.add_anchors(bs.render_markdown(region).html)
+    for got, want in itertools.zip_longest(bs.plain_text(found).split(), bs.plain_text(expected).split()):
+        if got != want:
+            return [f"{got}, expected {want}"]
+    for got, want in itertools.zip_longest(home_links(found), home_links(expected)):
+        if got != want:
+            return [f"link {got}, expected {want}"]
+    return []
 
 
 @contextlib.contextmanager
@@ -1217,8 +1429,11 @@ class CliTests(unittest.TestCase):
         site_json.parent.mkdir(parents=True, exist_ok=True)
         if not site_json.exists():
             site_json.write_text(json.dumps({"pages": [{"slug": "index"}]}), encoding="utf-8")
+        readme = root / README_NAME
+        if not readme.exists():
+            readme.write_text(seeded_readme(), encoding="utf-8")
         args = [sys.executable, "-I", str(PAGE_SCRIPT), str(results), "--page", str(page), "--site-json", str(site_json),
-                *extra]
+                "--readme", str(readme), *extra]
         return subprocess.run(args, capture_output=True, text=True, timeout=60, cwd=cwd), page, site_json
 
     def seed_site(self, root):
@@ -1243,12 +1458,13 @@ class CliTests(unittest.TestCase):
                 self.assertTrue(result.stderr.startswith(f"perf_page.py: {check}:"), result.stderr)
                 self.assertEqual(OLD_PAGE, page.read_text(encoding="utf-8"))
                 self.assertEqual(OLD_SITE, site_json.read_text(encoding="utf-8"))
+                self.assertEqual(seeded_readme(), (root / README_NAME).read_text(encoding="utf-8"))
 
     def test_a_real_repeat_writes_the_page(self):  # US1-AS5, AS9, AS11
         for label, prepare in ACCEPTANCES:
             with self.subTest(label=label), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
-                first, second = fake_pair(tmp)
+                first, second = fake_pair(tmp, both_paths=True)
                 prepare(first, second)
                 result, page, _ = self.run_cli(root, first, REPEAT_FLAG, str(second))
                 self.assertEqual(0, result.returncode, result.stderr)
@@ -1257,8 +1473,8 @@ class CliTests(unittest.TestCase):
     def test_the_cli_takes_the_repeat_run(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            results = write_results(root)
-            repeat = write_repeat(root / "repeat")
+            results = write_results(root, both_paths=True)
+            repeat = write_repeat(root / "repeat", both_paths=True)
             result, page, _ = self.run_cli(root, results, "--repeat", str(repeat))
             self.assertEqual(0, result.returncode, result.stderr)
             self.assertIn("## Repeatability", page.read_text(encoding="utf-8"))
@@ -1332,6 +1548,394 @@ class CliTests(unittest.TestCase):
             result, page, _ = self.run_cli(root, results)
             self.assertEqual(2, result.returncode)
             self.assertFalse(page.exists())
+
+
+PATH_ORDER_LABELS = tuple(label for _, label in load_module().PATH_LABELS)
+LITERAL_BLOCK = (
+    "## Measured compile time\n\n| What is measured | Result |\n|---|---|\n"
+    f"| Schema | [7.0 µs]({RUN_REPORT}) (search, plain-page) to [26.8 µs]({RUN_REPORT}) (mongo, deep-filter); "
+    f"[3]({RUN_REPORT}) of [12]({RUN_REPORT}) {TARGET_SENTENCE} |\n\n"
+    f"Measured on bench-vm-10c-34g on 2026-11-16, run folder `{COMMITTED_RESULTS}`. "
+    f"The [performance page]({load_module().PERFORMANCE_URL}).")
+
+
+class ReadmeBlockTests(unittest.TestCase):
+    """readme_block on the committed pair (spec 007, T008): US1-AS1, US1-AS2, US1-AS3."""
+
+    def test_the_block_opens_with_a_short_heading_and_has_two_rows_prepared_schema_first(self):  # US1-AS1
+        block = committed_block()
+        first = block.splitlines()[0]
+        self.assertTrue(first.startswith("## "), first)
+        self.assertLessEqual(len(first), 60)
+        rows = table_cells(block)
+        self.assertEqual(2, len(rows))
+        self.assertEqual(list(PATH_ORDER_LABELS), [plain(row[0]) for row in rows])
+        self.assertIn(load_module().PERFORMANCE_URL, [target for _, target in md_links(block)])
+        self.assertFalse(block.endswith("\n"))
+
+    def test_the_prepared_schema_row_reads_the_range_the_count_and_the_repeat_range(self):  # US1-AS2
+        row = table_cells(committed_block())[0]
+        self.assertEqual(f"7.0 µs (search, plain-page) to 26.8 µs (mongo, deep-filter); 0 of 12 {TARGET_SENTENCE}", plain(row[1]))
+        self.assertEqual("7.4 µs to 26.5 µs", plain(row[2]))
+
+    def test_the_full_compile_row_reads_the_range_the_count_and_the_repeat_range(self):  # US1-AS2
+        row = table_cells(committed_block())[1]
+        self.assertEqual(f"17.0 µs (search, plain-page) to 53.1 µs (mongo, group-aggregate); 3 of 12 {TARGET_SENTENCE}", plain(row[1]))
+        self.assertEqual("16.9 µs to 62.4 µs", plain(row[2]))
+
+    def test_run_figures_and_counts_link_to_the_runs_report_and_repeat_figures_to_the_repeats(self):  # US1-AS2
+        for row in table_cells(committed_block()):
+            with self.subTest(label=row[0]):
+                self.assertEqual({RUN_REPORT}, {target for _, target in md_links(row[1])})
+                self.assertEqual({REPEAT_REPORT}, {target for _, target in md_links(row[2])})
+                self.assertEqual(4, len(md_links(row[1])))   # the lowest, the highest, the count and the number measured
+                self.assertEqual(2, len(md_links(row[2])))
+
+    def test_links_are_relative_to_the_readme_folder(self):  # US1-AS6 (plan Design (a): through link())
+        block = load_module().readme_block(COMMITTED_RUNS / COMMITTED_RESULTS, COMMITTED_RUNS / COMMITTED_REPEAT, ROOT / "docs")
+        self.assertIn(f"(../{RUN_REPORT})", block)
+        self.assertIn(f"(../{REPEAT_REPORT})", block)
+
+    def test_the_block_names_machine_date_run_folder_and_says_the_figures_are_not_promises(self):  # US1-AS3
+        text = plain(committed_block())
+        for expected in ("bench-vm-10c-34g", "2026-11-16", f"run folder `{COMMITTED_RESULTS}`", "per-shape means", "one machine", "not promises"):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, text)
+
+
+class BlockCheckHelperTests(unittest.TestCase):
+    """The three checks on the block (spec 007, T009): US1-AS4, US1-AS6, US1-AS10."""
+
+    def test_every_digit_string_of_the_generated_block_is_a_link_text_or_exempt(self):  # US1-AS4
+        self.assertEqual([], unlinked_digits(committed_block(), EXEMPT))
+
+    def test_every_link_of_the_generated_block_is_a_public_tracked_path_or_the_page(self):  # US1-AS6
+        self.assertEqual([], link_problems(committed_block(), ROOT))
+
+    def test_the_generated_block_holds_no_coded_reference_and_no_forbidden_word(self):  # US1-AS10
+        self.assertEqual([], wording_problems(committed_block()))
+
+    def test_the_helpers_find_nothing_on_the_literal_block(self):  # guard: pins the helpers' accepting side
+        self.assertEqual([], unlinked_digits(LITERAL_BLOCK, EXEMPT))
+        self.assertEqual([], link_problems(LITERAL_BLOCK, ROOT))
+        self.assertEqual([], wording_problems(LITERAL_BLOCK))
+
+    def test_a_count_typed_as_plain_text_is_named(self):  # US1-AS4 guard: pins unlinked_digits
+        planted = LITERAL_BLOCK.replace(f"[3]({RUN_REPORT})", "3")
+        self.assertIn("3", unlinked_digits(planted, EXEMPT))
+
+    def test_a_link_to_a_private_a_commit_or_an_untracked_file_is_named(self):  # US1-AS6 guard: pins link_problems
+        for bad in ("docs/feat/x.md", "perf/results/2e9c4d67/compile/x.json",
+                    "https://github.com/pluries/craticula/blob/2e9c4d67/perf/results/x.json", "perf/results/2026-11-16-p/none.json"):
+            with self.subTest(link=bad):
+                problems = link_problems(LITERAL_BLOCK.replace(RUN_REPORT, bad, 1), ROOT)
+                self.assertTrue(any(bad in problem for problem in problems), problems)
+
+    def test_a_coded_reference_a_ticket_or_a_cost_phrase_is_named(self):  # US1-AS10 guard: pins wording_problems
+        for phrase in ("PERF-1", "#3883", "per request", "per-request", "cost", "pays"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, wording_problems(f"{LITERAL_BLOCK} It {phrase} here."))
+
+
+class ReplaceRegionTests(unittest.TestCase):
+    """replace_region and the refusals of readme_block (spec 007, T011): FR-010."""
+
+    def test_only_the_lines_between_the_markers_change(self):  # US2-AS2 (unit)
+        module = load_module()
+        text = f"top\n{module.BLOCK_BEGIN}\nold 1\nold 2\n{module.BLOCK_END}\nbottom\n"
+        self.assertEqual(f"top\n{module.BLOCK_BEGIN}\nnew 1\nnew 2\n{module.BLOCK_END}\nbottom\n", module.replace_region(text, "new 1\nnew 2"))
+
+    def test_replacing_twice_gives_the_same_text(self):  # US2-AS2 (unit)
+        module = load_module()
+        once = module.replace_region(seeded_readme(), "new")
+        self.assertEqual(once, module.replace_region(once, "new"))
+
+    def test_a_missing_doubled_unpaired_or_reversed_marker_is_refused_naming_marker_and_line(self):  # US2-AS5 (unit)
+        module = load_module()
+        begin, end = module.BLOCK_BEGIN, module.BLOCK_END
+        cases = [("begin only", f"a\n\n{begin}\nx\nb\n", begin, 3), ("end only", f"a\n\n{end}\nb\n", end, 3),
+                 ("end before begin", f"a\n{end}\nx\n{begin}\nb\n", end, 2), ("two pairs", f"{begin}\na\n{end}\n{begin}\nb\n{end}\n", begin, 4),
+                 ("no marker", "a\nb\n", begin, None)]
+        for label, text, marker, line in cases:
+            with self.subTest(case=label):
+                with self.assertRaises(module.ResultsError) as caught:
+                    module.replace_region(text, "new")
+                self.assertIn(marker, str(caught.exception))
+                if line is not None:
+                    self.assertIn(f"line {line}", str(caught.exception))
+
+    def refused(self, run, repeat, *names):
+        module = load_module()
+        with self.assertRaises(module.ResultsError) as caught:
+            module.readme_block(run, repeat, ROOT)
+        for name in names:
+            self.assertIn(str(name), str(caught.exception))
+
+    def test_a_run_without_the_prepared_path_is_refused_naming_folder_and_path(self):  # US2-AS5 (unit)
+        with tempfile.TemporaryDirectory() as tmp:
+            first, second = fake_pair(tmp)
+            self.refused(first, second, first, PREPARED)
+
+    def test_a_run_without_the_full_compile_path_is_refused_naming_folder_and_path(self):  # US2-AS5 (unit)
+        with tempfile.TemporaryDirectory() as tmp:
+            first, second = fake_pair(tmp, both_paths=True)
+            edit_report(first, lambda data: data[BENCHMARKS].__setitem__(slice(None), [b for b in data[BENCHMARKS] if FULL not in b[PARAMETERS]]))
+            self.refused(first, second, first, FULL)
+
+    def test_a_repeat_without_the_prepared_path_is_refused_naming_folder_and_path(self):  # US2-AS5 (unit)
+        with tempfile.TemporaryDirectory() as tmp:
+            first = write_results(Path(tmp) / "one", both_paths=True)
+            second = write_repeat(Path(tmp) / "two")
+            self.refused(first, second, second, PREPARED)
+
+    def test_runs_that_did_not_measure_the_same_set_are_refused_naming_the_path(self):  # US2-AS5 (unit)
+        with tempfile.TemporaryDirectory() as tmp:
+            first, second = fake_pair(tmp, both_paths=True)
+            edit_report(second, lambda data: data[BENCHMARKS].__setitem__(
+                slice(None), [b for b in data[BENCHMARKS] if "Backend=mongo&Shape=deep-filter&SchemaPath=prepared-schema" != b[PARAMETERS]]))
+            self.refused(first, second, PREPARED)
+
+
+class RepeatCountTests(unittest.TestCase):
+    def test_a_repeat_with_more_shapes_over_the_target_states_its_own_count_linked_to_its_report(self):  # US2-AS13
+        with tempfile.TemporaryDirectory() as tmp:
+            results = copy_runs(tmp, COMMITTED_RESULTS, COMMITTED_REPEAT)
+            set_compile_mean(results / COMMITTED_REPEAT, FILTER_TREE_FULL, 55000.0)
+            block = load_module().readme_block(results / COMMITTED_RESULTS, results / COMMITTED_REPEAT, Path(tmp))
+            cell = table_cells(block)[1][2]
+            self.assertEqual(f"16.9 µs to 62.4 µs; 4 of 12 {TARGET_SENTENCE}", plain(cell))
+            self.assertEqual([(("4", REPEAT_REPORT)), (("12", REPEAT_REPORT))], md_links(cell)[-2:])
+
+
+class CliReadmeTests(unittest.TestCase):
+    """The command writes the page and the README region together, or neither (spec 007, T013): US2-AS2, US2-AS5, FR-009, FR-010."""
+
+    def scratch(self, tmp, *runs):
+        """A scratch root holding copies of the committed runs, the README with an empty region, the page and the site config."""
+        root = Path(tmp)
+        copy_runs(root, *runs)
+        (root / "site" / "pages").mkdir(parents=True)
+        shutil.copy(ROOT / PAGE_RELATIVE, root / PAGE_RELATIVE)
+        shutil.copy(ROOT / "site" / "site.json", root / "site" / "site.json")
+        (root / README_NAME).write_text(with_region((ROOT / README_NAME).read_text(encoding="utf-8"), ""), encoding="utf-8")
+        return root
+
+    def command(self, root, results, *extra):
+        args = [sys.executable, "-I", str(PAGE_SCRIPT), f"perf/results/{results}", "--page", PAGE_RELATIVE, "--site-json", "site/site.json",
+                "--readme", README_NAME, *extra]
+        return subprocess.run(args, capture_output=True, text=True, timeout=60, cwd=root)
+
+    def committed_arguments(self):
+        return (COMMITTED_RESULTS, "--repeat", f"perf/results/{COMMITTED_REPEAT}", "--single", f"perf/results/{COMMITTED_SINGLE}")
+
+    def snapshot(self, root):
+        return {name: (root / name).read_text(encoding="utf-8") for name in (PAGE_RELATIVE, README_NAME)}
+
+    def test_the_command_rewrites_the_page_identically_and_writes_the_region_from_the_block(self):  # US2-AS2
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self.scratch(tmp, COMMITTED_RESULTS, COMMITTED_REPEAT, COMMITTED_SINGLE)
+            seeded = (root / README_NAME).read_text(encoding="utf-8")
+            result = self.command(root, *self.committed_arguments())
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual((ROOT / PAGE_RELATIVE).read_text(encoding="utf-8"), (root / PAGE_RELATIVE).read_text(encoding="utf-8"))
+            module = load_module()
+            head, begin, tail = seeded.partition(module.BLOCK_BEGIN + "\n")
+            tail = tail[tail.index(module.BLOCK_END):]
+            self.assertEqual(head + begin + committed_block() + "\n" + tail, (root / README_NAME).read_text(encoding="utf-8"))
+
+    def test_a_pair_that_measured_one_path_is_refused_naming_the_path_and_nothing_is_written(self):  # US2-AS5
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self.scratch(tmp, "2026-11-16", "2026-11-16-repeat")
+            (root / PAGE_RELATIVE).write_text(OLD_PAGE, encoding="utf-8")
+            before = self.snapshot(root)
+            result = self.command(root, "2026-11-16", "--repeat", "perf/results/2026-11-16-repeat")
+            self.assertEqual(2, result.returncode, result.stdout)
+            self.assertIn(PREPARED, result.stderr)
+            self.assertNotIn(TRACEBACK, result.stderr)
+            self.assertEqual(before, self.snapshot(root))
+
+    def test_a_readme_without_markers_is_refused_naming_the_begin_marker_and_nothing_is_written(self):  # US2-AS5
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self.scratch(tmp, COMMITTED_RESULTS, COMMITTED_REPEAT)
+            module = load_module()
+            bare = [line for line in (root / README_NAME).read_text(encoding="utf-8").splitlines(keepends=True)
+                    if line.strip() not in (module.BLOCK_BEGIN, module.BLOCK_END)]
+            (root / README_NAME).write_text("".join(bare), encoding="utf-8")
+            (root / PAGE_RELATIVE).write_text(OLD_PAGE, encoding="utf-8")
+            before = self.snapshot(root)
+            result = self.command(root, COMMITTED_RESULTS, "--repeat", f"perf/results/{COMMITTED_REPEAT}")
+            self.assertEqual(2, result.returncode, result.stdout)
+            self.assertIn(module.BLOCK_BEGIN, result.stderr)
+            self.assertEqual(before, self.snapshot(root))
+
+    def test_a_two_path_run_with_a_one_path_repeat_is_refused_by_the_existing_check(self):  # US2-AS5 guard: the existing pair check speaks first
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first = write_results(root / "one", both_paths=True)
+            second = write_repeat(root / "two")
+            page = root / PAGE_RELATIVE
+            page.parent.mkdir(parents=True)
+            page.write_text(OLD_PAGE, encoding="utf-8")
+            readme = root / README_NAME
+            readme.write_text(seeded_readme(), encoding="utf-8")
+            args = [sys.executable, "-I", str(PAGE_SCRIPT), str(first), "--repeat", str(second), "--page", str(page),
+                    "--site-json", str(root / "site.json"), "--readme", str(readme)]
+            result = subprocess.run(args, capture_output=True, text=True, timeout=60)
+            self.assertEqual(2, result.returncode, result.stdout)
+            self.assertIn(UNMATCHED, result.stderr)
+            self.assertEqual(OLD_PAGE, page.read_text(encoding="utf-8"))
+            self.assertEqual(seeded_readme(), readme.read_text(encoding="utf-8"))
+
+    def test_without_a_repeat_the_page_is_written_and_the_readme_is_not_touched(self):  # FR-009 guard
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            results = write_results(root, both_paths=True)
+            readme = root / README_NAME
+            readme.write_text(seeded_readme(), encoding="utf-8")
+            site_json = root / "site.json"
+            site_json.write_text(json.dumps({"pages": []}), encoding="utf-8")
+            args = [sys.executable, "-I", str(PAGE_SCRIPT), str(results), "--page", str(root / "page.md"), "--site-json", str(site_json),
+                    "--readme", str(readme)]
+            result = subprocess.run(args, capture_output=True, text=True, timeout=60)
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertTrue((root / "page.md").is_file())
+            self.assertEqual(seeded_readme(), readme.read_text(encoding="utf-8"))
+
+
+def real_region():
+    return region_of((ROOT / README_NAME).read_text(encoding="utf-8"))
+
+
+def real_page():
+    return (ROOT / PAGE_RELATIVE).read_text(encoding="utf-8")
+
+
+def without_repeatability(page_text):
+    start = page_text.index(SECTION)
+    return page_text[:start] + page_text[page_text.index("\n## ", start) + 1:]
+
+
+class CommittedReadmeTests(unittest.TestCase):
+    """The README region of the real tree against the generator and the page, and the planted drifts (spec 007, T014): FR-012, FR-013."""
+
+    def region(self):
+        region = real_region()
+        self.assertTrue(region.strip(), "the README region between the markers is empty")
+        return region
+
+    def test_the_region_equals_what_the_generator_writes_for_the_pair_the_page_links(self):  # FR-012, US2-AS2
+        run, repeat = page_run_pair(real_page())
+        self.assertEqual(load_module().readme_block(run, repeat, ROOT), self.region())
+
+    def test_the_region_passes_the_three_block_checks(self):  # US1-AS4, US1-AS6, US1-AS10
+        region = self.region()
+        self.assertEqual([], unlinked_digits(region, EXEMPT))
+        self.assertEqual([], link_problems(region, ROOT))
+        self.assertEqual([], wording_problems(region))
+
+    def test_the_region_and_the_page_do_not_drift(self):  # US2-AS1
+        self.assertEqual([], drift_problems(self.region(), real_page()))
+
+    def test_one_edited_figure_of_the_block_is_named(self):  # US2-AS1 guard: pins drift_problems
+        block = committed_block()
+        planted = block.replace("[26.8 µs]", "[25.8 µs]", 1)
+        self.assertNotEqual(block, planted)
+        self.assertIn("25.8 µs", " ".join(drift_problems(planted, real_page())))
+
+    def test_a_page_whose_cell_differs_from_the_block_is_named(self):  # US2-AS3 guard: pins drift_problems
+        lines = real_page().splitlines(keepends=True)
+        at = next(index for index, line in enumerate(lines) if line.startswith("| mongo | deep-filter |"))
+        self.assertIn("[26.8 µs]", lines[at])
+        lines[at] = lines[at].replace("[26.8 µs]", "[25.8 µs]", 1)
+        problems = " ".join(drift_problems(committed_block(), "".join(lines)))
+        self.assertIn("26.8 µs", problems)
+        self.assertIn("25.8 µs", problems)
+
+    def test_a_page_without_its_repeatability_section_fails_while_the_block_shows_repeat_figures(self):  # US2-AS3 guard: pins drift_problems
+        problems = drift_problems(committed_block(), without_repeatability(real_page()))
+        self.assertIn("repeatability", " ".join(problems).lower())
+
+    def test_a_repeat_link_to_another_file_of_the_repeat_is_named(self):  # D-021 guard: pins drift_problems
+        block = committed_block()
+        planted = block.replace(REPEAT_REPORT, REPEAT_REPORT.replace("-report-full.json", "-report.csv"), 1)
+        self.assertNotEqual(block, planted)
+        self.assertIn("report.csv", " ".join(drift_problems(planted, real_page())))
+
+    def test_a_page_from_another_run_names_both_run_folders(self):  # US2-AS4 guard: pins drift_problems
+        with tempfile.TemporaryDirectory() as tmp:
+            results = write_results(Path(tmp) / "one", both_paths=True)
+            repeat = write_repeat(Path(tmp) / "two", both_paths=True)
+            page_dir = Path(tmp) / "site" / "pages"
+            page_dir.mkdir(parents=True)
+            page = load_module().render(results, page_dir, repeat=repeat)
+        problems = " ".join(drift_problems(committed_block(), page))
+        self.assertIn(COMMITTED_RESULTS, problems)
+        self.assertIn(FIRST_RUN_FOLDER, problems)
+
+    def test_a_block_whose_run_folder_alone_changed_names_both_run_folders(self):  # US2-AS4 guard: pins drift_problems
+        block = committed_block()
+        planted = re.sub(rf"(run folder `?){COMMITTED_RESULTS}", r"\g<1>2026-11-16-q", block, count=1)
+        self.assertNotEqual(block, planted)
+        problems = " ".join(drift_problems(planted, real_page()))
+        self.assertIn("2026-11-16-q", problems)
+        self.assertIn(COMMITTED_RESULTS, problems)
+
+    def test_a_sentence_typed_between_the_markers_is_named(self):  # US2-AS8 guard: pins drift_problems
+        problems = " ".join(drift_problems(committed_block() + "\n\n" + TYPED_SENTENCE, real_page()))
+        self.assertIn(TYPED_SENTENCE, problems)
+
+    def test_the_two_marker_pairs_are_equal(self):  # D-017 guard
+        module = load_module()
+        self.assertEqual((bs.LEFT_OUT_BEGIN, bs.LEFT_OUT_END), (module.BLOCK_BEGIN, module.BLOCK_END))
+
+    def test_the_performance_address_is_the_sites_base_url_and_the_page(self):  # FR-001 guard
+        base = json.loads((ROOT / "site" / "site.json").read_text(encoding="utf-8"))["baseUrl"]
+        self.assertEqual(f"{base}/performance.html", load_module().PERFORMANCE_URL)
+
+
+def as_home(block):
+    """The block rendered as the English home page shows it: raw files at the public blob address, the page as performance.html."""
+    html_text = bs.add_anchors(bs.render_markdown(block).html)
+    html_text = html_text.replace(f'href="{load_module().PERFORMANCE_URL}"', 'href="performance.html"')
+    html_text = html_text.replace('href="perf/', 'href="https://github.com/pluries/craticula/blob/main/perf/')
+    return f'<div id="{bs.HOME_BLOCK_ID}">{html_text}</div>'
+
+
+class HomeBlockTests(unittest.TestCase):
+    """The block on the English home page and on no other page (spec 007, T017): US3-AS1, US3-AS5, US2-AS1."""
+
+    @classmethod
+    def setUpClass(cls):
+        folder = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(folder.cleanup)
+        cls.out = Path(folder.name)
+        cls.errors = bs.build(ROOT, cls.out)
+
+    def test_the_site_builds_without_a_problem(self):  # precondition of the home tests
+        self.assertEqual([], self.errors)
+
+    def test_the_english_home_page_holds_the_block_of_the_readme_region_once(self):  # US3-AS1
+        home = (self.out / "index.html").read_text(encoding="utf-8")
+        self.assertEqual(1, home.count(f'<div id="{bs.HOME_BLOCK_ID}">'))
+        self.assertEqual([], home_problems(home, real_region()))
+
+    def test_an_edited_figure_on_the_home_page_is_named(self):  # US2-AS1 guard: pins home_problems
+        block = committed_block()
+        self.assertEqual([], home_problems(as_home(block), block))
+        problems = " ".join(home_problems(as_home(block).replace("26.8 µs", "25.8 µs", 1), block))
+        self.assertIn("25.8 µs", problems)
+
+    def test_no_other_built_page_holds_the_block(self):  # US3-AS5 guard: holds before and after the feature
+        label = load_module().PATH_LABELS[0][1]
+        built = {path.relative_to(self.out).as_posix(): path.read_text(encoding="utf-8") for path in self.out.rglob("*.html")}
+        self.assertEqual(5, len([name for name in built if name.endswith("/index.html")]))
+        self.assertEqual(6, len([name for name in built if name.endswith("overview.html")]))
+        for name, text in built.items():
+            if name == "index.html":
+                continue
+            with self.subTest(page=name):
+                self.assertNotIn(bs.HOME_BLOCK_ID, text)
+                self.assertNotIn(label, text)
 
 
 if __name__ == "__main__":

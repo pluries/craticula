@@ -13,11 +13,17 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import NamedTuple
 
 ROOT = Path(__file__).resolve().parent.parent
 TARGET_NS = 50_000
 NOT_MEASURED = "not measured"
 ENGINE_LABELS = {"postgres": "PostgreSQL", "ef": "PostgreSQL through EF Core", "mongo": "MongoDB"}
+BLOCK_BEGIN = "<!-- performance block: begin, written by scripts/perf_page.py; the site leaves it out -->"
+BLOCK_END = "<!-- performance block: end -->"
+PERFORMANCE_URL = "https://craticula.pluries.dev/performance.html"
+PATH_LABELS = (("prepared-schema", "Schema prepared once, then each request compiled against it"),
+               ("full-compile", "Schema parsed from JSON on every call"))
 SITE_ENTRY = {
     "slug": "performance",
     "title": "Performance",
@@ -50,8 +56,15 @@ def verdict_for(mean):
     return "meets PERF-1" if mean < TARGET_NS else "does not meet PERF-1"
 
 
-def compile_rows(report, report_path, page_dir):
-    """One row per backend and shape: the full compile (schema parsed from JSON on every call) and, when the run has it, the prepared-schema path."""
+class PathFigures(NamedTuple):
+    lowest: tuple[float, str, str]
+    highest: tuple[float, str, str]
+    over: int
+    total: int
+
+
+def measurements(report):
+    """(shape, backend, path) -> (mean ns, bytes allocated per operation) for every benchmark of a BenchmarkDotNet report."""
     measured = {}
     for benchmark in report["Benchmarks"]:
         params = {}
@@ -60,6 +73,28 @@ def compile_rows(report, report_path, page_dir):
             params[key] = value
         path = params.get("SchemaPath", "full-compile")
         measured[(params["Shape"], params["Backend"], path)] = (benchmark["Statistics"]["Mean"], benchmark["Memory"]["BytesAllocatedPerOperation"])
+    return measured
+
+
+def path_figures(measured, path):
+    raise NotImplementedError
+
+
+def readme_block(results, repeat, readme_dir):
+    raise NotImplementedError
+
+
+def replace_region(readme_text, block):
+    raise NotImplementedError
+
+
+def write_whole(path, text):
+    raise NotImplementedError
+
+
+def compile_rows(report, report_path, page_dir):
+    """One row per backend and shape: the full compile (schema parsed from JSON on every call) and, when the run has it, the prepared-schema path."""
+    measured = measurements(report)
     keys = sorted({(shape, backend) for shape, backend, _ in measured})
     lines = ["| Backend | Request shape | Full compile | Allocated | PERF-1 | Prepared schema | Allocated | PERF-1 |", "|---|---|---|---|---|---|---|---|"]
     for shape, backend in keys:
@@ -255,6 +290,7 @@ def main(argv=None):
     parser.add_argument("results")
     parser.add_argument("--page", default=str(ROOT / "site" / "pages" / "performance.md"))
     parser.add_argument("--site-json", default=str(ROOT / "site" / "site.json"))
+    parser.add_argument("--readme", default=str(ROOT / "README.md"))
     parser.add_argument("--repeat")
     parser.add_argument("--single")
     args = parser.parse_args(argv)

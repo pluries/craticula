@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import build_site as bs  # noqa: E402
+import site_i18n  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE = "<html><title>{{page_title}}</title><nav>{{nav}}</nav>{{content}}<a href=\"{{source_url}}\">{{source}}</a></html>"
@@ -1417,6 +1418,174 @@ class ThisRepository(unittest.TestCase):
                     if bs._is_private(target):
                         offenders.append(f"{rel}:{line}: {href}")
         self.assertEqual(offenders, [], "public Markdown files link into the private part of the repository")
+
+
+BEGIN_MARKER, END_MARKER = bs.LEFT_OUT_BEGIN, bs.LEFT_OUT_END
+README_LABEL = "README.md"
+OVERVIEW_PAGE = {"slug": "overview", "title": "Overview", "source": README_LABEL, "group": "Guides", "description": "What it is."}
+TAIL_TEXT = "tail text stays on the page"
+REGION_TEXT = "text typed between the markers"
+
+
+def marker_cases() -> list[tuple[str, str, str, int | None]]:
+    """(label, README text, the marker a problem must name, the line it must name; None when the marker is missing altogether)."""
+    return [
+        ("begin only", f"# R\n\n{BEGIN_MARKER}\nregion\n\n{TAIL_TEXT}\n", BEGIN_MARKER, 3),
+        ("end only", f"# R\n\n{END_MARKER}\n{TAIL_TEXT}\n", END_MARKER, 3),
+        ("end before begin", f"# R\n{END_MARKER}\nx\n{BEGIN_MARKER}\n{TAIL_TEXT}\n", END_MARKER, 2),
+        ("two pairs", f"{BEGIN_MARKER}\na\n{END_MARKER}\n{BEGIN_MARKER}\nb\n{END_MARKER}\n{TAIL_TEXT}\n", BEGIN_MARKER, 4),
+        ("no marker", f"# R\n\n{TAIL_TEXT}\n", BEGIN_MARKER, None),
+    ]
+
+
+def named(problems: list[str], marker: str, line: int | None) -> bool:
+    return any(marker in problem and (line is None or f"line {line}" in problem) for problem in problems)
+
+
+class LeftOutRegionTests(unittest.TestCase):
+    """US2-AS9 and FR-027: the marker pair of the README block, checked by the build (spec 007, T004)."""
+
+    def test_one_pair_is_removed_and_its_inner_text_returned(self):  # US2-AS9 (unit)
+        text = f"# R\n\nintro\n{BEGIN_MARKER}\nvisible a\nvisible b\n{END_MARKER}\n\nafter\n"
+        kept, inner, problems = bs.left_out_region(text, README_LABEL)
+        self.assertEqual("# R\n\nintro\n\nafter\n", kept)
+        self.assertEqual("visible a\nvisible b", inner)
+        self.assertEqual([], problems)
+
+    def test_an_empty_pair_gives_an_empty_inner_text_and_no_problem(self):  # US2-AS9 (unit)
+        kept, inner, problems = bs.left_out_region(f"a\n{BEGIN_MARKER}\n{END_MARKER}\nb\n", README_LABEL)
+        self.assertEqual("a\nb\n", kept)
+        self.assertEqual(("", []), (inner, problems))
+
+    def test_a_marker_is_a_whole_line_compared_after_strip(self):  # US2-AS9 (unit)
+        kept, inner, problems = bs.left_out_region(f"a\n  {BEGIN_MARKER}  \nx\n\t{END_MARKER}\nb\n", README_LABEL)
+        self.assertEqual(([], "x", "a\nb\n"), (problems, inner, kept))
+        _, _, inline = bs.left_out_region(f"text {BEGIN_MARKER}\nx\n{END_MARKER}\n", README_LABEL)
+        self.assertTrue(named(inline, BEGIN_MARKER, None), inline)
+
+    def test_every_broken_case_is_a_problem_naming_the_marker_and_its_line_and_leaves_the_text(self):  # US2-AS9 (unit)
+        for label, text, marker, line in marker_cases():
+            with self.subTest(case=label):
+                kept, inner, problems = bs.left_out_region(text, README_LABEL)
+                self.assertEqual(text, kept)
+                self.assertEqual("", inner)
+                self.assertTrue(named(problems, marker, line), problems)
+                self.assertTrue(all(README_LABEL in problem for problem in problems), problems)
+
+    def build_with(self, text: str):
+        root = make_repo({"index.md": "# Home\n", README_LABEL: text}, [INDEX, OVERVIEW_PAGE])
+        return root, bs.build(root, root / "_out")
+
+    def test_the_build_names_the_marker_and_the_line_of_every_broken_case(self):  # US2-AS9
+        for label, text, marker, line in marker_cases():
+            with self.subTest(case=label):
+                _, errors = self.build_with(text)
+                self.assertTrue(named(errors, marker, line), errors)
+
+    def test_main_exits_1_and_prints_the_problem_of_every_broken_case(self):  # US2-AS9
+        for label, text, marker, line in marker_cases():
+            with self.subTest(case=label):
+                root = make_repo({"index.md": "# Home\n", README_LABEL: text}, [INDEX, OVERVIEW_PAGE])
+                err = io.StringIO()
+                with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+                    code = bs.main(["--root", str(root), "--out", str(root / "_out")])
+                self.assertEqual(1, code, err.getvalue())
+                self.assertTrue(named(err.getvalue().splitlines(), marker, line), err.getvalue())
+
+    def test_one_pair_builds_with_no_error_and_the_overview_leaves_the_region_out(self):  # US2-AS9
+        text = f"# R\n\n{BEGIN_MARKER}\n{REGION_TEXT}\n{END_MARKER}\n\n{TAIL_TEXT}\n"
+        root, errors = self.build_with(text)
+        self.assertEqual([], errors)
+        overview = (root / "_out" / "overview.html").read_text(encoding="utf-8")
+        self.assertNotIn(REGION_TEXT, overview)
+        self.assertIn(TAIL_TEXT, overview)
+
+    def test_a_site_without_a_readme_page_builds_as_before(self):  # US2-AS9 guard: the rule applies to a site with a README page
+        root = make_repo({"index.md": "# Home\n", "about.md": f"# About\n\n{BEGIN_MARKER}\n{TAIL_TEXT}\n"},
+                         [INDEX, {"slug": "about", "title": "About", "source": "about.md"}])
+        self.assertEqual([], bs.build(root, root / "_out"))
+
+
+RECORDED = re.compile(r"(?m)^source_fingerprint: ([0-9a-f]{64})$")
+LANGUAGES = ("fr", "de", "it", "es", "zh")
+BLOCK_TEXT = "## Measured compile time\n\nA block from another run: [9.9 µs](perf/results/x/report.json)."
+SCOPE_HEADING = "## Scope (v1)"
+
+
+def fingerprints_with(readme_text: str) -> dict[str, str]:
+    """The overview and home fingerprints of the real site when `README.md` reads `readme_text`."""
+    site = bs.SiteBuild(ROOT, bs.load_config(ROOT), "")
+    original = site.read
+    site.read = lambda rel: readme_text if rel == bs.README_SOURCE else original(rel)
+    return {slug: site_i18n.page_fingerprint(site, site.pages_by_slug[slug]) for slug in ("overview", "index")}
+
+
+def with_region(readme_text: str, inner: str) -> str:
+    """The README with `inner` between its one marker pair: the inner lines are replaced, or a pair is inserted before "Scope (v1)" when there is none."""
+    lines = readme_text.splitlines(keepends=True)
+    body = [f"{inner}\n"] if inner else []
+    stripped = [line.strip() for line in lines]
+    if BEGIN_MARKER in stripped:
+        begin = stripped.index(BEGIN_MARKER)
+        end = stripped.index(END_MARKER, begin)
+        return "".join(lines[:begin + 1] + body + lines[end:])
+    at = next(index for index, line in enumerate(lines) if line.startswith(SCOPE_HEADING))
+    return "".join(lines[:at] + [BEGIN_MARKER + "\n"] + body + [END_MARKER + "\n"] + lines[at:])
+
+
+def recorded_fingerprint(code: str, slug: str) -> str:
+    return RECORDED.search((ROOT / "site" / "i18n" / code / f"{slug}.md").read_text(encoding="utf-8")).group(1)
+
+
+def first_prose_line_after_the_region(text: str) -> int:
+    lines = text.splitlines()
+    end = [line.strip() for line in lines].index(END_MARKER)
+    return next(index for index in range(end + 1, len(lines)) if lines[index].strip() and not lines[index].startswith("#"))
+
+
+class TranslationGateTests(unittest.TestCase):
+    """US3-AS6, US3-AS7 and FR-042 through `page_fingerprint` with a substituted README (D-019, spec 007, T005)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    def test_a_refreshed_block_leaves_the_overview_fingerprint_of_every_language_unchanged(self):  # US3-AS6
+        found = fingerprints_with(with_region(self.readme, BLOCK_TEXT))["overview"]
+        for code in LANGUAGES:
+            with self.subTest(code=code):
+                self.assertEqual(recorded_fingerprint(code, "overview"), found)
+
+    def test_a_refreshed_block_leaves_the_home_fingerprint_of_every_language_unchanged(self):  # US3-AS6 guard: the home fingerprint never reads the README
+        found = fingerprints_with(with_region(self.readme, BLOCK_TEXT))["index"]
+        for code in LANGUAGES:
+            with self.subTest(code=code):
+                self.assertEqual(recorded_fingerprint(code, "index"), found)
+
+    def test_one_word_next_to_the_region_still_changes_the_overview_fingerprint(self):  # US3-AS7 guard: only the edit moves the fingerprint of an empty region
+        empty = with_region(self.readme, "")
+        unedited = fingerprints_with(empty)["overview"]
+        lines = empty.splitlines(keepends=True)
+        at = first_prose_line_after_the_region(empty)
+        words = lines[at].split(" ")
+        words[1] += "x"
+        lines[at] = " ".join(words)
+        edited = fingerprints_with("".join(lines))["overview"]
+        self.assertNotEqual(unedited, edited)
+        for code in LANGUAGES:
+            with self.subTest(code=code):
+                self.assertNotEqual(recorded_fingerprint(code, "overview"), edited)
+
+
+class TranslationStatusTests(unittest.TestCase):
+    """US3-AS4 and FR-020: every translated document stays approved whatever the README block holds (spec 007, T018)."""
+
+    def test_every_language_has_its_21_documents_approved_and_the_enable_gate_is_empty(self):  # US3-AS4 guard: holds before and after the feature
+        counts = site_i18n.status(ROOT)
+        for code in LANGUAGES:
+            with self.subTest(code=code):
+                self.assertEqual({"missing": 0, "stale": 0, "machine-drafted": 0, "approved": 21}, counts[code])
+                self.assertEqual([], site_i18n.check_enable_gate(ROOT, code))
 
 
 if __name__ == "__main__":

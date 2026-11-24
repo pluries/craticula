@@ -87,11 +87,19 @@ ADDENDUM = "Addendum — "
 SPLIT_SUBGROUP = "Semantics"
 LLMS_NAME, LLMS_FULL_NAME = "llms.txt", "llms-full.txt"
 I18N_DIR = "site/i18n"
+README_SOURCE = "README.md"
+LEFT_OUT_BEGIN = "<!-- performance block: begin, written by scripts/perf_page.py; the site leaves it out -->"
+LEFT_OUT_END = "<!-- performance block: end -->"
+HOME_BLOCK_ID = "measured-performance"
 
 
 def language_file(code: str, name: str) -> str:
     """The repository path of a file of a language's translation folder."""
     return f"{I18N_DIR}/{code}/{name}"
+
+
+def left_out_region(text: str, label: str) -> tuple[str, str, list[str]]:
+    raise NotImplementedError
 
 
 GROUP_NAMES, SUBGROUPS = "group_names", "subgroups"  # the tables of the interface text that name the groups and the subgroups
@@ -1433,6 +1441,12 @@ class SiteBuild:
             else:
                 self.text_cache[page.slug] = expand_includes(self.read(page.source), self.root, page.source)
         return self.text_cache[page.slug]
+
+    def readme_region(self) -> tuple[str, list[str]]:
+        raise NotImplementedError
+
+    def home_block(self) -> str:
+        raise NotImplementedError
 
     def page_anchors(self, slug: str) -> set[str]:
         if slug not in self.anchor_cache:
