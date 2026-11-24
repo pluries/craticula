@@ -1500,6 +1500,19 @@ class LeftOutRegionTests(unittest.TestCase):
         self.assertNotIn(REGION_TEXT, overview)
         self.assertIn(TAIL_TEXT, overview)
 
+    def test_the_build_refuses_unsafe_markup_typed_inside_the_region(self):  # DS-21 guard: the region is left out of the page before check_markup reads it
+        region_label = f"{README_LABEL} (performance block)"
+        cases = (("a script element", "<script>alert(1)</script>"), ("an event-handler attribute", "<img src=x onerror=alert(1)>"))
+        for kind, inner in cases:
+            with self.subTest(kind=kind):
+                text = f"# R\n\n{BEGIN_MARKER}\n{inner}\n{END_MARKER}\n\n{TAIL_TEXT}\n"
+                _, errors = self.build_with(text)
+                self.assertTrue(any(error.startswith(f"{region_label}: ") and kind in error for error in errors), errors)
+
+    def test_a_clean_region_builds_with_no_markup_problem(self):  # DS-21 guard: the refusal is not a refusal of every region
+        text = f"# R\n\n{BEGIN_MARKER}\n| a | b |\n| - | - |\n| 1 | 2 |\n{END_MARKER}\n\n{TAIL_TEXT}\n"
+        self.assertEqual([], [error for error in self.build_with(text)[1] if "performance block" in error])
+
     def test_a_site_without_a_readme_page_builds_as_before(self):  # US2-AS9 guard: the rule applies to a site with a README page
         root = make_repo({"index.md": "# Home\n", "about.md": f"# About\n\n{BEGIN_MARKER}\n{TAIL_TEXT}\n"},
                          [INDEX, {"slug": "about", "title": "About", "source": "about.md"}])

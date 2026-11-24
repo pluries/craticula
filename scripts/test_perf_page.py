@@ -273,21 +273,24 @@ def unlinked_digits(block, exempt):
     return re.findall(r"\d+", text)
 
 
+def link_reason(target, path, root):
+    """Why a link is not a public, tracked, commit-free path of the repository (or the performance page's address), or None."""
+    if target.startswith("https:"):
+        return None if target == load_module().PERFORMANCE_URL else "an https link other than the performance page"
+    if path.startswith("/") or ".." in path:
+        return "not a path under the repository root"
+    if any(re.fullmatch(r"[0-9a-f]{7,40}", segment) for segment in path.split("/")):
+        return "a commit id in the path"
+    if path not in tracked_files(root):
+        return "not tracked in git"
+    return "under a private path" if bs._is_private(path) else None
+
+
 def link_problems(block, root):
     """One line per link that is not a public, tracked, commit-free path of the repository (or the performance page's address)."""
     problems = []
     for _, target in md_links(block):
-        path = target.partition("#")[0]
-        if target.startswith("https:"):
-            reason = None if target == load_module().PERFORMANCE_URL else "an https link other than the performance page"
-        elif path.startswith("/") or ".." in path:
-            reason = "not a path under the repository root"
-        elif any(re.fullmatch(r"[0-9a-f]{7,40}", segment) for segment in path.split("/")):
-            reason = "a commit id in the path"
-        elif path not in tracked_files(root):
-            reason = "not tracked in git"
-        else:
-            reason = "under a private path" if bs._is_private(path) else None
+        reason = link_reason(target, target.partition("#")[0], root)
         if reason:
             problems.append(f"{target}: {reason}")
     return problems
@@ -1815,6 +1818,13 @@ def without_repeatability(page_text):
     return page_text[:start] + page_text[page_text.index("\n## ", start) + 1:]
 
 
+def linked_run_exempt(page_text):
+    """The exempt strings of whatever run the page links: machine label and date from its compile manifest, and the run folder name (FR-004, D-008)."""
+    run, _ = page_run_pair(page_text)
+    manifest = json.loads((run / "compile" / "manifest-compile.json").read_text(encoding="utf-8"))
+    return (manifest["machine"], manifest["date"], run.name)
+
+
 class CommittedReadmeTests(unittest.TestCase):
     """The README region of the real tree against the generator and the page, and the planted drifts (spec 007, T014): FR-012, FR-013."""
 
@@ -1829,7 +1839,7 @@ class CommittedReadmeTests(unittest.TestCase):
 
     def test_the_region_passes_the_three_block_checks(self):  # US1-AS4, US1-AS6, US1-AS10
         region = self.region()
-        self.assertEqual([], unlinked_digits(region, EXEMPT))
+        self.assertEqual([], unlinked_digits(region, linked_run_exempt(real_page())))
         self.assertEqual([], link_problems(region, ROOT))
         self.assertEqual([], wording_problems(region))
 
