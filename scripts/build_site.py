@@ -1733,7 +1733,11 @@ class SiteBuild:
         page_texts: dict[str, str] = {}
         index_entries: list[dict] = []
         if self.language is None:
-            self.errors.extend(self.readme_region()[1])
+            inner, region_problems = self.readme_region()
+            self.errors.extend(region_problems)
+            region_markup = unsafe_markup(inner)
+            if region_markup:
+                self.errors.append(f"README.md (performance block): holds {region_markup}, which the site never publishes")
         for page in self.built():
             made = self.build_page(page, target, shared, templates)
             if made is None:
