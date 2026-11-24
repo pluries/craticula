@@ -1,23 +1,32 @@
 #!/usr/bin/env python3
 """Generates the performance page of the docs site from the raw results of a run (story #3324, task #3849, spec FR-20).
 
-Usage: python3 scripts/perf_page.py <results dir> [--repeat <repeat run dir>] [--single <one-client run dir>] [--page site/pages/performance.md] [--site-json site/site.json]
+Usage: python3 scripts/perf_page.py <results dir> [--repeat <repeat run dir>] [--single <one-client run dir>] [--page site/pages/performance.md] [--site-json site/site.json] [--readme README.md]
 Reads <results dir>/compile/results/*-report-full.json (the BenchmarkDotNet output), compile/manifest-compile.json and every
 manifest-<engine>-<dataset>.json; writes the page, then registers it once in the site config. Every number in a table is a link to the
-raw file it came from, so none is typed by hand. Exit 0 = written, 2 = no results, an unreadable result file or a bad --repeat run (nothing is written).
+raw file it came from, so none is typed by hand. With --repeat it also writes the results block between the one pair of markers of the
+README (spec 007), from the same two runs. Exit 0 = written, 2 = no results, an unreadable result file or README, a bad --repeat run, a run
+or repeat without a measurement on both schema paths, or a README without exactly one marker pair (neither the page nor the README is written).
 Tests: scripts/test_perf_page.py.
 """
 import argparse
 import importlib.util
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
+from typing import NamedTuple
 
 ROOT = Path(__file__).resolve().parent.parent
 TARGET_NS = 50_000
 NOT_MEASURED = "not measured"
 ENGINE_LABELS = {"postgres": "PostgreSQL", "ef": "PostgreSQL through EF Core", "mongo": "MongoDB"}
+BLOCK_BEGIN = "<!-- performance block: begin, written by scripts/perf_page.py; the site leaves it out -->"
+BLOCK_END = "<!-- performance block: end -->"
+PERFORMANCE_URL = "https://craticula.pluries.dev/performance.html"
+PATH_LABELS = (("prepared-schema", "Schema prepared once, then each request compiled against it"),
+               ("full-compile", "Schema parsed from JSON on every call"))
 SITE_ENTRY = {
     "slug": "performance",
     "title": "Performance",
@@ -50,8 +59,15 @@ def verdict_for(mean):
     return "meets PERF-1" if mean < TARGET_NS else "does not meet PERF-1"
 
 
-def compile_rows(report, report_path, page_dir):
-    """One row per backend and shape: the full compile (schema parsed from JSON on every call) and, when the run has it, the prepared-schema path."""
+class PathFigures(NamedTuple):
+    lowest: tuple[float, str, str]
+    highest: tuple[float, str, str]
+    over: int
+    total: int
+
+
+def measurements(report):
+    """(shape, backend, path) -> (mean ns, bytes allocated per operation) for every benchmark of a BenchmarkDotNet report."""
     measured = {}
     for benchmark in report["Benchmarks"]:
         params = {}
@@ -60,6 +76,124 @@ def compile_rows(report, report_path, page_dir):
             params[key] = value
         path = params.get("SchemaPath", "full-compile")
         measured[(params["Shape"], params["Backend"], path)] = (benchmark["Statistics"]["Mean"], benchmark["Memory"]["BytesAllocatedPerOperation"])
+    return measured
+
+
+def path_figures(measured, path):
+    """The lowest and highest per-shape mean of one path, and how many of its shapes are at or above the target; None when the run has none."""
+    entries = sorted(((backend, shape), mean) for (shape, backend, key), (mean, _) in measured.items() if key == path)
+    if not entries:
+        return None
+    (low_key, low), (high_key, high) = min(entries, key=lambda item: item[1]), max(entries, key=lambda item: item[1])
+    return PathFigures((low, *low_key), (high, *high_key), sum(1 for _, mean in entries if mean >= TARGET_NS), len(entries))
+
+
+def run_report(results):
+    reports = sorted((Path(results) / "compile" / "results").glob("*-report-full.json"))
+    if len(reports) != 1:
+        raise ResultsError(f"{results}: expected one compile report")
+    return reports[0]
+
+
+def figure_link(mean, report, readme_dir):
+    return link(f"{mean / 1000:.1f} µs", report, readme_dir)
+
+
+def count_text(figures, report, readme_dir):
+    return f"{link(str(figures.over), report, readme_dir)} of {link(str(figures.total), report, readme_dir)} at or above the {TARGET_NS // 1000} µs target"
+
+
+def path_row(label, figures, repeat_figures, reports, readme_dir):
+    report, repeat_report = reports
+    low, high = figures.lowest, figures.highest
+    run_cell = (f"{figure_link(low[0], report, readme_dir)} ({low[1]}, {low[2]}) to {figure_link(high[0], report, readme_dir)} ({high[1]}, {high[2]}); "
+                f"{count_text(figures, report, readme_dir)}")
+    repeat_cell = f"{figure_link(repeat_figures.lowest[0], repeat_report, readme_dir)} to {figure_link(repeat_figures.highest[0], repeat_report, readme_dir)}"
+    if (repeat_figures.over, repeat_figures.total) != (figures.over, figures.total):
+        repeat_cell += f"; {count_text(repeat_figures, repeat_report, readme_dir)}"
+    return f"| {label} | {run_cell} | {repeat_cell} |"
+
+
+def check_complete(measured, folders):
+    """FR-010: each run measured both paths, and the two runs measured the same set."""
+    for run, folder in zip(measured, folders):
+        for path, _ in PATH_LABELS:
+            if path_figures(run, path) is None:
+                raise ResultsError(f"{folder}: no measurement on the {path} path")
+    first, second = (set(run) for run in measured)
+    if first != second:
+        shape, backend, path = min(first ^ second)
+        missing = folders[1] if (shape, backend, path) in first else folders[0]
+        raise ResultsError(f"{folders[0]} and {folders[1]} do not hold the same measurements: {backend} {shape} on the {path} path is missing from {missing}")
+
+
+def readme_block(results, repeat, readme_dir):
+    """The text of the README's performance region, without markers and without a trailing newline (spec 007, plan Design (a))."""
+    results, repeat, readme_dir = Path(results), Path(repeat), Path(readme_dir)
+    reports = (run_report(results), run_report(repeat))
+    manifest = read_json(results / "compile" / "manifest-compile.json")
+    measured = [measurements(read_json(report)) for report in reports]
+    check_complete(measured, (results, repeat))
+    rows = []
+    for path, label in PATH_LABELS:
+        figures = [path_figures(run, path) for run in measured]
+        rows.append(path_row(label, figures[0], figures[1], reports, readme_dir))
+    return "\n".join([
+        "## Measured compile time",
+        "",
+        "The time Craticula takes to compile one grid request into a query, without running it. The figures are taken from the per-shape means "
+        "of the report and are measurements on one machine, not promises.",
+        "",
+        "| What is measured | This run: lowest to highest | Repeat run: lowest to highest |",
+        "|---|---|---|",
+        *rows,
+        "",
+        f"Measured on {manifest['machine']} on {manifest['date']}, run folder `{results.name}`. Every figure links to the BenchmarkDotNet report "
+        f"it was read from. The full tables, the load results and the method are on the [performance page]({PERFORMANCE_URL}).",
+    ])
+
+
+def replace_region(readme_text, block):
+    """The README with the lines between its one begin marker and its one end marker replaced by the lines of `block`."""
+    lines = readme_text.splitlines(keepends=True)
+    begins = [number for number, line in enumerate(lines, 1) if line.strip() == BLOCK_BEGIN]
+    ends = [number for number, line in enumerate(lines, 1) if line.strip() == BLOCK_END]
+    problems = []
+    if not begins and not ends:
+        problems.append(f"README: no begin marker `{BLOCK_BEGIN}`")
+    elif not begins:
+        problems.append(f"README: line {ends[0]}: the end marker `{BLOCK_END}` has no begin marker `{BLOCK_BEGIN}`")
+    elif not ends:
+        problems.append(f"README: line {begins[0]}: the begin marker `{BLOCK_BEGIN}` has no end marker `{BLOCK_END}`")
+    if len(begins) > 1:
+        problems.append(f"README: line {begins[1]}: a second begin marker `{BLOCK_BEGIN}`")
+    if len(ends) > 1:
+        problems.append(f"README: line {ends[1]}: a second end marker `{BLOCK_END}`")
+    if begins and ends and ends[0] < begins[0]:
+        problems.append(f"README: line {ends[0]}: the end marker `{BLOCK_END}` comes before the begin marker")
+    if problems:
+        raise ResultsError("; ".join(problems))
+    inner = [f"{line}\n" for line in block.split("\n")] if block else []
+    return "".join(lines[:begins[0]] + inner + lines[ends[0] - 1:])
+
+
+def write_whole(path, text):
+    """Replaces the file whole: the text goes to a temporary file beside it, then over it, keeping the old file's mode."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f"{path.name}.tmp")
+    try:
+        temporary.write_text(text, encoding="utf-8")
+        if path.exists():
+            shutil.copymode(path, temporary)
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def compile_rows(report, report_path, page_dir):
+    """One row per backend and shape: the full compile (schema parsed from JSON on every call) and, when the run has it, the prepared-schema path."""
+    measured = measurements(report)
     keys = sorted({(shape, backend) for shape, backend, _ in measured})
     lines = ["| Backend | Request shape | Full compile | Allocated | PERF-1 | Prepared schema | Allocated | PERF-1 |", "|---|---|---|---|---|---|---|---|"]
     for shape, backend in keys:
@@ -255,18 +389,24 @@ def main(argv=None):
     parser.add_argument("results")
     parser.add_argument("--page", default=str(ROOT / "site" / "pages" / "performance.md"))
     parser.add_argument("--site-json", default=str(ROOT / "site" / "site.json"))
+    parser.add_argument("--readme", default=str(ROOT / "README.md"))
     parser.add_argument("--repeat")
     parser.add_argument("--single")
     args = parser.parse_args(argv)
-    page = Path(args.page)
+    page, readme = Path(args.page), Path(args.readme)
     try:
         text = render(Path(args.results), page.parent, Path(args.repeat) if args.repeat else None, Path(args.single) if args.single else None)
-    except (ResultsError, KeyError, TypeError) as error:
+        new_readme = None
+        if args.repeat:
+            block = readme_block(Path(args.results), Path(args.repeat), readme.parent)
+            new_readme = replace_region(readme.read_text(encoding="utf-8"), block)
+        write_whole(page, text)
+        if new_readme is not None:
+            write_whole(readme, new_readme)
+        register(Path(args.site_json))
+    except (ResultsError, KeyError, TypeError, OSError, UnicodeDecodeError) as error:
         print(f"perf_page.py: {error}", file=sys.stderr)
         return 2
-    page.parent.mkdir(parents=True, exist_ok=True)
-    page.write_text(text, encoding="utf-8")
-    register(Path(args.site_json))
     print(f"wrote {page}")
     return 0
 
