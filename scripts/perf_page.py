@@ -122,7 +122,7 @@ def check_complete(measured, folders):
                 raise ResultsError(f"{folder}: no measurement on the {path} path")
     first, second = (set(run) for run in measured)
     if first != second:
-        shape, backend, path = sorted(first ^ second)[0]
+        shape, backend, path = min(first ^ second)
         missing = folders[1] if (shape, backend, path) in first else folders[0]
         raise ResultsError(f"{folders[0]} and {folders[1]} do not hold the same measurements: {backend} {shape} on the {path} path is missing from {missing}")
 

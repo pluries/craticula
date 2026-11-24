@@ -1553,7 +1553,7 @@ class CliTests(unittest.TestCase):
             self.assertFalse(page.exists())
 
 
-PATH_ORDER_LABELS = tuple(label for _, label in load_module().PATH_LABELS)
+PATH_ORDER_LABELS = [label for _, label in load_module().PATH_LABELS]
 LITERAL_BLOCK = (
     "## Measured compile time\n\n| What is measured | Result |\n|---|---|\n"
     f"| Schema | [7.0 µs]({RUN_REPORT}) (search, plain-page) to [26.8 µs]({RUN_REPORT}) (mongo, deep-filter); "
@@ -1572,7 +1572,7 @@ class ReadmeBlockTests(unittest.TestCase):
         self.assertLessEqual(len(first), 60)
         rows = table_cells(block)
         self.assertEqual(2, len(rows))
-        self.assertEqual(list(PATH_ORDER_LABELS), [plain(row[0]) for row in rows])
+        self.assertEqual(PATH_ORDER_LABELS, [plain(row[0]) for row in rows])
         self.assertIn(load_module().PERFORMANCE_URL, [target for _, target in md_links(block)])
         self.assertFalse(block.endswith("\n"))
 
@@ -1707,7 +1707,7 @@ class RepeatCountTests(unittest.TestCase):
             block = load_module().readme_block(results / COMMITTED_RESULTS, results / COMMITTED_REPEAT, Path(tmp))
             cell = table_cells(block)[1][2]
             self.assertEqual(f"16.9 µs to 62.4 µs; 4 of 12 {TARGET_SENTENCE}", plain(cell))
-            self.assertEqual([(("4", REPEAT_REPORT)), (("12", REPEAT_REPORT))], md_links(cell)[-2:])
+            self.assertEqual([("4", REPEAT_REPORT), ("12", REPEAT_REPORT)], md_links(cell)[-2:])
 
 
 class CliReadmeTests(unittest.TestCase):

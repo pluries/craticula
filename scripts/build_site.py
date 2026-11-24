@@ -87,6 +87,7 @@ ADDENDUM = "Addendum — "
 SPLIT_SUBGROUP = "Semantics"
 LLMS_NAME, LLMS_FULL_NAME = "llms.txt", "llms-full.txt"
 I18N_DIR = "site/i18n"
+HTML_SUFFIX = ".html"
 README_SOURCE = "README.md"
 LEFT_OUT_BEGIN = "<!-- performance block: begin, written by scripts/perf_page.py; the site leaves it out -->"
 LEFT_OUT_END = "<!-- performance block: end -->"
@@ -1280,9 +1281,9 @@ def resolve_link(href: str, source: str, pages_by_source: dict[str, Page], root:
             errors.append(f"{where}: dead anchor '#{fragment}'")
         return href
     index_links = {links.index_slug: links for links in splits.values()}
-    if path_part.endswith(".html") and "/" not in path_part and path_part[:-5] in index_links:
+    if path_part.endswith(HTML_SUFFIX) and "/" not in path_part and path_part[:-5] in index_links:
         return split_href(index_links[path_part[:-5]], fragment, path_part)
-    if pages_by_slug and path_part.endswith(".html") and "/" not in path_part and path_part[:-5] in pages_by_slug:
+    if pages_by_slug and path_part.endswith(HTML_SUFFIX) and "/" not in path_part and path_part[:-5] in pages_by_slug:
         # A link to a built page (`ir-schema.html#filternode`), as the generated pages write them.
         if fragment and page_anchors is not None and fragment not in page_anchors(path_part[:-5]):
             errors.append(f"{where}: dead anchor '#{fragment}' in page {path_part}")
@@ -1491,7 +1492,7 @@ class SiteBuild:
 
         def resolve(href: str, image: bool = False) -> str:
             name = href[len(base) + 1:] if base and href.startswith(f"{base}/") else ""
-            return resolver(name if name.endswith(".html") and name[:-5] in self.pages_by_slug else href, image)
+            return resolver(name if name.endswith(HTML_SUFFIX) and name[:-5] in self.pages_by_slug else href, image)
 
         rendered = render_markdown(inner, resolve=resolve)
         self.errors.extend(link_errors)
