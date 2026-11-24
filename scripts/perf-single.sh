@@ -4,6 +4,7 @@
 # with nothing else running on it. Usage: PERF_MACHINE=<label> bash scripts/perf-single.sh [date]        default date: today (UTC)
 # Output: perf/results/<date>-single/ (same files as perf-load.sh). Then:
 #   python3 scripts/perf_page.py perf/results/<date> --repeat perf/results/<date>-repeat --single perf/results/<date>-single
+# (it writes the site page and the results block of README.md)
 # Needs docker compose, the .NET SDK and Python 3.10+. Environment: PERF_MACHINE (required), PERF_DURATION, PERF_WARMUP.
 set -euo pipefail
 

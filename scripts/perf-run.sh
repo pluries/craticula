@@ -6,7 +6,7 @@
 # `python3 perf/compare.py`, which lists how far the repeat differs from the run (NFR-08: the spread is shown, there is no target; it exits 0 for
 # any spread). A run it cannot read, or a repeat that is not a separate run (same folder, a copy, another machine or commit), is an exit 2.
 # `python3 scripts/perf_page.py perf/results/<date> --repeat perf/results/<date>-repeat`
-# writes the site page with that spread. Takes about an hour.
+# writes the site page with that spread and the results block of README.md. Takes about an hour.
 # Needs docker compose, the .NET SDK and Python 3.10+. Environment: PERF_MACHINE (required), PERF_CONCURRENCY, PERF_DURATION.
 set -euo pipefail
 
@@ -29,6 +29,6 @@ done
 python3 perf/compare.py "perf/results/$DATE" "perf/results/$DATE-repeat" || status=$?
 echo
 if [ "${status:-0}" -eq 0 ]; then
-  echo "next: python3 scripts/perf_page.py perf/results/$DATE --repeat perf/results/$DATE-repeat   (then review the page, commit perf/results and site/)"
+  echo "next: python3 scripts/perf_page.py perf/results/$DATE --repeat perf/results/$DATE-repeat   (then review the page and README.md, commit perf/results, site/ and README.md)"
 fi
 exit "${status:-0}"

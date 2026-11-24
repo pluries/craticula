@@ -99,7 +99,29 @@ def language_file(code: str, name: str) -> str:
 
 
 def left_out_region(text: str, label: str) -> tuple[str, str, list[str]]:
-    raise NotImplementedError
+    """The text without the lines from the begin marker to the end marker, the lines between them, and the problems of the pair.
+    A marker is a whole line compared after `strip()`; with a problem the text comes back unchanged and the inner text is empty."""
+    lines = text.splitlines(keepends=True)
+    begins = [number for number, line in enumerate(lines, 1) if line.strip() == LEFT_OUT_BEGIN]
+    ends = [number for number, line in enumerate(lines, 1) if line.strip() == LEFT_OUT_END]
+    problems = []
+    if not begins and not ends:
+        problems.append(f"{label}: no begin marker `{LEFT_OUT_BEGIN}`; the performance block needs one pair of markers")
+    elif not begins:
+        problems.append(f"{label}: line {ends[0]}: the end marker `{LEFT_OUT_END}` has no begin marker `{LEFT_OUT_BEGIN}`")
+    if len(begins) > 1:
+        problems.append(f"{label}: line {begins[1]}: a second begin marker `{LEFT_OUT_BEGIN}`; the performance block has one pair")
+    if len(ends) > 1:
+        problems.append(f"{label}: line {ends[1]}: a second end marker `{LEFT_OUT_END}`; the performance block has one pair")
+    if begins and ends and ends[0] < begins[0]:
+        problems.append(f"{label}: line {ends[0]}: the end marker `{LEFT_OUT_END}` comes before the begin marker")
+    elif begins and not ends:
+        problems.append(f"{label}: line {begins[0]}: the begin marker `{LEFT_OUT_BEGIN}` has no end marker")
+    if problems:
+        return text, "", problems
+    begin, end = begins[0], ends[0]
+    inner = "\n".join(line.rstrip("\r\n") for line in lines[begin:end - 1])
+    return "".join(lines[:begin - 1] + lines[end:]), inner, []
 
 
 GROUP_NAMES, SUBGROUPS = "group_names", "subgroups"  # the tables of the interface text that name the groups and the subgroups
@@ -1362,6 +1384,7 @@ class SiteBuild:
         self.translated: set[str] = set()
         self.pages: list[Page] = []
         self.errors: list[str] = []
+        self.region_cache: tuple[str, list[str]] | None = None
         self.text_cache: dict[str, str] = {}
         self.split_sources: dict[str, list[Page]] = {}
         self.split_slugs: dict[str, str] = {}
@@ -1439,14 +1462,40 @@ class SiteBuild:
                     raise BuildError(f"{page.source}: not valid JSON: {error}") from error
                 self.text_cache[page.slug] = schema_reference(schema, os.path.basename(page.source), self.page_of_file)
             else:
-                self.text_cache[page.slug] = expand_includes(self.read(page.source), self.root, page.source)
+                text = expand_includes(self.read(page.source), self.root, page.source)
+                self.text_cache[page.slug] = left_out_region(text, page.source)[0] if page.source == README_SOURCE else text
         return self.text_cache[page.slug]
 
     def readme_region(self) -> tuple[str, list[str]]:
-        raise NotImplementedError
+        """The inner text of the README's left-out region and the problems of its marker pair; empty when no page is sourced from the README."""
+        if self.region_cache is None:
+            self.region_cache = ("", [])
+            if README_SOURCE in self.pages_by_source:
+                try:
+                    _, inner, problems = left_out_region(self.read(README_SOURCE), README_SOURCE)
+                    self.region_cache = (inner, problems)
+                except (OSError, UnicodeDecodeError):
+                    pass
+        return self.region_cache
 
     def home_block(self) -> str:
-        raise NotImplementedError
+        """The README's performance region rendered for the English home page; empty in a language build or when the region is empty."""
+        inner = self.readme_region()[0] if self.language is None else ""
+        if not inner:
+            return ""
+        page = self.pages_by_source[README_SOURCE]
+        base = self.config.get("baseUrl")
+        link_errors: list[str] = []
+        first = render_markdown(inner)
+        resolver = self.resolver_for(page, self.page_anchors(page.slug), link_errors, iter(line for line, _ in first.links), f"{README_SOURCE} (performance block)")
+
+        def resolve(href: str, image: bool = False) -> str:
+            name = href[len(base) + 1:] if base and href.startswith(f"{base}/") else ""
+            return resolver(name if name.endswith(".html") and name[:-5] in self.pages_by_slug else href, image)
+
+        rendered = render_markdown(inner, resolve=resolve)
+        self.errors.extend(link_errors)
+        return f'<div id="{HOME_BLOCK_ID}">{add_anchors(rendered.html)}</div>'
 
     def page_anchors(self, slug: str) -> set[str]:
         if slug not in self.anchor_cache:
@@ -1537,11 +1586,12 @@ class SiteBuild:
             if problem:
                 self.errors.append(f"{name}: page '{page.slug}' holds {problem}, which the site never publishes")
 
-    def resolver_for(self, page: Page, own: set[str], link_errors: list[str], lines) -> Callable:
+    def resolver_for(self, page: Page, own: set[str], link_errors: list[str], lines, label_override: str | None = None) -> Callable:
         generated = page.generator is not None
         label = f"site/site.json#{page.slug}" if generated else None
         if page.generator == "semantics-part":
             label = f"{page.source} (page '{page.slug}')"
+        label = label_override or label
         source = page.source if page.generator in (None, "semantics-part", "semantics-split") else "site/_generated"
         context = LinkContext(self.pages_by_slug, self.page_anchors, self.splits, self.own_split_of.get(page.slug))
 
@@ -1682,6 +1732,8 @@ class SiteBuild:
         texts: dict[str, str] = {}
         page_texts: dict[str, str] = {}
         index_entries: list[dict] = []
+        if self.language is None:
+            self.errors.extend(self.readme_region()[1])
         for page in self.built():
             made = self.build_page(page, target, shared, templates)
             if made is None:
@@ -1711,7 +1763,7 @@ class SiteBuild:
             "toc": render_toc(rendered, self.ui),
             "prev_next": render_pager(self.pages, page.slug, self.ui),
             "menu_button": render_menu_button(page.slug, self.ui),
-            "content": rendered.html,
+            "content": (self.home_block() if self.language is None and page.slug == "index" else "") + rendered.html,
             "source": html.escape(page.source),
             "source_url": html.escape(f"{self.config['repo'].rstrip('/')}/blob/{self.config['branch']}/{page.source}"),
         }

@@ -34,6 +34,18 @@ a schema configuration (the security and typing boundary) to a plain query artif
 Execution — running the artifact and shaping results back into the grid response — lives in
 separate, optional per-ecosystem adapter packages.
 
+<!-- performance block: begin, written by scripts/perf_page.py; the site leaves it out -->
+## Measured compile time
+
+The time Craticula takes to compile one grid request into a query, without running it. The figures are taken from the per-shape means of the report and are measurements on one machine, not promises.
+
+| What is measured | This run: lowest to highest | Repeat run: lowest to highest |
+|---|---|---|
+| Schema prepared once, then each request compiled against it | [7.0 µs](perf/results/2026-11-16-p/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json) (search, plain-page) to [26.8 µs](perf/results/2026-11-16-p/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json) (mongo, deep-filter); [0](perf/results/2026-11-16-p/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json) of [12](perf/results/2026-11-16-p/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json) at or above the 50 µs target | [7.4 µs](perf/results/2026-11-16-p-repeat/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json) to [26.5 µs](perf/results/2026-11-16-p-repeat/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json) |
+| Schema parsed from JSON on every call | [17.0 µs](perf/results/2026-11-16-p/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json) (search, plain-page) to [53.1 µs](perf/results/2026-11-16-p/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json) (mongo, group-aggregate); [3](perf/results/2026-11-16-p/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json) of [12](perf/results/2026-11-16-p/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json) at or above the 50 µs target | [16.9 µs](perf/results/2026-11-16-p-repeat/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json) to [62.4 µs](perf/results/2026-11-16-p-repeat/compile/results/Craticula.Benchmarks.CompileBenchmarks-report-full.json) |
+
+Measured on bench-vm-10c-34g on 2026-11-16, run folder `2026-11-16-p`. Every figure links to the BenchmarkDotNet report it was read from. The full tables, the load results and the method are on the [performance page](https://craticula.pluries.dev/performance.html).
+<!-- performance block: end -->
 ## Scope (v1)
 
 - **Request adapter** (the spec calls it the *frontend adapter*; it is the compiler's input side, and it runs in your server, not in the browser): AG Grid SSRM (v31–v36). AG Grid Community's Infinite Row Model is supported for flat grids
