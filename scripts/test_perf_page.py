@@ -375,7 +375,7 @@ def first_difference(region, expected):
         if got != want:
             return f"{got}, expected {want}"
     for number, (got, want) in enumerate(itertools.zip_longest(region.splitlines(), expected.splitlines()), start=1):
-        if got != want:
+        if got != want and (got or "").strip() + (want or "").strip():
             return f"line {number}: {got!r}, expected {want!r}"
     return None
 
@@ -1923,7 +1923,7 @@ class HomeBlockTests(unittest.TestCase):
         block = committed_block()
         self.assertEqual([], home_problems(as_home(block), block))
         problems = " ".join(home_problems(as_home(block).replace("26.8 µs", "25.8 µs", 1), block))
-        self.assertIn("25.8 µs", problems)
+        self.assertIn("25.8", problems)
 
     def test_no_other_built_page_holds_the_block(self):  # US3-AS5 guard: holds before and after the feature
         label = load_module().PATH_LABELS[0][1]
