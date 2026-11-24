@@ -728,26 +728,10 @@
     "approved_on": "2026-11-22"
   },
   {
-    "language": "fr",
-    "document": "what-is-craticula",
-    "source_fingerprint": "512000cfdae7ff06fd1d3cb96ba4f1892294a7fd2212e266fc84104c3017b36c",
-    "translation_hash": "5357cc6d923dc04ff3f54fc4ddefe5d36a8f9f1cd2f5abfbaebebc06b775f8da",
-    "approved_by": "Christian Stephan",
-    "approved_on": "2026-11-22"
-  },
-  {
     "language": "de",
     "document": "claude-skill",
     "source_fingerprint": "63b1738da63b9355a6d5c64ab072a81d4f2fa969df1e3817fc06403b6cb6dba0",
     "translation_hash": "f7d7cf529f74eb5c9eb8172a05af4af224f10df0e6b4dd0bf9c2475d5d051fbc",
-    "approved_by": "Christian Stephan",
-    "approved_on": "2026-11-22"
-  },
-  {
-    "language": "de",
-    "document": "what-is-craticula",
-    "source_fingerprint": "512000cfdae7ff06fd1d3cb96ba4f1892294a7fd2212e266fc84104c3017b36c",
-    "translation_hash": "7505bfa9d6aec75715eef3379ceeed34eba2c656420460fae8b9d83622ca4628",
     "approved_by": "Christian Stephan",
     "approved_on": "2026-11-22"
   },
@@ -760,14 +744,6 @@
     "approved_on": "2026-11-22"
   },
   {
-    "language": "it",
-    "document": "what-is-craticula",
-    "source_fingerprint": "512000cfdae7ff06fd1d3cb96ba4f1892294a7fd2212e266fc84104c3017b36c",
-    "translation_hash": "db7f6f46d1a6b006d31c0d1c604f58cc597fb771458c522499f9d4c85917ccbb",
-    "approved_by": "Christian Stephan",
-    "approved_on": "2026-11-22"
-  },
-  {
     "language": "es",
     "document": "claude-skill",
     "source_fingerprint": "63b1738da63b9355a6d5c64ab072a81d4f2fa969df1e3817fc06403b6cb6dba0",
@@ -776,26 +752,10 @@
     "approved_on": "2026-11-22"
   },
   {
-    "language": "es",
-    "document": "what-is-craticula",
-    "source_fingerprint": "512000cfdae7ff06fd1d3cb96ba4f1892294a7fd2212e266fc84104c3017b36c",
-    "translation_hash": "2b4e01428a35a469caa0a817e737acf1e69491b17f8115e5267440abc35b8818",
-    "approved_by": "Christian Stephan",
-    "approved_on": "2026-11-22"
-  },
-  {
     "language": "zh",
     "document": "claude-skill",
     "source_fingerprint": "63b1738da63b9355a6d5c64ab072a81d4f2fa969df1e3817fc06403b6cb6dba0",
     "translation_hash": "af5cb5b73dbd9880eef24fcf5208d06e6c5abbba191e3e16199ea27631867a5e",
-    "approved_by": "Christian Stephan",
-    "approved_on": "2026-11-22"
-  },
-  {
-    "language": "zh",
-    "document": "what-is-craticula",
-    "source_fingerprint": "512000cfdae7ff06fd1d3cb96ba4f1892294a7fd2212e266fc84104c3017b36c",
-    "translation_hash": "2940a4434f6552b56c92f3dc93da1fe8f87edc17e317d2c773b3b77be35264af",
     "approved_by": "Christian Stephan",
     "approved_on": "2026-11-22"
   },
@@ -878,5 +838,45 @@
     "translation_hash": "bc10926c08681c9be2d93cfb55a3dee7f33ec14caf8959aef142c72bf9889d9e",
     "approved_by": "Christian Stephan",
     "approved_on": "2026-11-23"
+  },
+  {
+    "language": "fr",
+    "document": "what-is-craticula",
+    "source_fingerprint": "d94fa2f231a48e0cc892afafadb5c40ca89980048ae4b51c72319df4d496c2ff",
+    "translation_hash": "5a012fc8d443ec2ab198c2237b220b6c6995a124f57335670a28a3ecb85f5f68",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-24"
+  },
+  {
+    "language": "de",
+    "document": "what-is-craticula",
+    "source_fingerprint": "d94fa2f231a48e0cc892afafadb5c40ca89980048ae4b51c72319df4d496c2ff",
+    "translation_hash": "db35d65154bba513b1bf41d89386af65441a66d75d412ce9602548dddd9c44ce",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-24"
+  },
+  {
+    "language": "it",
+    "document": "what-is-craticula",
+    "source_fingerprint": "d94fa2f231a48e0cc892afafadb5c40ca89980048ae4b51c72319df4d496c2ff",
+    "translation_hash": "48917817afbb7b8eb295cae983a6278cabdae2f498064aa139d24f428c89d5f4",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-24"
+  },
+  {
+    "language": "es",
+    "document": "what-is-craticula",
+    "source_fingerprint": "d94fa2f231a48e0cc892afafadb5c40ca89980048ae4b51c72319df4d496c2ff",
+    "translation_hash": "747f06f5c2dea94f87884bdc56c8731763935cbcd555d1833eab864e47384258",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-24"
+  },
+  {
+    "language": "zh",
+    "document": "what-is-craticula",
+    "source_fingerprint": "d94fa2f231a48e0cc892afafadb5c40ca89980048ae4b51c72319df4d496c2ff",
+    "translation_hash": "3a92daa2e7e7a584da4fdbef48e5804a0c046992b694ec56733136bf4809fc21",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-24"
   }
 ]

@@ -55,7 +55,7 @@ Pivot mode is not supported. The request parser refuses a request with pivot mod
 
 ## Current state
 
-The C# packages are published on nuget.org, and nobody runs a demo for visitors. The repository has a demo app you run yourself (`examples/demo`), which needs Docker, the .NET 10 SDK and Node.
+The C# packages are published on nuget.org. Two read-only demos run for visitors: [PostgreSQL](https://craticula-pg.pluries.dev) and [MongoDB](https://craticula-mongo.pluries.dev). The repository also has the demo app behind them, which you can run yourself (`examples/demo`); it needs Docker, the .NET 10 SDK and Node.
 
 To try it, add the packages from nuget.org. The [C# quickstart](quickstart-csharp.html) shows how. The C# library is the reference implementation. The repository describes TypeScript, Python and Go ports as planned for after the specification is frozen. None of them exists yet.
 
