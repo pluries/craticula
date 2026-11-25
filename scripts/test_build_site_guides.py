@@ -26,14 +26,14 @@ GUIDE_SLUGS = ("paging-and-sorting", "grouping-and-aggregation", "csv-export", "
 CONFIGURATION_SLUGS = ("the-gridschema", "limits", "dialects-and-providers")
 SLUGS = GUIDE_SLUGS + CONFIGURATION_SLUGS
 DESCRIPTIONS = {
-    "paging-and-sorting": "How the row range and the sort order of a request become paging and ordering.",
-    "grouping-and-aggregation": "How row grouping and aggregation answer one level at a time.",
-    "csv-export": "What Craticula does for a CSV export and what stays with you.",
-    "relational-adapters": "The optional Dapper and Entity Framework Core packages.",
-    "search-adapters": "The optional MongoDB and OpenSearch packages.",
-    "the-gridschema": "What the schema holds and which of its settings are enforced.",
-    "limits": "The resource limits on every request and how to change them.",
-    "dialects-and-providers": "The databases Craticula writes queries for and how they differ.",
+    "paging-and-sorting": "How rows are windowed and ordered, and why paging is deterministic.",
+    "grouping-and-aggregation": "How a grouped grid asks for one level at a time and how aggregations behave.",
+    "csv-export": "Stream a grid's rows to CSV with the same request model and the same checks.",
+    "relational-adapters": "What the two relational adapters give you, what they need and what they never do.",
+    "search-adapters": "Run compiled MongoDB and OpenSearch queries with the optional adapters, including deep paging.",
+    "the-gridschema": "The schema that lists what a grid may touch, and which of its flags are enforced today.",
+    "limits": "The default resource limits, what each one does and how to change them.",
+    "dialects-and-providers": "How each database engine differs in quoting, paging, null order and case-insensitive matching.",
 }
 
 
