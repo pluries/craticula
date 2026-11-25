@@ -343,7 +343,7 @@ class ReleaseSignaturesWorkflowTests(unittest.TestCase):
     def test_the_one_job_runs_only_after_a_success_on_main_and_has_exactly_two_permissions(self):
         text = self.text()
         body = text.split("\njobs:\n", 1)[1]
-        self.assertEqual(["sign"], re.findall(r"(?m)^  ([a-z][\w-]*):$", body))
+        self.assertEqual(["sign"], re.findall(r"(?m)^ {2}([a-z][\w-]*):$", body))
         self.assertRegex(body, r"(?m)^    if: github\.event\.workflow_run\.conclusion == 'success' && github\.event\.workflow_run\.head_branch == 'main'$")
         self.assertRegex(body, r"(?m)^    timeout-minutes: 15$")
         self.assertRegex(body, r"(?m)^    runs-on: ubuntu-latest$")
