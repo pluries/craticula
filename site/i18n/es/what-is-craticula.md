@@ -2,9 +2,9 @@
 translates: what-is-craticula
 title: Qué es Craticula
 description: Qué compila Craticula, qué no hace nunca y en qué estado se encuentra.
-source_fingerprint: 512000cfdae7ff06fd1d3cb96ba4f1892294a7fd2212e266fc84104c3017b36c
+source_fingerprint: d94fa2f231a48e0cc892afafadb5c40ca89980048ae4b51c72319df4d496c2ff
 drafter: claude
-drafted_on: 2026-11-22
+drafted_on: 2026-11-24
 status: approved
 ---
 # Qué es Craticula {#what-craticula-is}
@@ -64,7 +64,7 @@ El modo pivote no es compatible. El analizador de solicitudes rechaza una solici
 
 ## Estado actual {#current-state}
 
-Los paquetes de C# están publicados en nuget.org, y nadie aloja una demostración para los visitantes. El repositorio contiene una aplicación de demostración que usted mismo ejecuta (`examples/demo`) y que requiere Docker, el SDK de .NET 10 y Node.
+Los paquetes de C# están publicados en nuget.org. Dos demostraciones de solo lectura funcionan para los visitantes: [PostgreSQL](https://craticula-pg.pluries.dev) y [MongoDB](https://craticula-mongo.pluries.dev). El repositorio contiene además la aplicación de demostración en la que se basan, que usted mismo puede ejecutar (`examples/demo`); requiere Docker, el SDK de .NET 10 y Node.
 
 Para probarlo, añada los paquetes desde nuget.org. La [guía de inicio rápido de C#](quickstart-csharp.html) muestra cómo hacerlo. La biblioteca de C# es la implementación de referencia. El repositorio describe portaciones a TypeScript, Python y Go previstas tras la congelación de la especificación. Ninguna existe todavía.
 

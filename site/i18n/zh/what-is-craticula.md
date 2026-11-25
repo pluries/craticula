@@ -2,9 +2,9 @@
 translates: what-is-craticula
 title: Craticula 是什么
 description: Craticula 编译什么、绝不做什么，以及目前的进展。
-source_fingerprint: 512000cfdae7ff06fd1d3cb96ba4f1892294a7fd2212e266fc84104c3017b36c
+source_fingerprint: d94fa2f231a48e0cc892afafadb5c40ca89980048ae4b51c72319df4d496c2ff
 drafter: claude
-drafted_on: 2026-11-22
+drafted_on: 2026-11-24
 status: approved
 ---
 # Craticula 是什么 {#what-craticula-is}
@@ -64,7 +64,7 @@ Oracle 不在 v1 的清单中，项目将其视为一个悬而未决的问题。
 
 ## 当前状态 {#current-state}
 
-C# 包已发布在 nuget.org 上，没有人为访客运行演示。仓库中有一个需要您自行运行的演示应用（`examples/demo`），它需要 Docker、.NET 10 SDK 和 Node。
+C# 包已发布在 nuget.org 上。我们为访客运行了两个只读演示：[PostgreSQL](https://craticula-pg.pluries.dev) 和 [MongoDB](https://craticula-mongo.pluries.dev)。仓库中还包含这两个演示背后的演示应用，您可以自行运行（`examples/demo`）；它需要 Docker、.NET 10 SDK 和 Node。
 
 若要试用，请从 nuget.org 添加这些包。[C# 快速入门](quickstart-csharp.html)介绍了具体方法。C# 库是参考实现。仓库说明 TypeScript、Python 和 Go 的移植版本计划在规范冻结之后进行，目前均尚不存在。
 

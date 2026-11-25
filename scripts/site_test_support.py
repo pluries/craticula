@@ -32,11 +32,15 @@ HEADER_KEYS = ("translates", "title", "description", "source_fingerprint", "draf
 SCOPES = ("translated", "english")
 FAKE_REVIEW = "2026-11-03"   # a date for the scratch builds only: the maker's real review date is not invented here
 # "There is no live demo site" is an honest denial that the pages may keep, so the claims are the affirmative phrases.
-FORBIDDEN_CLAIMS = ("available on nuget", "install from nuget", "published on nuget", "on nuget.org", "try the demo", "online demo", "hosted demo",
-                    "see it live", "cannot drift", "dotnet add package", "nuget install", "npm install", "pip install", "go get ", "try it online")
-# 1.0.0 is on nuget.org (2026-11-10): the pages that tell a reader how to install an adapter may say so. Every other claim stays forbidden.
-PACKAGE_CLAIMS = ("available on nuget", "install from nuget", "published on nuget", "on nuget.org", "dotnet add package", "nuget install")
-PUBLISHED_PAGES = ("relational-adapters", "search-adapters")
+# The C# packages are on nuget.org since 1.0.0 (2026-11-10), so the NuGet phrases are no longer claims to forbid; the demo, live-site and
+# not-yet-published port phrases (npm, pip, go) stay forbidden.
+FORBIDDEN_CLAIMS = ("try the demo", "online demo", "hosted demo", "see it live", "cannot drift", "npm install", "pip install", "go get ", "try it online")
+
+
+def claims_in(text: str) -> list[str]:
+    """The forbidden claims a page text makes (case-insensitive)."""
+    lowered = text.lower()
+    return [claim for claim in FORBIDDEN_CLAIMS if claim in lowered]
 LINK = re.compile(r"\]\(([^)\s]+)\)")
 SCHEME = re.compile(r"[a-z][a-z0-9+.-]*:")
 
@@ -136,11 +140,12 @@ class EditorialMixin:
     def test_no_page_claims_a_published_package_a_demo_or_a_live_site(self):
         for slug in self.SLUGS:
             with self.subTest(page=slug):
-                lowered = text_of(slug).lower()
-                for claim in FORBIDDEN_CLAIMS:
-                    if slug in PUBLISHED_PAGES and claim in PACKAGE_CLAIMS:
-                        continue
-                    self.assertNotIn(claim, lowered)
+                self.assertEqual([], claims_in(text_of(slug)))
+
+    def test_the_claims_guard_catches_a_forbidden_phrase_and_lets_a_released_package_claim_through(self):
+        self.assertEqual(["try the demo"], claims_in("You can Try the demo today."))
+        self.assertEqual(["npm install"], claims_in("Run npm install first."))
+        self.assertEqual([], claims_in("The C# packages are published on nuget.org. Use dotnet add package or nuget install."))
 
     def test_each_page_renders_with_no_unresolved_markup(self):
         for slug in self.SLUGS:
