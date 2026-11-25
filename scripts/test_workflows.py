@@ -272,6 +272,53 @@ class RuleFunctionTests(unittest.TestCase):
         self.assertEqual([], secret_references("# No secret: nothing reads secrets.X here\n"))
 
 
+class CodeqlWorkflowTests(unittest.TestCase):
+    """codeql.yml (#4029, OpenSSF Scorecard SAST): static analysis of the C# on pushes to main and weekly, never on a pull request."""
+
+    @staticmethod
+    def text() -> str:
+        lines = (WORKFLOWS / "codeql.yml").read_text(encoding="utf-8").splitlines()
+        return "\n".join(line for line in lines if not line.strip().startswith("#")) + "\n"
+
+    def test_it_runs_on_pushes_to_main_weekly_and_by_hand_and_on_no_pull_request(self):
+        text = self.text()
+        self.assertRegex(text, r"(?m)^on:\n  push:\n    branches: \[main\]\n  schedule:\n    - cron: \"[^\"]+\"\n  workflow_dispatch:\n(?!  )")
+        for event in ("pull_request", "pull_request_target", "workflow_run", "issue_comment"):
+            with self.subTest(event=event):
+                self.assertNotRegex(text, rf"(?m)^\s+{event}:")
+
+    def test_every_action_is_pinned_to_a_sha_at_one_version(self):
+        text = self.text()
+        self.assertEqual([], unpinned_uses(text))
+        for step in ("init", "analyze"):
+            with self.subTest(step=step):
+                self.assertRegex(text, rf"(?m)^      - uses: github/codeql-action/{step}@[0-9a-f]{{40}} # v4\.39\.3$")
+
+    def test_top_level_permissions_are_contents_read_only(self):
+        self.assertRegex(self.text(), r"(?m)^permissions:\n  contents: read\n(?!  )")
+
+    def test_the_one_job_has_exactly_the_three_permissions_codeql_needs(self):
+        text = self.text()
+        self.assertRegex(text, r"(?m)^  analyze:$")
+        self.assertRegex(text, r"(?m)^    timeout-minutes: 30$")
+        self.assertRegex(text, r"(?m)^    permissions:\n      actions: read\n      contents: read\n      security-events: write\n(?!      )")
+        self.assertEqual(1, len(re.findall(r"(?m)^\s+permissions:", text.split("\njobs:\n")[1])))
+        self.assertNotRegex(text, r"(?m)^\s+(?:id-token|pull-requests|packages|statuses|checks|issues|contents): write")
+
+    def test_it_analyses_csharp_without_building_it(self):
+        text = self.text()
+        self.assertRegex(text, r"(?m)^          languages: csharp$")
+        self.assertRegex(text, r"(?m)^          build-mode: none$")
+        self.assertRegex(text, r"(?m)^          category: /language:csharp$")
+
+    def test_it_uses_no_secret_keeps_no_credential_and_never_hides_a_failure(self):
+        text = self.text()
+        self.assertEqual([], secret_references(text))
+        self.assertRegex(text, r"(?m)^        with:\n          persist-credentials: false$")
+        self.assertNotIn("|| true", text)
+        self.assertNotIn("continue-on-error", text)
+
+
 class RealWorkflowTests(unittest.TestCase):
     def workflows(self):
         files = sorted(WORKFLOWS.glob("*.yml")) + sorted(WORKFLOWS.glob("*.yaml"))
