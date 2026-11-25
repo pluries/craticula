@@ -92,6 +92,6 @@
   "count mode": {
     "title": "Count mode",
     "description": "How a compiler counts the rows a request matches, without the page's ordering and window.",
-    "summary": "A host often needs the total number of matching rows next to the page. Count mode compiles exactly that question: the same filter as the page, but no sort and no row window, so the database does not order rows it only counts. A grouped level counts its groups. A window above the page limit does not make a count fail. The page query and every existing result stay as they are."
+    "summary": "A host often needs the total number of matching rows next to the page. Count mode compiles exactly that question: the same filter as the page, but no sort and no row window, so the database does not order rows it only counts. A grouped level counts its groups, and a window above the page limit does not make a count fail; the page query and every existing result stay as they are."
   }
 }

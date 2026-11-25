@@ -24,10 +24,10 @@ from test_build_site_structure import CODED, meta_description, sidebar  # noqa: 
 SLUGS = ("what-is-craticula", "request-to-query", "strict-and-lenient", "safety-model")
 TITLES = {"what-is-craticula": "What Craticula is", "request-to-query": "How a request becomes a query",
           "strict-and-lenient": "Strict and Lenient", "safety-model": "The safety model"}
-DESCRIPTIONS = {"what-is-craticula": "What Craticula does, what it leaves to you and where the project stands.",
-                "request-to-query": "How one grid request becomes a query with parameters.",
-                "strict-and-lenient": "The two schema modes and what each does with an unknown column.",
-                "safety-model": "What Craticula does against a hostile request and what it does not."}
+DESCRIPTIONS = {"what-is-craticula": "What Craticula compiles, what it never does, and where it stands.",
+                "request-to-query": "The path from an AG Grid request to a statement with parameters.",
+                "strict-and-lenient": "What the two schema modes do with columns the schema does not allow.",
+                "safety-model": "How values, identifiers and limits keep a compiled query safe, and what is left to you."}
 
 
 class EditorialRules(EditorialMixin, unittest.TestCase):
