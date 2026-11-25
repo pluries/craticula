@@ -15,8 +15,8 @@ cases is the request shape.
 
 **`source` (added #1638) is a convention here, not a derivation.** Every other category's `source`
 was read back out of that fixture's own expected artifact's `FROM` clause — the authoritative
-per-fixture answer. These 23 fixtures have no artifact to read (that is the point of the category),
-so all 23 carry `source: "items"`, chosen to match their shared generic goods-shaped field set
+per-fixture answer. These 28 fixtures have no artifact to read (that is the point of the category),
+so all 28 carry `source: "items"`, chosen to match their shared generic goods-shaped field set
 (`name`/`price`/`quantity`/`amount`/`active`). Nothing in this category depends on the value: no
 case here ever reaches a compiler, so no `FROM` clause is ever emitted. Keep new cases on the same
 value unless one is deliberately testing something about `source` itself.
