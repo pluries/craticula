@@ -7,7 +7,8 @@ can expose data, so we take reports seriously and ask you to report them private
 
 Please do **not** open a public issue or pull request for a security problem.
 
-1. Open the **Security** tab of this repository.
+1. Open the [private vulnerability report form](https://github.com/pluries/craticula/security/advisories/new), or go to the
+   **Security** tab of this repository.
 2. Choose **Report a vulnerability** (GitHub Private Vulnerability Reporting).
 3. Describe what you found, the version or commit, and how to reproduce it. A request or a failing test is the most useful.
 

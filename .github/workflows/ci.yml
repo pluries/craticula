@@ -35,9 +35,10 @@ jobs:
           dotnet-version: 10.0.x
 
       # NuGetAudit runs here (csharp/Directory.Build.props): a high or critical advisory (NU1903, NU1904) fails the restore.
+      # Locked mode: every package must match the content hash in its packages.lock.json (#4029).
       - name: Restore and audit dependencies
         working-directory: csharp
-        run: dotnet restore Craticula.sln
+        run: dotnet restore Craticula.sln --locked-mode
 
       # The 0-warning bar, and the Security analyzers of csharp/src/.editorconfig as errors.
       - name: Build (0 warnings, security rules)

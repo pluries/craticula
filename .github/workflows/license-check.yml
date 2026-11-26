@@ -43,7 +43,7 @@ jobs:
       # name its license. The advisory audit is its own check (the `build` job of ci.yml restores with it on).
       - name: Restore packages
         working-directory: csharp
-        run: dotnet restore Craticula.sln -p:NuGetAudit=false
+        run: dotnet restore Craticula.sln -p:NuGetAudit=false --locked-mode
 
       # The tool is installed to an explicit folder at the version the manifest pins and is called by its path, so the check does not
       # depend on `dotnet tool run` finding the manifest: on the hosted runner that lookup failed with "Run dotnet tool restore"

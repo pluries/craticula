@@ -272,6 +272,119 @@ class RuleFunctionTests(unittest.TestCase):
         self.assertEqual([], secret_references("# No secret: nothing reads secrets.X here\n"))
 
 
+class CodeqlWorkflowTests(unittest.TestCase):
+    """codeql.yml (#4029, OpenSSF Scorecard SAST): static analysis of the C# on pushes to main and weekly, never on a pull request."""
+
+    @staticmethod
+    def text() -> str:
+        lines = (WORKFLOWS / "codeql.yml").read_text(encoding="utf-8").splitlines()
+        return "\n".join(line for line in lines if not line.strip().startswith("#")) + "\n"
+
+    def test_it_runs_on_pushes_to_main_weekly_and_by_hand_and_on_no_pull_request(self):
+        text = self.text()
+        self.assertRegex(text, r"(?m)^on:\n  push:\n    branches: \[main\]\n  schedule:\n    - cron: \"[^\"]+\"\n  workflow_dispatch:\n(?!  )")
+        for event in ("pull_request", "pull_request_target", "workflow_run", "issue_comment"):
+            with self.subTest(event=event):
+                self.assertNotRegex(text, rf"(?m)^\s+{event}:")
+
+    def test_every_action_is_pinned_to_a_sha_at_one_version(self):
+        text = self.text()
+        self.assertEqual([], unpinned_uses(text))
+        for step in ("init", "analyze"):
+            with self.subTest(step=step):
+                self.assertRegex(text, rf"(?m)^      - uses: github/codeql-action/{step}@[0-9a-f]{{40}} # v4\.39\.3$")
+
+    def test_top_level_permissions_are_contents_read_only(self):
+        self.assertRegex(self.text(), r"(?m)^permissions:\n  contents: read\n(?!  )")
+
+    def test_the_one_job_has_exactly_the_three_permissions_codeql_needs(self):
+        text = self.text()
+        self.assertRegex(text, r"(?m)^  analyze:$")
+        self.assertRegex(text, r"(?m)^    timeout-minutes: 30$")
+        self.assertRegex(text, r"(?m)^    permissions:\n      actions: read\n      contents: read\n      security-events: write\n(?!      )")
+        self.assertEqual(1, len(re.findall(r"(?m)^\s+permissions:", text.split("\njobs:\n")[1])))
+        self.assertNotRegex(text, r"(?m)^\s+(?:id-token|pull-requests|packages|statuses|checks|issues|contents): write")
+
+    def test_it_analyses_csharp_without_building_it(self):
+        text = self.text()
+        self.assertRegex(text, r"(?m)^          languages: csharp$")
+        self.assertRegex(text, r"(?m)^          build-mode: none$")
+        self.assertRegex(text, r"(?m)^          category: /language:csharp$")
+
+    def test_it_uses_no_secret_keeps_no_credential_and_never_hides_a_failure(self):
+        text = self.text()
+        self.assertEqual([], secret_references(text))
+        self.assertRegex(text, r"(?m)^        with:\n          persist-credentials: false$")
+        self.assertNotIn("|| true", text)
+        self.assertNotIn("continue-on-error", text)
+
+
+class ReleaseSignaturesWorkflowTests(unittest.TestCase):
+    """release-signatures.yml (#4029, ADR 0014): after `NuGet publish` succeeds on main, sign the release packages with Sigstore and upload the
+    bundles to the release. No checkout and no repository code; the only job with a write permission and an OIDC token. Line checks only."""
+
+    FILE = WORKFLOWS / "release-signatures.yml"
+
+    def text(self) -> str:
+        self.assertTrue(self.FILE.is_file(), ".github/workflows/release-signatures.yml does not exist")
+        lines = self.FILE.read_text(encoding="utf-8").splitlines()
+        return "\n".join(line for line in lines if not line.strip().startswith("#")) + "\n"
+
+    def test_the_only_trigger_is_the_completion_of_the_nuget_publish_workflow(self):
+        text = self.text()
+        self.assertRegex(text, r'(?m)^on:\n  workflow_run:\n    workflows: \["NuGet publish"\]\n    types: \[completed\]\n(?!  )')
+        for event in ("push", "pull_request", "pull_request_target", "workflow_dispatch", "schedule", "release", "issue_comment"):
+            with self.subTest(event=event):
+                self.assertNotRegex(text, rf"(?m)^\s+{event}:")
+
+    def test_top_level_permissions_are_contents_read_only(self):
+        self.assertRegex(self.text(), r"(?m)^permissions:\n  contents: read\n(?!  )")
+
+    def test_the_one_job_runs_only_after_a_success_on_main_and_has_exactly_two_permissions(self):
+        text = self.text()
+        body = text.split("\njobs:\n", 1)[1]
+        self.assertEqual(["sign"], re.findall(r"(?m)^ {2}([a-z][\w-]*):$", body))
+        self.assertRegex(body, r"(?m)^    if: github\.event\.workflow_run\.conclusion == 'success' && github\.event\.workflow_run\.head_branch == 'main'$")
+        self.assertRegex(body, r"(?m)^    timeout-minutes: 15$")
+        self.assertRegex(body, r"(?m)^    runs-on: ubuntu-latest$")
+        self.assertRegex(body, r"(?m)^    permissions:\n      contents: write\n      id-token: write\n(?!      )")
+        self.assertNotRegex(body, r"(?m)^    environment:")
+
+    def test_it_checks_out_nothing_and_runs_no_repository_code(self):
+        text = self.text()
+        self.assertNotIn("actions/checkout", text)
+        self.assertNotRegex(text, r"(?m)^\s+run:.*\b(?:scripts/|python3? |\./)")
+
+    def test_every_action_is_pinned_to_a_sha(self):
+        text = self.text()
+        self.assertEqual([], unpinned_uses(text))
+        self.assertRegex(text, r"(?m)^      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4\.1\.3$")
+
+    def test_the_tag_comes_from_the_run_title_through_env_and_is_checked_before_use(self):
+        text = self.text()
+        self.assertEqual([], [line for line in NugetPublishWorkflowTests.run_lines(text) if "${{" in line])
+        self.assertEqual([], event_expression_in_run(text))
+        self.assertRegex(text, r"(?m)^          TITLE: \$\{\{ github\.event\.workflow_run\.display_title \}\}$")
+        self.assertIn("^NuGet publish (dotnet-v", text)
+        self.assertLess(text.index("^NuGet publish (dotnet-v"), text.index("releases?per_page=100"))
+        self.assertLess(text.index("^NuGet publish (dotnet-v"), text.index("cosign sign-blob"))
+
+    def test_it_signs_every_package_with_a_bundle_and_uploads_only_those_bundles(self):
+        text = self.text()
+        self.assertIn('cosign sign-blob --yes --bundle "$f.sigstore.json" "$f"', text)
+        self.assertIn("Craticula.*.nupkg", text)
+        self.assertRegex(text, r'test "\$\(find packages -maxdepth 1 -name \'\*\.sigstore\.json\' \| wc -l\)" -eq 10')
+        self.assertIn("uploads.github.com", text)
+        self.assertNotIn("--clobber", text)
+        self.assertNotIn("delete", text.lower())
+
+    def test_it_uses_no_secret_and_hides_no_failure(self):
+        text = self.text()
+        self.assertEqual([], secret_references(text))
+        self.assertNotIn("|| true", text)
+        self.assertNotIn("continue-on-error", text)
+
+
 class RealWorkflowTests(unittest.TestCase):
     def workflows(self):
         files = sorted(WORKFLOWS.glob("*.yml")) + sorted(WORKFLOWS.glob("*.yaml"))

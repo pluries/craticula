@@ -7,6 +7,13 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
+  <!-- #4029 (OpenSSF Scorecard, Pinned-Dependencies): every project writes packages.lock.json, which pins each package by its
+       content hash. The public CI restores in locked mode, so a restore that would resolve a different package fails. A
+       package update regenerates the lock files with the force-evaluate switch of dotnet restore. -->
+  <PropertyGroup Condition="'$(MSBuildProjectExtension)' == '.csproj'">
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+
   <!-- #1660 (TRD P-3, dependency audit): NuGetAudit on every project, src, tests and tools alike, because a
        vulnerable test-only client still runs on the build agent. Mode "all" audits the transitive graph, not only
        the packages named in Directory.Packages.props. Every severity is reported (level "low"); a high (NU1903) or
