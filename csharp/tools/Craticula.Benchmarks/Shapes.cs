@@ -16,7 +16,9 @@ internal static class Shapes
         new("plain-page", "sort-paging/001-single-key-string-asc-nulls-last-default"),
         new("filter-tree", "filter-tree/001-implicit-and-four-columns"),
         new("deep-filter", "filter-tree/012-customfilters-depth-5"),
-        new("group-aggregate", "group-aggregation/001-group-top-level-no-keys-consumed")
+        new("group-aggregate", "group-aggregation/001-group-top-level-no-keys-consumed"),
+        // count mode (CNT-8): the request carries requestContext.compileMode "count", so the same entry point answers the count question
+        new("count", "count-mode/002-flat-number-filter")
     ];
 
     public static readonly IReadOnlyList<string> Backends = ["postgres", "mongo", "search"];
