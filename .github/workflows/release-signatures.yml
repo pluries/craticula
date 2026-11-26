@@ -1,0 +1,87 @@
+# Sigstore signatures for the release packages (#4029, ADR 0014). It runs when `NuGet publish` has succeeded on main: it finds the release of
+# that run's tag, signs each of the ten packages with the identity of this workflow (cosign keyless) and uploads one .sigstore.json bundle per
+# package to the same release, so that the OpenSSF Scorecard and a reader can find a signature next to each package.
+# It checks out nothing and runs no repository code. It is not part of the NuGet push: if it fails, the packages are already published and
+# nothing is rolled back. The release stays as it is, and the failed run is the maker's to read and re-run.
+name: release signatures
+
+on:
+  workflow_run:
+    workflows: ["NuGet publish"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-signatures
+  cancel-in-progress: false
+
+jobs:
+  sign:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # contents: write uploads the bundles to the release (a draft release is readable only with it); id-token: write is for Sigstore.
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      # The title of the NuGet publish run is "NuGet publish <tag>" (its run-name); the tag is checked before it is used for anything.
+      - name: Find the tag in the title of the run
+        env:
+          TITLE: ${{ github.event.workflow_run.display_title }}
+        run: |
+          pattern='^NuGet publish (dotnet-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?)$'
+          if ! [[ "$TITLE" =~ $pattern ]]; then
+            echo "the title of the run does not name a release tag" >&2
+            exit 1
+          fi
+          echo "TAG=${BASH_REMATCH[1]}" >> "$GITHUB_ENV"
+
+      - name: Download the packages of the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p packages
+          releases="$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100")"
+          release_id="$(jq -r --arg tag "$TAG" '[.[] | select(.tag_name == $tag)] | if length == 1 then .[0].id else empty end' <<< "$releases")"
+          if ! [[ "$release_id" =~ ^[0-9]+$ ]]; then
+            echo "there is not exactly one release $TAG" >&2
+            exit 1
+          fi
+          echo "RELEASE_ID=$release_id" >> "$GITHUB_ENV"
+          assets="$(gh api "repos/$GITHUB_REPOSITORY/releases/$release_id/assets?per_page=100")"
+          while read -r asset_id name; do
+            case "$name" in
+              Craticula.*.nupkg) ;;
+              *) continue ;;
+            esac
+            [[ "$asset_id" =~ ^[0-9]+$ && "$name" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "unexpected asset" >&2; exit 1; }
+            gh api -H "Accept: application/octet-stream" "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" > "packages/$name"
+          done < <(jq -r '.[] | "\(.id) \(.name)"' <<< "$assets")
+          test "$(find packages -maxdepth 1 -name 'Craticula.*.nupkg' | wc -l)" -eq 10
+
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+
+      - name: Sign each package
+        run: |
+          set -euo pipefail
+          for f in packages/*.nupkg; do
+            cosign sign-blob --yes --bundle "$f.sigstore.json" "$f"
+          done
+          test "$(find packages -maxdepth 1 -name '*.sigstore.json' | wc -l)" -eq 10
+
+      # The token goes to curl through its config on stdin, not on the command line.
+      - name: Upload the bundles to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for f in packages/*.sigstore.json; do
+            name="$(basename "$f")"
+            printf 'header = "Authorization: Bearer %s"\n' "$GH_TOKEN" | curl --fail --silent --show-error --config - \
+              --request POST --header "Content-Type: application/octet-stream" --data-binary "@$f" \
+              "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=$name" > /dev/null
+          done
