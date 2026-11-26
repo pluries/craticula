@@ -470,7 +470,7 @@ class SkillFolderRuleTests(unittest.TestCase):
 
 class DependabotTests(unittest.TestCase):
     """The Dependabot configuration: both ecosystems weekly and grouped, every deliberately held package held by a scoped ignore
-    (a bare ignore also suppresses security updates), and a two-week cooldown on NuGet. A text check always runs; the full parse
+    (a bare ignore also suppresses security updates), and a two-week cooldown on both. A text check always runs; the full parse
     runs when PyYAML is installed (it is not a dependency of the repository)."""
     PATH = ROOT / ".github" / "dependabot.yml"
     HELD = ("System.Security.Cryptography.Pkcs", "Microsoft.Data.SqlClient", "Microsoft.EntityFrameworkCore.Relational",
@@ -486,8 +486,8 @@ class DependabotTests(unittest.TestCase):
         self.assertRegex(text, r"package-ecosystem: github-actions\n\s+directory: /\n\s+schedule:\n\s+interval: weekly")
         self.assertEqual(2, text.count("groups:"))
 
-    def test_the_cooldown_keeps_the_two_week_rule(self):
-        self.assertRegex(self.text(), r"cooldown:\n\s+default-days: 14")
+    def test_the_cooldown_keeps_the_two_week_rule_in_both_ecosystems(self):
+        self.assertEqual(2, len(re.findall(r"cooldown:\n\s+default-days: 14", self.text())))
 
     def test_every_held_package_is_ignored_with_a_scope(self):
         text = self.text()
@@ -519,7 +519,8 @@ class DependabotTests(unittest.TestCase):
         for entry in ignores:
             self.assertTrue(entry.get("versions") or entry.get("update-types"),
                             f"{entry['dependency-name']}: a bare ignore also blocks security updates")
-        self.assertEqual(14, ecosystems["nuget"]["cooldown"]["default-days"])
+        for name, update in ecosystems.items():
+            self.assertEqual(14, update["cooldown"]["default-days"], name)
 
 
 class GatePathRuleTests(unittest.TestCase):
