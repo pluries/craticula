@@ -55,6 +55,9 @@ When a provider ships a new major:
 - A release is tagged `dotnet-vX.Y.Z`.
 - The release job proposes a version from the latest public tag. The maintainer who approves the release confirms it or types another,
   following the rule above.
+- The proposal is a starting point, not a decision. It can be lower than the rule requires, so the maintainer checks it against the
+  rule above before confirming. Example: 1.3.0 was proposed as 1.2.2, although the count mode had added new public API
+  (`BuildCount` in the SQL, MongoDB and Search packages) since 1.2.1. New functionality is a minor version, so 1.3.0 was released.
 
 ## The conformance fixture suite
 
