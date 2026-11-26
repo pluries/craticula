@@ -14,6 +14,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 SCRIPT = HERE / "check-spec-freeze.py"
+PRIVATE_DOCS = "docs/ is private and stripped from the public mirror"
+FIXTURE_FILES = ("description.md", "agGridRequest.json", "schema.json")
 GAPS = REPO / "docs" / "specs" / "008-spec-freeze-criteria" / "gaps.md"
 
 # Scenario map (cst-feature coverage reads these ids): US1-AS1 US1-AS2 US1-AS3 US1-AS4 US2-AS1 US2-AS2 US2-AS3 US2-AS4
@@ -40,17 +42,21 @@ VERSIONING = "# Versioning\n\n## Freezing the specification\n\n" + "\n".join(f"-
 
 def build(root: Path, *, version="0.3.0", runner_doc=RUNNER_DOC, versioning=VERSIONING, semantics="# Semantics\n") -> None:
     spec = root / "spec"
-    (spec / "fixtures" / "cat" / "001-ok" / "expected").mkdir(parents=True)
+    (fixture_dir(root, "001-ok") / "expected").mkdir(parents=True)
     (spec / "VERSION").write_text(version + "\n")
     for name in ("ir.schema.json", "grid-schema.schema.json"):
         (spec / name).write_text(json.dumps({"$schema": "https://json-schema.org/draft/2020-12/schema"}))
     (spec / "semantics.md").write_text(semantics)
     (spec / "conformance-runner.md").write_text(runner_doc)
     (root / "VERSIONING.md").write_text(versioning)
-    fx = spec / "fixtures" / "cat" / "001-ok"
-    for name in ("description.md", "agGridRequest.json", "schema.json"):
+    fx = fixture_dir(root, "001-ok")
+    for name in FIXTURE_FILES:
         (fx / name).write_text("{}")
     (fx / "expected" / "postgres.artifact.json").write_text("{}")
+
+
+def fixture_dir(root: Path, name: str) -> Path:
+    return root / "spec" / "fixtures" / "cat" / name
 
 
 def check(root: Path, *extra: str) -> subprocess.CompletedProcess:
@@ -61,7 +67,7 @@ def check(root: Path, *extra: str) -> subprocess.CompletedProcess:
 
 
 def line(output: str, criterion: str) -> str:
-    return next(l for l in output.splitlines() if l.startswith(criterion + " "))
+    return next(text for text in output.splitlines() if text.startswith(criterion + " "))
 
 
 class SpecFreezeTests(unittest.TestCase):
@@ -91,9 +97,9 @@ class SpecFreezeTests(unittest.TestCase):
 
     def test_US2_AS3_a_fixture_folder_without_any_expected_file_breaks_only_F5_and_names_it(self):
         build(self.root)
-        orphan = self.root / "spec" / "fixtures" / "cat" / "002-orphan"
+        orphan = fixture_dir(self.root, "002-orphan")
         (orphan / "expected").mkdir(parents=True)
-        for name in ("description.md", "agGridRequest.json", "schema.json"):
+        for name in FIXTURE_FILES:
             (orphan / name).write_text("{}")
         result = check(self.root)
         self.assertEqual(1, result.returncode, result.stdout)
@@ -104,16 +110,16 @@ class SpecFreezeTests(unittest.TestCase):
 
     def test_US2_AS3_a_fixture_folder_missing_a_required_file_breaks_F4(self):
         build(self.root)
-        (self.root / "spec" / "fixtures" / "cat" / "001-ok" / "description.md").unlink()
+        (fixture_dir(self.root, "001-ok") / "description.md").unlink()
         result = check(self.root)
         self.assertIn("UNMET", line(result.stdout, "F-4"))
         self.assertIn("cat/001-ok", line(result.stdout, "F-4"))
 
     def test_US2_AS3_a_rejection_only_folder_is_not_an_orphan(self):
         build(self.root)
-        folder = self.root / "spec" / "fixtures" / "cat" / "002-reject"
+        folder = fixture_dir(self.root, "002-reject")
         (folder / "expected").mkdir(parents=True)
-        for name in ("description.md", "agGridRequest.json", "schema.json"):
+        for name in FIXTURE_FILES:
             (folder / name).write_text("{}")
         (folder / "expected" / "rejection.json").write_text("{}")
         self.assertIn(" met ", line(check(self.root).stdout, "F-5"))
@@ -148,17 +154,17 @@ class SpecFreezeTests(unittest.TestCase):
 
     def test_US2_AS4_the_script_imports_only_the_standard_library(self):
         imports = {
-            l.split()[1].split(".")[0]
-            for l in SCRIPT.read_text().splitlines()
-            if l.startswith(("import ", "from "))
+            source.split()[1].split(".")[0]
+            for source in SCRIPT.read_text().splitlines()
+            if source.startswith(("import ", "from "))
         }
         self.assertTrue(imports <= set(sys.stdlib_module_names), imports - set(sys.stdlib_module_names))
 
-    @unittest.skipUnless(GAPS.exists(), "docs/ is private and stripped from the public mirror")
+    @unittest.skipUnless(GAPS.exists(), PRIVATE_DOCS)
     def test_US3_AS1_the_real_tree_reports_only_criteria_that_gaps_md_resolves(self):
         result = check(REPO)
         gaps = GAPS.read_text()
-        unmet = [l.split()[0] for l in result.stdout.splitlines() if " UNMET " in l]
+        unmet = [report.split()[0] for report in result.stdout.splitlines() if " UNMET " in report]
         for criterion in unmet:
             self.assertIn(f"| {criterion} |", gaps, f"{criterion} is unmet and has no row in gaps.md")
 
@@ -192,19 +198,19 @@ class SpecFreezeTests(unittest.TestCase):
         wrapper = REPO / "csharp" / "tests" / "Craticula.Conformance.Tests" / "SpecFreezeTests.cs"
         self.assertIn("scripts/test_spec_freeze.py", wrapper.read_text(encoding="utf-8"))
 
-    @unittest.skipUnless(GAPS.exists(), "docs/ is private and stripped from the public mirror")
+    @unittest.skipUnless(GAPS.exists(), PRIVATE_DOCS)
     def test_US3_AS2_gaps_md_gives_each_known_candidate_an_outcome(self):
         gaps = GAPS.read_text(encoding="utf-8")
         for candidate in ("rejection.json", "rowStream.json", "Execution equality"):
-            row = next(l for l in gaps.splitlines() if l.startswith("|") and candidate in l)
+            row = next(text for text in gaps.splitlines() if text.startswith("|") and candidate in text)
             self.assertRegex(row, r"closed before the freeze|covered by a named test tier|accepted")
 
-    @unittest.skipUnless(GAPS.exists(), "docs/ is private and stripped from the public mirror")
+    @unittest.skipUnless(GAPS.exists(), PRIVATE_DOCS)
     def test_US3_AS3_every_accepted_gap_carries_its_reason(self):
-        for l in GAPS.read_text(encoding="utf-8").splitlines():
-            cells = [c.strip() for c in l.strip("|").split("|")]
-            if l.startswith("|") and len(cells) == 4 and cells[2].startswith("accepted"):
-                self.assertGreater(len(cells[3]), 20, l)
+        for text in GAPS.read_text(encoding="utf-8").splitlines():
+            cells = [c.strip() for c in text.strip("|").split("|")]
+            if text.startswith("|") and len(cells) == 4 and cells[2].startswith("accepted"):
+                self.assertGreater(len(cells[3]), 20, text)
 
 
 if __name__ == "__main__":
