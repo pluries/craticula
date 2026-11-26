@@ -12,6 +12,36 @@ The two move separately. The compatibility table in the [README](README.md#compa
 `main`, which the next release implements. The notes of each release state the spec version that release was built with.
 The latest published package version is on nuget.org.
 
+## Freezing the specification
+
+The spec version in `spec/VERSION` moves to 1.0.0 only when every criterion below is met. The TypeScript, Python and Go
+ports implement the frozen spec, not the C# code, so these criteria say what a port may rely on. Run
+`python3 scripts/check-spec-freeze.py` to list which criteria are met today; it reads the repository and changes nothing.
+
+| Id | Part of the spec | Criterion |
+|---|---|---|
+| **F-1** | version | `spec/VERSION` reads `MAJOR.MINOR.PATCH`. |
+| **F-2** | IR schema, GridSchema schema | `spec/ir.schema.json` and `spec/grid-schema.schema.json` parse as JSON and declare JSON Schema draft 2020-12. |
+| **F-3** | `semantics.md` | `spec/semantics.md` holds no open `TODO`, `TBD` or `FIXME` marker. |
+| **F-4** | fixtures | Every fixture folder has `description.md`, `agGridRequest.json`, `schema.json` and an `expected/` folder. |
+| **F-5** | fixtures | No fixture folder is an orphan: each has an expected artifact, a rejection, or export bytes to be graded against. |
+| **F-6** | fixtures and runner | The conformance runner grades every fixture content a port can produce without a database: compiled artifacts, rejections (`rejection.json`) and CSV or TSV bytes (`rowStream.json`). Only execution equality (`dataset.json`, `expectedRows.json`) is left to a tier that needs seeded databases. |
+| **F-7** | this document | Every criterion is listed here. |
+
+A criterion that is not met is either closed before the freeze, covered by a named test tier, or accepted with a reason
+the maintainer writes down. Each accepted gap states the risk it leaves for a port.
+
+### What a spec version promises
+
+- **Patch** (1.0.1): wording and documentation only. No fixture changes. Every valid request compiles to the same artifact.
+- **Minor** (1.1.0): additions a port can ignore until it wants them: a new fixture family, a new optional request member,
+  a clarified rule. Existing fixtures keep their expected artifacts; a port that passed 1.0.0 still passes them.
+- **Major** (2.0.0): any change that alters the expected artifact of an existing fixture, adds or removes an IR member a
+  compiler must handle, or turns an accepted request into a rejection or the reverse.
+- A port states the spec version it passes. A port that passes spec 1.x passes every fixture of 1.0.0.
+- 1.0.0 does not promise that the spec is free of mistakes. A mistake found after the freeze is corrected in the next
+  version the rule above names, and the correction is recorded in the release notes.
+
 ## What drives the package version
 
 - The package version follows the public API of the packages and the spec version they implement.
