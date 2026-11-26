@@ -1,3 +1,5 @@
+using Craticula.Sql;
+
 namespace Craticula.Benchmarks.Tests;
 
 // Traceability: FR-17, AC-1
@@ -15,6 +17,18 @@ public class ShapeTests
         }
 
         return data;
+    }
+
+    // Traceability: #3873 AC-1 (a count shape on the backends the benchmark covers), CNT-8 (the harness instruction in the request)
+    [Fact]
+    public void All_IncludesTheCountShape_WhichCompilesToACountWithNoSortAndNoWindow()
+    {
+        Assert.Contains(Shapes.All, shape => shape.Name == "count");
+
+        var query = (SqlQuery)Shapes.Compile(Shapes.Load("count"), "postgres");
+
+        // the expected artifact of spec/fixtures/count-mode/002-flat-number-filter
+        Assert.Equal("SELECT COUNT(*) FROM \"employees\" WHERE (\"age\" <> $1 OR \"age\" IS NULL)", query.Sql);
     }
 
     [Theory]

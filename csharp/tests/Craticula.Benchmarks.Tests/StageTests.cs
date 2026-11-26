@@ -44,6 +44,17 @@ public class StageTests
         }
     }
 
+    // Traceability: #3873 AC-2 (the stage breakdown gives the same SQL as the full compile for the count shape)
+    [Fact]
+    public void Run_TheCountShape_BuildsTheCountAndNotThePage()
+    {
+        var inputs = Stages.Prepare(Shapes.Load("count"));
+
+        var built = (SqlQuery)Stages.Run(inputs, "build-query");
+
+        Assert.Equal("SELECT COUNT(*) FROM \"employees\" WHERE (\"age\" <> $1 OR \"age\" IS NULL)", built.Sql);
+    }
+
     [Fact]
     public void Run_AnUnknownStage_ThrowsAndNamesTheStages()
     {
