@@ -19,8 +19,26 @@ namespace Craticula.AgGrid;
 /// null array element where an object is required, an unsupported envelope such as
 /// <c>pivotMode:true</c> or the <c>setValuesRequest</c> envelope, ...).</para>
 /// </summary>
-public sealed class AgGridRequestParseException(string reason, string message, Exception? innerException = null)
+public sealed class AgGridRequestParseException(
+    string reason,
+    string message,
+    Exception? innerException = null,
+    string rejectedAt = AgGridRequestParseException.ParsingStage,
+    string? rejectionReason = null)
     : Exception(message, innerException)
 {
+    /// <summary>The stage of a failure that never reached IR validation.</summary>
+    public const string ParsingStage = "requestParsing";
+
     public string Reason { get; } = reason;
+
+    /// <summary>
+    /// The validation stage the conformance oracle (<c>rejection.schema.json</c>'s <c>rejectedAt</c>) names for this
+    /// refusal: <c>requestParsing</c>, or <c>typeCoercion</c> for a value the adapter could not turn into the type the
+    /// request implies (an unparseable date text).
+    /// </summary>
+    public string RejectedAt { get; } = rejectedAt;
+
+    /// <summary>The oracle's <c>reason</c> for this refusal; equal to <see cref="Reason"/> unless the stage says more.</summary>
+    public string RejectionReason { get; } = rejectionReason ?? reason;
 }
