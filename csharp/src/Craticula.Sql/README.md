@@ -40,7 +40,7 @@ Dialects: `PostgresDialect`, `MssqlDialect`, `MySqlDialect`, `SqliteDialect`, `O
 
 ## Compatibility
 
-Implements Craticula spec version 0.3.0 (the language-neutral semantics and conformance fixtures in the
+Implements Craticula spec version 1.0.0 (the language-neutral semantics and conformance fixtures in the
 [repository](https://github.com/pluries/craticula), `spec/`). Targets .NET 10.
 
 ## License
