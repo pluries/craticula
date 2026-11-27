@@ -2,17 +2,17 @@
 translates: overview
 title: Übersicht
 description: Was Craticula ist, was es kompiliert und wo es steht.
-source_fingerprint: 9e9db17bacc49cd5a84bc0635d310667b81d2516e78587d67158ad43b9e0c3f1
+source_fingerprint: c3dad5cf6df4a66c49bd0d2e9d8c4a27f6d981379f463a98eadd2a7b96c4a407
 drafter: claude
-drafted_on: 2026-11-27
-status: machine-drafted
+drafted_on: 2026-11-22
+status: approved
 ---
 # Craticula {#craticula}
 
 [![CI](https://github.com/pluries/craticula/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/pluries/craticula/actions/workflows/ci.yml)
 [![coverage gate](https://img.shields.io/badge/coverage%20gate-%E2%89%A590%25%20per%20assembly-brightgreen)](https://github.com/pluries/craticula/actions/workflows/ci.yml)
 [![license](https://img.shields.io/github/license/pluries/craticula)](LICENSE)
-[![spec version](https://img.shields.io/badge/spec-1.0.0-blue)](spec/VERSION)
+[![spec version](https://img.shields.io/badge/spec-0.3.0-blue)](spec/VERSION)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/pluries/craticula/badge)](https://scorecard.dev/viewer/?uri=github.com/pluries/craticula)
 
 > Ein Compiler, kein Client: Anfragen des AG Grid Server-Side Row Model in native, sichere
@@ -134,7 +134,7 @@ Schaufenster, das die veröffentlichten Pakete von nuget.org installiert, so wie
 
 | Spezifikationsversion | .NET-Ziel |
 |---|---|
-| 1.0.0 | net10.0 |
+| 0.3.0 | net10.0 |
 
 Die Spezifikationsversion ist die in [`spec/VERSION`](spec/VERSION); jedes Paket nennt sie in seinem eigenen README.
 Wie Versionen gewählt werden, steht in [VERSIONING.md](VERSIONING.md).

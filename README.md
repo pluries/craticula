@@ -137,7 +137,7 @@ showcase that installs the published packages from nuget.org, as a user of the l
 
 | Spec version | .NET target |
 |---|---|
-| 1.0.0 | net10.0 |
+| 0.3.0 | net10.0 |
 
 The spec version is the one in [`spec/VERSION`](spec/VERSION); every package states it in its own README.
 How versions are chosen is written in [VERSIONING.md](VERSIONING.md).
