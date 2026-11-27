@@ -60,10 +60,12 @@ class PackageTests(unittest.TestCase):
         for needle in ("skeleton", "sort-paging", "PostgreSQL", "not published"):
             self.assertIn(needle, readme)
 
-    def test_the_driver_does_not_read_the_fixture_tree(self):
+    def test_the_driver_reads_no_file_so_it_cannot_answer_from_the_fixture_tree(self):
         for path in (TS / "src").glob("*.ts"):
+            text = path.read_text(encoding="utf-8")
             with self.subTest(file=path.name):
-                self.assertNotIn("fixtures", path.read_text(encoding="utf-8"))
+                for needle in ("node:fs", 'from "fs"', "readFile", "node:path", "spec/fixtures"):
+                    self.assertNotIn(needle, text)
 
 
 class DependabotTests(unittest.TestCase):
