@@ -354,7 +354,7 @@ class CiRuntime11JobTests(unittest.TestCase):
         text = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
         job = self.job()
         self.assertEqual([], unpinned_uses(job))
-        self.assertRegex(job, r"(?m)^        with:\n          persist-credentials: false$")
+        self.assertRegex(job, r"(?m)^ {8}with:\n {10}persist-credentials: false$")
         self.assertNotRegex(job, r"(?m)^\s+permissions:")  # the workflow's top-level contents: read applies
         self.assertEqual([], secret_references(job))
         self.assertTrue(is_read_only(text))

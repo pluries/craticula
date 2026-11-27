@@ -61,7 +61,16 @@ public static class IsoInstant
     /// documented rule refuses it, and the runtime's own parser cannot be trusted to: .NET 10 refuses it, .NET 11 accepts it
     /// (ADR-0015). Both parsing sites of this assembly ask here first, so the answer does not depend on the runtime.
     /// </summary>
-    internal static bool HasHourTwentyFour(string value) => HourTwentyFour.IsMatch(value);
+    internal static bool HasHourTwentyFour(string value)
+    {
+        for (var at = value.IndexOf("24:", StringComparison.Ordinal); at > 0; at = value.IndexOf("24:", at + 1, StringComparison.Ordinal))
+        {
+            if (value[at - 1] is 'T' or 't' or ' ')
+            {
+                return true;
+            }
+        }
 
-    private static readonly System.Text.RegularExpressions.Regex HourTwentyFour = new(@"[Tt ]24:");
+        return false;
+    }
 }
