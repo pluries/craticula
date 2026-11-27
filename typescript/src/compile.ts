@@ -74,14 +74,14 @@ function readWindow(request: Record<string, unknown>): { limit: number; offset: 
   if ((start === undefined || start === null) && (end === undefined || end === null)) {
     return { limit: DEFAULT_PAGE_SIZE, offset: 0 };
   }
-  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || (start as number) < 0 || (end as number) <= (start as number)) {
+  if (typeof start !== "number" || typeof end !== "number" || !Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end <= start) {
     throw new CompileError("InvalidRequest", "startRow and endRow must be whole numbers with 0 <= startRow < endRow.");
   }
-  const limit = (end as number) - (start as number);
+  const limit = end - start;
   if (limit > MAX_PAGE_SIZE) {
     throw new CompileError("LimitExceeded", `A page of ${limit} rows is above the limit of ${MAX_PAGE_SIZE}.`);
   }
-  return { limit, offset: start as number };
+  return { limit, offset: start };
 }
 
 /** EXP-1(b), the default projection: the exportable fields in schema order, aliased to their colId where the column differs. */
