@@ -151,7 +151,12 @@ implementation compiles the same thing:
   that entry point; every other request is a row request.
 - **Export** — a request carrying the export wire members (`exportFormat`, with `exportScope` and `exportColumns`,
   EXP-1) compiles with the unpaginated page (EXP-2) and names its output columns (EXP-1(b)), as it would in a host.
-- **Backend** — `backend` picks the compiler and, for SQL, the dialect.
+- **Backend** — `backend` picks the compiler and, for SQL, the dialect. A rejection or writer request names none.
+- **Rejection** — the driver does what a host does before it compiles: the SC-1 allowlist over **every** colId the request
+  names, sort colIds included (a column the schema does not declare is refused as `allowlist` / `unknown-field`, never left
+  to a compiler to trip over), then the limits (SEC-3), the coercion (SEM-5) and the request parsing. The refusal is reported
+  at the stage that first catches it, in the vocabulary of `rejection.schema.json`; an unparseable date text is
+  `typeCoercion` / `uncoercible-value`, not `requestParsing`.
 
 A rejection or writer request (§2.2) takes the same pinned inputs. The driver then prints the artifact for that backend. It does not normalise, sort or pretty-print it to look like the
 expected file; the runner's comparison (§4) decides what is significant.

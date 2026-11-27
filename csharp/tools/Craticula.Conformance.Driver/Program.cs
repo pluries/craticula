@@ -25,6 +25,9 @@ internal static class Program
     /// the runner echoes it without validating it, since the suite has no version number yet.</summary>
     private const string SpecVersion = "0.3.0";
 
+    private const string RejectionKind = "rejection";
+    private const string WriterKind = "writer";
+
     /// <summary>
     /// The envelope must never be stricter than the compiler: a request nested past the parser's own
     /// 64 levels is the parser's to refuse, as an <c>error</c> answer (§2.2), not a line this driver
@@ -82,12 +85,37 @@ internal static class Program
     /// </summary>
     private static byte[] Answer(string id, JsonElement request)
     {
+        var kind = request.TryGetProperty("kind", out var kindElement) && kindElement.ValueKind == JsonValueKind.String
+            ? kindElement.GetString()
+            : null;
+
         try
         {
-            var compiled = RequestCompiler.Compile(
-                StringMember(request, "backend"),
-                Member(request, "schema").GetRawText(),
-                Member(request, "agGridRequest").GetRawText());
+            if (kind == WriterKind)
+            {
+                var bytes = WriterRequest.Write(
+                    Member(request, "schema").GetRawText(),
+                    Member(request, "agGridRequest").GetRawText(),
+                    Member(request, "rowStream"),
+                    request.TryGetProperty("writerConfig", out var config) ? config : null);
+
+                return Line(writer =>
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("id", id);
+                    writer.WriteString("bytes", Convert.ToBase64String(bytes));
+                    writer.WriteEndObject();
+                });
+            }
+
+            var compiled = kind == RejectionKind
+                ? RequestCompiler.CompileForRejection(
+                    Member(request, "schema").GetRawText(),
+                    Member(request, "agGridRequest").GetRawText())
+                : RequestCompiler.Compile(
+                    StringMember(request, "backend"),
+                    Member(request, "schema").GetRawText(),
+                    Member(request, "agGridRequest").GetRawText());
 
             return Line(writer =>
             {
@@ -117,6 +145,10 @@ internal static class Program
         }
 
         writer.WriteEndArray();
+        writer.WriteStartArray("capabilities");
+        writer.WriteStringValue(RejectionKind);
+        writer.WriteStringValue(WriterKind);
+        writer.WriteEndArray();
         writer.WriteEndObject();
         writer.WriteEndObject();
     }
@@ -128,6 +160,12 @@ internal static class Program
         writer.WriteStartObject("error");
         writer.WriteString("kind", error.GetType().Name);
         writer.WriteString("message", error.Message);
+        if (RejectionMapper.TryMap(error, out var rejectedAt, out var reason))
+        {
+            writer.WriteString("rejectedAt", rejectedAt);
+            writer.WriteString("reason", reason);
+        }
+
         writer.WriteEndObject();
         writer.WriteEndObject();
     }

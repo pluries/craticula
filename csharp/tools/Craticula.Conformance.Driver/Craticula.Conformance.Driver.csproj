@@ -6,7 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- AR-3: the request parser and the three compilers, nothing else. The driver prints compiled
+    <!-- AR-3: the request parser, the three compilers and the CSV writer, nothing else. The driver prints compiled
          artifacts (spec/conformance-runner.md §3) and never executes one, so it never references an
          execution adapter (Dapper, EF Core, MongoDB.Driver, OpenSearch.Client) nor a package: the
          pinned clock it needs is eight lines of its own, not a dependency. -->
@@ -15,6 +15,7 @@
     <ProjectReference Include="../../src/Craticula.Sql/Craticula.Sql.csproj" />
     <ProjectReference Include="../../src/Craticula.Mongo/Craticula.Mongo.csproj" />
     <ProjectReference Include="../../src/Craticula.Search/Craticula.Search.csproj" />
+    <ProjectReference Include="../../src/Craticula.Export.Csv/Craticula.Export.Csv.csproj" />
   </ItemGroup>
 
   <ItemGroup>
