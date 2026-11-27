@@ -39,6 +39,10 @@ def emit(line):
     sys.stdout.flush()
 
 
+ERROR_MEMBER = '"error":'
+BYTES_MEMBER = '"bytes":'
+
+
 def fixture_dir(args, rid):
     category, rest = rid.split("/", 1)
     return Path(args.fixtures) / category / rest.split("#", 1)[0]
@@ -47,7 +51,7 @@ def fixture_dir(args, rid):
 def rejection_payload(args, rid, canned):
     """The rejection the fixture expects, as an error answer; --mode bends it in one specific way."""
     if rid in canned:
-        return '"error":' + json.dumps(canned[rid]["error"])
+        return ERROR_MEMBER + json.dumps(canned[rid]["error"])
     expected = json.loads((fixture_dir(args, rid) / "expected" / "rejection.json").read_text(encoding="utf-8-sig"))
     error = {"kind": "FakeRejection", "message": "fake", "rejectedAt": expected["rejectedAt"], "reason": expected["reason"]}
     if args.mode == "wrong-reason":
@@ -58,16 +62,16 @@ def rejection_payload(args, rid, canned):
         del error["rejectedAt"], error["reason"]
     if args.mode == "accepts":
         return '"artifact":{}'
-    return '"error":' + json.dumps(error)
+    return ERROR_MEMBER + json.dumps(error)
 
 
 def writer_payload(args, rid, canned, req):
     """The bytes the fixture expects, base64; --mode bends them (a flipped byte, a dropped BOM, LF for CRLF)."""
     if rid in canned:
-        return '"bytes":' + json.dumps(canned[rid]["bytes"])
+        return BYTES_MEMBER + json.dumps(canned[rid]["bytes"])
     if args.mode == "echo-config":  # the config the runner sent, so a test can see it arrive unchanged
         data = json.dumps(req.get("writerConfig"), separators=(",", ":")).encode()
-        return '"bytes":' + json.dumps(base64.b64encode(data).decode("ascii"))
+        return BYTES_MEMBER + json.dumps(base64.b64encode(data).decode("ascii"))
     folder = fixture_dir(args, rid) / "expected"
     path = next(p for p in (folder / "export.csv", folder / "export.tsv") if p.exists())
     data = path.read_bytes()
@@ -79,7 +83,7 @@ def writer_payload(args, rid, canned, req):
         data = data.replace(b"\r\n", b"\n")
     if args.mode == "writer-error":
         return '"error":{"kind":"CsvWriterException","message":"refused"}'
-    return '"bytes":' + json.dumps(base64.b64encode(data).decode("ascii"))
+    return BYTES_MEMBER + json.dumps(base64.b64encode(data).decode("ascii"))
 
 
 def main():
@@ -136,7 +140,7 @@ def main():
             payload = rejection_payload(args, rid, canned)
         elif rid in canned:
             body = canned[rid]
-            payload = '"artifact":' + body["artifact"] if "artifact" in body else '"error":' + json.dumps(body["error"])
+            payload = '"artifact":' + body["artifact"] if "artifact" in body else ERROR_MEMBER + json.dumps(body["error"])
         else:
             category, rest = rid.split("/", 1)
             slug = rest.split("#", 1)[0]

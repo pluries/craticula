@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import argparse
 import base64
-import binascii
 import fnmatch
 import json
 import os
@@ -353,32 +352,43 @@ def byte_text(data: bytes, i: int, side: str) -> str:
     return f"0x{data[i]:02x}" if i < len(data) else f"the end of the {side} bytes"
 
 
+def grade_rejection(rid: str, expected: object, resp: Obj):
+    """spec §4.1: the error's rejectedAt and reason equal the fixture's; an artifact answer means the request was accepted."""
+    if "error" not in resp.map:
+        return {"id": rid, "note": "accepted a request that must be rejected (the driver answered with an artifact)"}
+    e = resp.map["error"].map
+    actual = (e.get("rejectedAt", MISSING), e.get("reason", MISSING))
+    if MISSING in actual:
+        return {"id": rid, "note": f"the error carries no rejectedAt and reason (kind {e['kind']})"}
+    want = (expected.map.get("rejectedAt"), expected.map.get("reason"))
+    if actual != want:
+        return {"id": rid, "path": "rejectedAt/reason", "expected": f"{want[0]}/{want[1]}",
+                "actual": f"{actual[0]}/{actual[1]}"}
+    return None
+
+
+def grade_writer(rid: str, expected: bytes, resp: Obj):
+    """spec §4.2: the decoded bytes equal the expected file byte for byte."""
+    try:
+        actual = base64.b64decode(resp.map["bytes"], validate=True)
+    except ValueError:  # binascii.Error is a ValueError
+        raise ProtocolFailure(f"response to {rid!r}: bytes is not valid base64") from None
+    if actual == expected:
+        return None
+    i = next((n for n, (x, y) in enumerate(zip(expected, actual)) if x != y), min(len(expected), len(actual)))
+    return {"id": rid, "note": f"first differing byte at offset {i}: expected {byte_text(expected, i, 'expected')}, "
+                               f"actual {byte_text(actual, i, 'actual')}"}
+
+
 def grade(rid: str, kind: str, expected: object, resp: Obj):
     """None when the case passes, else the failure record the report prints (spec §4, §4.1, §4.2, §6)."""
+    if kind == "rejection":
+        return grade_rejection(rid, expected, resp)
     if "error" in resp.map:
         e = resp.map["error"].map
-        if kind == "rejection":
-            actual = (e.get("rejectedAt", MISSING), e.get("reason", MISSING))
-            if MISSING in actual:
-                return {"id": rid, "note": f"the error carries no rejectedAt and reason (kind {e['kind']})"}
-            want = (expected.map.get("rejectedAt"), expected.map.get("reason"))
-            if actual != want:
-                return {"id": rid, "path": "rejectedAt/reason", "expected": f"{want[0]}/{want[1]}",
-                        "actual": f"{actual[0]}/{actual[1]}"}
-            return None
         return {"id": rid, "error": f"{e['kind']}: {e['message']}"}
-    if kind == "rejection":
-        return {"id": rid, "note": "accepted a request that must be rejected (the driver answered with an artifact)"}
     if kind == "writer":
-        try:
-            actual = base64.b64decode(resp.map["bytes"], validate=True)
-        except (binascii.Error, ValueError):
-            raise ProtocolFailure(f"response to {rid!r}: bytes is not valid base64") from None
-        if actual == expected:
-            return None
-        i = next((n for n, (x, y) in enumerate(zip(expected, actual)) if x != y), min(len(expected), len(actual)))
-        return {"id": rid, "note": f"first differing byte at offset {i}: expected {byte_text(expected, i, 'expected')}, "
-                                   f"actual {byte_text(actual, i, 'actual')}"}
+        return grade_writer(rid, expected, resp)
     diff = compare(kind, expected, resp.map["artifact"])
     return diff and {"id": rid, "path": diff[0], "expected": diff[1], "actual": diff[2]}
 

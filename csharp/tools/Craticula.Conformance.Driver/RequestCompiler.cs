@@ -51,6 +51,36 @@ internal static class RequestCompiler
     public static object Compile(string backend, string schemaJson, string agGridRequestJson) =>
         Compile(backend, GridSchema.Parse(schemaJson), agGridRequestJson);
 
+    /// <summary>The same compile for a schema the caller already built, as a host that builds its <see cref="GridSchema"/> once does; the compile benchmark times it next to the string path.</summary>
+    public static object Compile(string backend, GridSchema schema, string agGridRequestJson)
+    {
+        if (!Backends.Contains(backend))
+        {
+            throw new NotSupportedException(
+                $"Backend '{backend}' is not one this driver declares ({string.Join(", ", Backends)}).");
+        }
+
+        var request = Prepare(schema, agGridRequestJson);
+
+        if (request.CountMode && request.IsSetValues)
+        {
+            throw new NotSupportedException(
+                "Count mode (requestContext.compileMode \"count\") counts the rows of a row request; a set-values request has no count.");
+        }
+
+        return backend switch
+        {
+            "postgres" => CompileSql(request, PostgresDialect.Instance),
+            "mssql" => CompileSql(request, MssqlDialect.Instance),
+            "mysql" => CompileSql(request, MySqlDialect.Instance),
+            "oracle" => CompileSql(request, OracleDialect.Instance),
+            "sqlite" => CompileSql(request, SqliteDialect.Instance),
+            "mongo" => CompileMongo(request),
+            "search" => CompileSearch(request),
+            _ => throw new UnreachableException($"Backend '{backend}' passed the check above.")
+        };
+    }
+
     /// <summary>
     /// A rejection request (<c>conformance-runner.md</c> §2.2) names no backend: the refusal comes before any compiler.
     /// The driver acts as the host does. It checks every sort colId against the schema first, because the library has no
@@ -93,36 +123,6 @@ internal static class RequestCompiler
 
     /// <summary>AG Grid's id prefix for the auto group column; a sort on it is a group sort, not a schema field.</summary>
     private const string GroupAutoColumnPrefix = "ag-Grid-AutoColumn";
-
-    /// <summary>The same compile for a schema the caller already built, as a host that builds its <see cref="GridSchema"/> once does; the compile benchmark times it next to the string path.</summary>
-    public static object Compile(string backend, GridSchema schema, string agGridRequestJson)
-    {
-        if (!Backends.Contains(backend))
-        {
-            throw new NotSupportedException(
-                $"Backend '{backend}' is not one this driver declares ({string.Join(", ", Backends)}).");
-        }
-
-        var request = Prepare(schema, agGridRequestJson);
-
-        if (request.CountMode && request.IsSetValues)
-        {
-            throw new NotSupportedException(
-                "Count mode (requestContext.compileMode \"count\") counts the rows of a row request; a set-values request has no count.");
-        }
-
-        return backend switch
-        {
-            "postgres" => CompileSql(request, PostgresDialect.Instance),
-            "mssql" => CompileSql(request, MssqlDialect.Instance),
-            "mysql" => CompileSql(request, MySqlDialect.Instance),
-            "oracle" => CompileSql(request, OracleDialect.Instance),
-            "sqlite" => CompileSql(request, SqliteDialect.Instance),
-            "mongo" => CompileMongo(request),
-            "search" => CompileSearch(request),
-            _ => throw new UnreachableException($"Backend '{backend}' passed the check above.")
-        };
-    }
 
     private static SqlQuery CompileSql(Prepared request, ISqlDialect dialect)
     {

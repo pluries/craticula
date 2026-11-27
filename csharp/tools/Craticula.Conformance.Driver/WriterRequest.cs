@@ -69,10 +69,10 @@ internal static class WriterRequest
         foreach (var element in rowStream.GetProperty("rows").EnumerateArray())
         {
             var cells = new Dictionary<string, object?>(StringComparer.Ordinal);
-            foreach (var column in export.Columns)
+            foreach (var colId in export.Columns.Select(column => column.ColId))
             {
-                cells[column.ColId] = element.TryGetProperty(column.ColId, out var value)
-                    ? Decode(value, schema.Fields[column.ColId].Type, column.ColId)
+                cells[colId] = element.TryGetProperty(colId, out var value)
+                    ? Decode(value, schema.Fields[colId].Type, colId)
                     : null;
             }
 
