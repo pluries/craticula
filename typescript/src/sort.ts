@@ -41,8 +41,7 @@ export function effectiveSort(items: readonly SortItem[], schema: GridSchema): S
     }
   }
 
-  const last = kept[kept.length - 1];
-  const total = stopAtStableKey ? reachedStableKey : last !== undefined && last.field === schema.stableKey;
+  const total = stopAtStableKey ? reachedStableKey : kept.at(-1)?.field === schema.stableKey;
   if (total) {
     return kept;
   }

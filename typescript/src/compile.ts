@@ -61,7 +61,7 @@ function readSort(request: Record<string, unknown>, schema: GridSchema): SortIte
     }
     const colId = entry["colId"];
     const field = schema.fields.get(colId);
-    if (field === undefined || !field.sortable) {
+    if (!field?.sortable) {
       throw new CompileError("UnknownField", `The sort column '${colId}' is not a declared, sortable field of the schema.`);
     }
     return { field: colId, direction, nulls: defaultNulls(direction) };

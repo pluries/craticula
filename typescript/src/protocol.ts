@@ -42,7 +42,7 @@ export function answerFor(line: string): Outcome {
 
   const kind = fields["kind"];
   if (kind !== undefined && kind !== "compile") {
-    return errorLine(id, "Unsupported", `The request kind '${String(kind)}' is not supported by this driver.`);
+    return errorLine(id, "Unsupported", `The request kind ${JSON.stringify(kind)} is not supported by this driver.`);
   }
   if (fields["backend"] !== "postgres") {
     return errorLine(id, "Unsupported", `The backend '${String(fields["backend"])}' is not one this driver declares (postgres).`);

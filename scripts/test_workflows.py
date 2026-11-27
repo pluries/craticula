@@ -378,7 +378,7 @@ class TypescriptJobTests(unittest.TestCase):
         return "\n".join(line for line in lines if not line.strip().startswith("#")) + "\n"
 
     def job(self) -> str:
-        match = re.search(r"(?m)^  typescript:\n((?:    .*\n|\n)+)", self.text())
+        match = re.search(r"(?m)^ {2}typescript:\n((?: {4}.*\n|\n)+)", self.text())
         self.assertIsNotNone(match, "ci.yml has no typescript job")
         return match.group(0)
 

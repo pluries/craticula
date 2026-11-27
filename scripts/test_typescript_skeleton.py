@@ -71,7 +71,7 @@ class PackageTests(unittest.TestCase):
 class DependabotTests(unittest.TestCase):
     def test_US1_AS5_dependabot_has_an_npm_entry_for_typescript_with_the_14_day_cooldown(self):
         text = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
-        match = re.search(r"(?m)^  - package-ecosystem: npm\n((?:    .*\n|\n)+)", text)
+        match = re.search(r"(?m)^ {2}- package-ecosystem: npm\n((?: {4}.*\n|\n)+)", text)
         self.assertIsNotNone(match, "no npm ecosystem in dependabot.yml")
         block = match.group(1)
         self.assertRegex(block, r"(?m)^    directory: /typescript$")
