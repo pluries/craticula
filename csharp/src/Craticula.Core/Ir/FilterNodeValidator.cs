@@ -265,6 +265,7 @@ public static class FilterNodeValidator
     /// </summary>
     public static bool IsIsoInstant(string raw) =>
         DatetimePattern.IsMatch(raw)
+        && !IsoInstant.HasHourTwentyFour(raw)
         && DateTimeOffset.TryParse(raw, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out _);
 
     /// <summary>Internal (not private) so <see cref="Craticula.Core.Schema.TypeCoercionValidator"/>

@@ -45,6 +45,7 @@ public static class IsoInstant
     public static bool TryParseUtc(string? value, out DateTime utc)
     {
         if (value is not null
+            && !HasHourTwentyFour(value)
             && DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var instant))
         {
             utc = instant.UtcDateTime;
@@ -54,4 +55,13 @@ public static class IsoInstant
         utc = default;
         return false;
     }
+
+    /// <summary>
+    /// Whether <paramref name="value"/> writes the hour as <c>24</c> (<c>T24:00:00Z</c>). It is not a real instant, the
+    /// documented rule refuses it, and the runtime's own parser cannot be trusted to: .NET 10 refuses it, .NET 11 accepts it
+    /// (ADR-0015). Both parsing sites of this assembly ask here first, so the answer does not depend on the runtime.
+    /// </summary>
+    internal static bool HasHourTwentyFour(string value) => HourTwentyFour.IsMatch(value);
+
+    private static readonly System.Text.RegularExpressions.Regex HourTwentyFour = new(@"[Tt ]24:");
 }
