@@ -65,6 +65,57 @@ public class ConformanceTests
         }
     }
 
+    /// <summary>
+    /// Feature 009 (US1-AS5, US2-AS5, FR-007): the driver declares the <c>rejection</c> and <c>writer</c>
+    /// capabilities, and the runner grades every rejection fixture and every writer fixture of the tree
+    /// as passed, none left not graded.
+    /// </summary>
+    [Fact]
+    public void Runner_Grades_Every_Rejection_And_Writer_Fixture_For_The_CSharp_Driver()
+    {
+        var python = RunnerHost.Python;
+        if (python is null)
+        {
+            Assert.Fail(PythonRequirement);
+        }
+
+        var fixtures = Path.Combine(RepoPaths.Root, "spec", "fixtures");
+        var rejections = Directory.EnumerateFiles(fixtures, "rejection.json", SearchOption.AllDirectories).Count();
+        var writers = Directory.EnumerateFiles(fixtures, "rowStream.json", SearchOption.AllDirectories).Count();
+        Assert.True(rejections > 30 && writers >= 12, $"the tree should carry rejection and writer fixtures ({rejections}, {writers})");
+
+        var reportPath = Path.Combine(Path.GetTempPath(), $"craticula-conformance-{Guid.NewGuid():N}.json");
+        try
+        {
+            var result = RunnerHost.RunSuite(python, "--json", reportPath);
+            var output = $"--- stdout ---{Environment.NewLine}{result.Stdout}{Environment.NewLine}--- stderr ---{Environment.NewLine}{result.Stderr}";
+            Assert.True(result.ExitCode == 0, $"conformance/run.py exited {result.ExitCode}.{Environment.NewLine}{output}");
+
+            using var report = JsonDocument.Parse(File.ReadAllText(reportPath));
+            var capabilities = report.RootElement.GetProperty("hello").GetProperty("capabilities")
+                .EnumerateArray().Select(c => c.GetString()).Order(StringComparer.Ordinal).ToArray();
+            Assert.Equal(["rejection", "writer"], capabilities);
+
+            foreach (var (kind, count) in new[] { ("rejection", rejections), ("writer", writers) })
+            {
+                var totals = report.RootElement.GetProperty("totals").GetProperty(kind);
+                Assert.True(
+                    totals.GetProperty("passed").GetInt32() == count
+                    && totals.GetProperty("failed").GetInt32() == 0
+                    && totals.GetProperty("notGraded").GetInt32() == 0,
+                    $"'{kind}' must pass all {count} fixtures: {totals.GetRawText()}{Environment.NewLine}{output}");
+            }
+
+            Assert.DoesNotContain(
+                report.RootElement.GetProperty("outOfTier").EnumerateArray(),
+                o => !o.GetProperty("reason").GetString()!.StartsWith("execution equality", StringComparison.Ordinal));
+        }
+        finally
+        {
+            File.Delete(reportPath);
+        }
+    }
+
     private static readonly string[] AllBackends = ["postgres", "mssql", "mysql", "oracle", "sqlite", "mongo", "search"];
 
     /// <summary>
