@@ -68,7 +68,8 @@ public class ConformanceTests
     /// <summary>
     /// Feature 009 (US1-AS5, US2-AS5, FR-007): the driver declares the <c>rejection</c> and <c>writer</c>
     /// capabilities, and the runner grades every rejection fixture and every writer fixture of the tree
-    /// as passed, none left not graded.
+    /// as passed, none left not graded. Feature 009 US3-AS4 and US3-AS5: nothing failed, and every graded case of every
+    /// kind passed (the whole tree is graded, execution equality aside).
     /// </summary>
     [Fact]
     public void Runner_Grades_Every_Rejection_And_Writer_Fixture_For_The_CSharp_Driver()
@@ -105,6 +106,11 @@ public class ConformanceTests
                     && totals.GetProperty("notGraded").GetInt32() == 0,
                     $"'{kind}' must pass all {count} fixtures: {totals.GetRawText()}{Environment.NewLine}{output}");
             }
+
+            var passed = report.RootElement.GetProperty("totals").EnumerateObject().Sum(t => t.Value.GetProperty("passed").GetInt32());
+            var artifacts = Directory.EnumerateFiles(fixtures, "*.artifact.json", SearchOption.AllDirectories).Count();
+            Assert.Equal(artifacts + rejections + writers, passed);
+            Assert.Empty(report.RootElement.GetProperty("failures").EnumerateArray());
 
             Assert.DoesNotContain(
                 report.RootElement.GetProperty("outOfTier").EnumerateArray(),

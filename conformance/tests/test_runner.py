@@ -462,7 +462,8 @@ ROWS = '{"columns":["a"],"rows":[{"a":"x"}]}'
 
 
 class RejectionGrading(RunnerCase):
-    """spec/conformance-runner.md §2.2, §4.1: rejection cases (feature 009, US1)."""
+    """spec/conformance-runner.md §2.2, §4.1: rejection cases (feature 009, US1).
+    Scenarios: US1-AS1 US1-AS2 US1-AS3 US1-AS4 US1-AS5 US1-AS6."""
 
     def tree_with_rejection(self):
         return self.fixture("adv", "001-x", extra={"expected/rejection.json": REJECTION})
@@ -540,7 +541,8 @@ class RejectionGrading(RunnerCase):
 
 
 class WriterGrading(RunnerCase):
-    """spec/conformance-runner.md §2.2, §4.2: CSV and TSV bytes (feature 009, US2)."""
+    """spec/conformance-runner.md §2.2, §4.2: CSV and TSV bytes (feature 009, US2).
+    Scenarios: US2-AS1 US2-AS2 US2-AS3 US2-AS4 US2-AS5 US2-AS6."""
 
     BOM_CSV = b"\xef\xbb\xbfa\r\nx\r\n"
 

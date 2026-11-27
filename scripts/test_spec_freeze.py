@@ -19,7 +19,9 @@ FIXTURE_FILES = ("description.md", "agGridRequest.json", "schema.json")
 GAPS = REPO / "docs" / "specs" / "008-spec-freeze-criteria" / "gaps.md"
 
 # Scenario map (cst-feature coverage reads these ids): US1-AS1 US1-AS2 US1-AS3 US1-AS4 US2-AS1 US2-AS2 US2-AS3 US2-AS4
-# US2-AS5 US3-AS1 US3-AS2 US3-AS3, one test method each, named after the scenario.
+# US2-AS5 US3-AS1 US3-AS2 US3-AS3, one test method each, named after the scenario. Feature 009 adds the freeze itself:
+# test_009_* below prove feature 009's US3-AS1 US3-AS3 US4-AS1 US4-AS2 US4-AS3 US4-AS4 (US3-AS2 is test_spec_version.py,
+# US3-AS4 and US3-AS5 are the C# conformance test and the offline suite).
 IDS = ["F-1", "F-2", "F-3", "F-4", "F-5", "F-6", "F-7"]
 
 RUNNER_DOC = """# Conformance runner
@@ -211,6 +213,43 @@ class SpecFreezeTests(unittest.TestCase):
             cells = [c.strip() for c in text.strip("|").split("|")]
             if text.startswith("|") and len(cells) == 4 and cells[2].startswith("accepted"):
                 self.assertGreater(len(cells[3]), 20, text)
+
+    # ---- feature 009: the freeze (its scenarios US3 and US4; the 008 names above are unrelated) ----
+
+    def change_rule(self):
+        text = (REPO / "VERSIONING.md").read_text(encoding="utf-8")
+        start = text.index("## Changing the specification after the freeze")
+        return text[start:]
+
+    def test_009_US3_AS1_spec_version_is_at_least_1_0_0(self):
+        major = int((REPO / "spec" / "VERSION").read_text().strip().split(".")[0])
+        self.assertGreaterEqual(major, 1)
+
+    def test_009_US3_AS3_the_freeze_check_exits_0_on_the_real_tree(self):
+        result = check(REPO)
+        self.assertEqual(0, result.returncode, result.stdout)
+        self.assertIn("7 of 7 criteria met", result.stdout)
+
+    def test_009_US4_AS1_the_change_rule_classifies_each_part_with_an_example(self):
+        rule = self.change_rule()
+        for part in ("IR schema", "GridSchema schema", "semantics.md", "fixtures", "runner protocol"):
+            self.assertIn(part, rule)
+        for kind in ("**Patch**", "**Minor**", "**Major**"):
+            self.assertIn(kind, rule)
+        self.assertGreaterEqual(rule.count("Example:"), 3)
+
+    def test_009_US4_AS2_a_mistake_in_a_fixture_is_corrected_in_a_new_version_never_in_place(self):
+        rule = self.change_rule()
+        self.assertIn("never edited in place", rule)
+        self.assertIn("next major", rule)
+
+    def test_009_US4_AS3_a_port_claims_the_exact_spec_version_in_its_hello(self):
+        rule = self.change_rule()
+        self.assertIn("specVersion", rule)
+        self.assertIn("passes every fixture of 1.0.0", rule)
+
+    def test_009_US4_AS4_the_rule_lists_what_no_tooling_enforces(self):
+        self.assertIn("not enforced by tooling", self.change_rule().lower())
 
 
 if __name__ == "__main__":
