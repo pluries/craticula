@@ -2,7 +2,7 @@
 translates: overview
 title: Vue d'ensemble
 description: Ce qu'est Craticula, ce qu'il compile et où il en est.
-source_fingerprint: 9e9db17bacc49cd5a84bc0635d310667b81d2516e78587d67158ad43b9e0c3f1
+source_fingerprint: cb2f7ba8d0a8f913a3ba9325faa592f2848c491ea50ec01ab0f778647e71ecf8
 drafter: claude
 drafted_on: 2026-11-27
 status: approved
@@ -135,6 +135,8 @@ vitrine qui installe les paquets publiés depuis nuget.org, comme le ferait un u
 | Version de la spécification | Cible .NET |
 |---|---|
 | 1.0.0 | net10.0 |
+
+Les paquets ciblent `net10.0`. Ils fonctionnent aussi sur le runtime .NET 11 : la compilation et les tests hors ligne réussissent avec le SDK .NET 11.0.100 (vérifié le 2026-11-27 ; le raisonnement est dans ADR-0015).
 
 La version de la spécification est celle de [`spec/VERSION`](spec/VERSION) ; chaque paquet l'indique dans son propre README.
 La manière dont les versions sont choisies est décrite dans [VERSIONING.md](VERSIONING.md).

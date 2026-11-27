@@ -139,6 +139,9 @@ showcase that installs the published packages from nuget.org, as a user of the l
 |---|---|
 | 1.0.0 | net10.0 |
 
+The packages target `net10.0`. They also run on the .NET 11 runtime: the build and the offline tests pass on .NET SDK 11.0.100
+(checked 2026-11-27; the reasoning is in ADR-0015).
+
 The spec version is the one in [`spec/VERSION`](spec/VERSION); every package states it in its own README.
 How versions are chosen is written in [VERSIONING.md](VERSIONING.md).
 The packages declare version ranges for the libraries they wrap, never one exact version.

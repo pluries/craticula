@@ -2,7 +2,7 @@
 translates: overview
 title: 概览
 description: Craticula 是什么、它编译什么，以及目前进展到哪一步。
-source_fingerprint: 9e9db17bacc49cd5a84bc0635d310667b81d2516e78587d67158ad43b9e0c3f1
+source_fingerprint: cb2f7ba8d0a8f913a3ba9325faa592f2848c491ea50ec01ab0f778647e71ecf8
 drafter: claude
 drafted_on: 2026-11-27
 status: approved
@@ -135,6 +135,8 @@ MongoDB 读取相同的订单。要自己运行它，需要 Docker、.NET 10 SDK
 | 规范版本 | .NET 目标 |
 |---|---|
 | 1.0.0 | net10.0 |
+
+这些包以 `net10.0` 为目标。它们也能在 .NET 11 运行时上运行：构建和离线测试在 .NET SDK 11.0.100 上通过（2026-11-27 检查；理由见 ADR-0015）。
 
 规范版本即 [`spec/VERSION`](spec/VERSION) 中的版本；每个包都在自己的 README 中注明它。
 版本如何选定，见 [VERSIONING.md](VERSIONING.md)。
