@@ -4,6 +4,8 @@
 # coverage with the 90% line gate (scripts/coverage.sh). Conformance and the SEC-2 lint run in the Jenkins build; the pack smoke
 # runs in the release workflow. The `test` job is also what the README coverage badge reads: a gate-status badge ("coverage gate
 # 90%"), not a percentage; the per-assembly numbers go to the job summary.
+# A third job, `runtime-11`, is informational and never a required check (ADR-0015, follow-up F-2): it builds a copy of the sources
+# on .NET SDK 11 and runs the offline unit tests on the .NET 11 runtime, so a new difference shows when a servicing release lands.
 # No secret, read-only token, every action pinned to a commit SHA (scripts/test_workflows.py checks that).
 name: ci
 
@@ -80,3 +82,41 @@ jobs:
             tail -n 40 "$RUNNER_TEMP/coverage.log" || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # Informational (ADR-0015, follow-up F-2): the packages stay on net10.0, and this job shows how they behave on the .NET 11 runtime.
+  # `continue-on-error` keeps its result out of the workflow's: `build` and `test` are the gate. The sources are copied first, so the
+  # one edit (the SDK pin in the copy's global.json) never touches a tracked file; the net10.0 test binaries are rolled forward to the
+  # newest installed runtime. Conformance.Tests is left out: it starts the driver and the Python suites, which the `test` job already runs.
+  runtime-11:
+    name: runtime-11 (informational, not a gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: |
+            10.0.x
+            11.0.x
+
+      - name: Copy the sources and pin SDK 11 in the copy
+        run: |
+          cp -a "$GITHUB_WORKSPACE" "$RUNNER_TEMP/repo11"
+          sed -i 's/"version": "10.0.100"/"version": "11.0.100"/' "$RUNNER_TEMP/repo11/csharp/global.json"
+
+      - name: Restore (locked) and build on SDK 11
+        working-directory: ${{ runner.temp }}/repo11/csharp
+        run: |
+          dotnet --version
+          dotnet restore Craticula.sln --locked-mode
+          dotnet build Craticula.sln -c Release --no-restore -v q -warnaserror "-p:WarningsNotAsErrors=NU1900%3BNU1901%3BNU1902"
+
+      - name: Offline unit tests on the .NET 11 runtime
+        working-directory: ${{ runner.temp }}/repo11/csharp
+        env:
+          DOTNET_ROLL_FORWARD: LatestMajor
+        run: dotnet test Craticula.sln --no-build -c Release -v q --filter "FullyQualifiedName!~MongoDB.Driver.Tests&FullyQualifiedName!~OpenSearch.Client.Tests&FullyQualifiedName!~Integration.Tests.Containers&FullyQualifiedName!~Conformance.Tests"
