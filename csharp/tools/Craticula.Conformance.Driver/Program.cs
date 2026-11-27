@@ -23,7 +23,7 @@ internal static class Program
 {
     /// <summary>The spec version this driver claims in its hello (§2.1). A constant:
     /// the runner echoes it without validating it, since the suite has no version number yet.</summary>
-    private const string SpecVersion = "0.3.0";
+    private const string SpecVersion = "1.0.0";
 
     private const string RejectionKind = "rejection";
     private const string WriterKind = "writer";

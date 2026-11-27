@@ -2,17 +2,17 @@
 translates: overview
 title: Panoramica
 description: Che cos'è Craticula, che cosa compila e a che punto è.
-source_fingerprint: c3dad5cf6df4a66c49bd0d2e9d8c4a27f6d981379f463a98eadd2a7b96c4a407
+source_fingerprint: 9e9db17bacc49cd5a84bc0635d310667b81d2516e78587d67158ad43b9e0c3f1
 drafter: claude
-drafted_on: 2026-11-22
-status: approved
+drafted_on: 2026-11-27
+status: machine-drafted
 ---
 # Craticula {#craticula}
 
 [![CI](https://github.com/pluries/craticula/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/pluries/craticula/actions/workflows/ci.yml)
 [![coverage gate](https://img.shields.io/badge/coverage%20gate-%E2%89%A590%25%20per%20assembly-brightgreen)](https://github.com/pluries/craticula/actions/workflows/ci.yml)
 [![license](https://img.shields.io/github/license/pluries/craticula)](LICENSE)
-[![spec version](https://img.shields.io/badge/spec-0.3.0-blue)](spec/VERSION)
+[![spec version](https://img.shields.io/badge/spec-1.0.0-blue)](spec/VERSION)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/pluries/craticula/badge)](https://scorecard.dev/viewer/?uri=github.com/pluries/craticula)
 
 > Un compilatore, non un client: tradurre le richieste AG Grid Server-Side Row Model in query
@@ -134,7 +134,7 @@ vetrina che installa i pacchetti pubblicati da nuget.org, come farebbe un utiliz
 
 | Versione della specifica | Target .NET |
 |---|---|
-| 0.3.0 | net10.0 |
+| 1.0.0 | net10.0 |
 
 La versione della specifica è quella di [`spec/VERSION`](spec/VERSION); ogni pacchetto la riporta nel proprio README.
 Il modo in cui vengono scelte le versioni è descritto in [VERSIONING.md](VERSIONING.md).
