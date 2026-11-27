@@ -4,6 +4,7 @@ nothing: it answers from the expected artifacts (--fixtures) or from a table of 
 makes it misbehave in one specific way. Independent of run.py on purpose: it is the proof that a driver in another
 program needs nothing from the runner (AC-4)."""
 import argparse
+import base64
 import json
 import os
 import sys
@@ -38,11 +39,55 @@ def emit(line):
     sys.stdout.flush()
 
 
+def fixture_dir(args, rid):
+    category, rest = rid.split("/", 1)
+    return Path(args.fixtures) / category / rest.split("#", 1)[0]
+
+
+def rejection_payload(args, rid, canned):
+    """The rejection the fixture expects, as an error answer; --mode bends it in one specific way."""
+    if rid in canned:
+        return '"error":' + json.dumps(canned[rid]["error"])
+    expected = json.loads((fixture_dir(args, rid) / "expected" / "rejection.json").read_text(encoding="utf-8-sig"))
+    error = {"kind": "FakeRejection", "message": "fake", "rejectedAt": expected["rejectedAt"], "reason": expected["reason"]}
+    if args.mode == "wrong-reason":
+        error["reason"] = "unknown-field" if error["reason"] != "unknown-field" else "malformed-request"
+    if args.mode == "wrong-stage":
+        error["rejectedAt"] = "allowlist" if error["rejectedAt"] != "allowlist" else "resourceLimits"
+    if args.mode == "no-pair":
+        del error["rejectedAt"], error["reason"]
+    if args.mode == "accepts":
+        return '"artifact":{}'
+    return '"error":' + json.dumps(error)
+
+
+def writer_payload(args, rid, canned, req):
+    """The bytes the fixture expects, base64; --mode bends them (a flipped byte, a dropped BOM, LF for CRLF)."""
+    if rid in canned:
+        return '"bytes":' + json.dumps(canned[rid]["bytes"])
+    if args.mode == "echo-config":  # the config the runner sent, so a test can see it arrive unchanged
+        data = json.dumps(req.get("writerConfig"), separators=(",", ":")).encode()
+        return '"bytes":' + json.dumps(base64.b64encode(data).decode("ascii"))
+    folder = fixture_dir(args, rid) / "expected"
+    path = next(p for p in (folder / "export.csv", folder / "export.tsv") if p.exists())
+    data = path.read_bytes()
+    if args.mode == "flip-byte":
+        data = data[:-3] + bytes([data[-3] ^ 1]) + data[-2:]
+    if args.mode == "drop-bom" and data.startswith(b"\xef\xbb\xbf"):
+        data = data[3:]
+    if args.mode == "lf-endings":
+        data = data.replace(b"\r\n", b"\n")
+    if args.mode == "writer-error":
+        return '"error":{"kind":"CsvWriterException","message":"refused"}'
+    return '"bytes":' + json.dumps(base64.b64encode(data).decode("ascii"))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--fixtures")
     ap.add_argument("--answers", help='JSON file: {id: {"artifact": "<raw JSON text>"} | {"error": {kind, message}}}')
     ap.add_argument("--backends", default=ALL)
+    ap.add_argument("--caps", default="", help="capabilities declared in the hello: rejection, writer (comma separated)")
     ap.add_argument("--mode", default="ok")
     ap.add_argument("--after", type=int, default=2, help="requests answered before a crash / hang / early exit")
     ap.add_argument("--pid-file", help="write this process's pid here, so a test can check nothing outlives the run")
@@ -51,6 +96,7 @@ def main():
         Path(args.pid_file).write_text(str(os.getpid()))
     canned = json.loads(Path(args.answers).read_text()) if args.answers else {}
     backends = json.dumps(args.backends.split(","))
+    caps = json.dumps([c for c in args.caps.split(",") if c])
 
     if args.mode == "hang-hello":
         time.sleep(600)
@@ -63,12 +109,12 @@ def main():
     elif args.mode == "hello-garbage":
         emit("this is not json")
     else:
-        emit('{"hello":{"impl":"fake","specVersion":"0.0.0","backends":%s}}' % backends)
+        emit('{"hello":{"impl":"fake","specVersion":"0.0.0","backends":%s,"capabilities":%s}}' % (backends, caps))
 
     n, previous = 0, None
     for line in sys.stdin:
         req = json.loads(line)
-        rid, backend = req["id"], req["backend"]
+        rid, backend, kind = req["id"], req.get("backend"), req.get("kind", "compile")
         n += 1
         if args.mode == "crash" and n > args.after:
             sys.stderr.write("fake driver: simulated crash\n")
@@ -84,7 +130,11 @@ def main():
         if args.mode == "not-object" and n == 2:
             emit("[1,2]")
 
-        if rid in canned:
+        if kind == "writer":
+            payload = writer_payload(args, rid, canned, req)
+        elif kind == "rejection":
+            payload = rejection_payload(args, rid, canned)
+        elif rid in canned:
             body = canned[rid]
             payload = '"artifact":' + body["artifact"] if "artifact" in body else '"error":' + json.dumps(body["error"])
         else:

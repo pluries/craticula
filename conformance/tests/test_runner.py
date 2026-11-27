@@ -190,7 +190,7 @@ class Coverage(RunnerCase):  # AC-3
 
     def test_only_that_selects_no_artifact_is_a_usage_error(self):  # spec §6: an empty graded set never passes
         self.fixture("c", "002-rej", extra={"expected/rejection.json": "{}"})
-        for glob in ("nothing/*", "c/002-rej", "c/001-x#oracle"):
+        for glob in ("nothing/*", "c/001-x#oracle"):
             code, out = self.go(runner_args=("--only", glob))
             self.assertEqual(code, 2, (glob, out))
             self.assertIn("no expected artifact matches --only", out)
@@ -215,19 +215,20 @@ class Enumeration(RunnerCase):
         (self.tree / "schemas" / "x.schema.json").write_text("{}")
         code, out = self.go("--backends", "postgres")
         self.assertEqual(code, 0, out)
-        self.assertIn("out of tier (4)", out)
-        for needle in ("c/002-rej  rejection (SEC-6)", "c/003-csv  writer output (EXP-4)",
-                       "c/004-rows  execution equality (T-1b)", "c/005-empty  no graded file"):
+        self.assertIn("out of tier (2)", out)
+        for needle in ("c/004-rows  execution equality (T-1b)", "c/005-empty  no graded file"):
             self.assertIn(needle, out)
+        self.assertNotIn("c/002-rej", out.split("out of tier")[1])  # graded kinds now, not out of tier (spec §1)
+        self.assertNotIn("c/003-csv", out.split("out of tier")[1])
         self.assertNotIn("schemas", out)
 
-    def test_writer_output_beside_a_graded_artifact_is_still_listed(self):  # spec §1: by content, not by directory
+    def test_writer_output_beside_a_graded_artifact_is_graded_too(self):  # spec §1: by content, not by directory
         self.fixture("c", "001-csv", {"postgres": SQL}, extra={"expected/export.csv": "a\n", "rowStream.json": "[]"})
         code, out = self.go("--backends", "postgres")
         self.assertEqual(code, 0, out)
         self.assertRegex(out, r"(?m)^postgres\s+1\s+0\s+0$")
-        self.assertIn("out of tier (1)", out)
-        self.assertIn("c/001-csv  writer output (EXP-4)", out)
+        self.assertRegex(out, r"(?m)^writer\s+0\s+0\s+1$")  # no capability declared: not graded, never passed
+        self.assertNotIn("out of tier", out)
 
     def test_unknown_backend_stem_is_a_usage_error(self):
         self.fixture("c", "001-x", {"postgres": SQL, "db2": "{}"})
@@ -250,7 +251,8 @@ class Enumeration(RunnerCase):
         self.assertEqual(data["totals"]["postgres"], {"passed": 1, "failed": 0, "notGraded": 0})
         self.assertEqual(data["totals"]["mongo"]["notGraded"], 1)
         self.assertEqual(data["hello"]["impl"], "fake")
-        self.assertEqual(data["outOfTier"][0]["id"], "c/002-rej")
+        self.assertEqual(data["outOfTier"], [])
+        self.assertEqual(data["totals"]["rejection"], {"passed": 0, "failed": 0, "notGraded": 1})
 
     def test_json_report_carries_failures(self):
         fid = self.fixture("c", "001-x", {"postgres": SQL})
@@ -453,6 +455,178 @@ class RealFixtureSuite(RunnerCase):
         self.assertEqual(code, 0, out[-2000:])
         self.assertIn("postgres", out)
         self.assertNotIn("RESULT: FAIL", out)
+
+
+REJECTION = '{"rejectedAt":"allowlist","reason":"unknown-field","note":"n"}'
+ROWS = '{"columns":["a"],"rows":[{"a":"x"}]}'
+
+
+class RejectionGrading(RunnerCase):
+    """spec/conformance-runner.md §2.2, §4.1: rejection cases (feature 009, US1)."""
+
+    def tree_with_rejection(self):
+        return self.fixture("adv", "001-x", extra={"expected/rejection.json": REJECTION})
+
+    def test_US1_AS1_the_same_stage_and_reason_passes(self):
+        self.tree_with_rejection()
+        code, out = self.go("--caps", "rejection")
+        self.assertEqual(code, 0, out)
+        self.assertRegex(out, r"(?m)^rejection\s+1\s+0\s+0$")
+
+    def test_US1_AS2_a_different_reason_fails_and_names_both_pairs(self):
+        self.tree_with_rejection()
+        code, out = self.go("--caps", "rejection", "--mode", "wrong-reason")
+        self.assertEqual(code, 1, out)
+        self.assertIn("FAIL adv/001-x#rejection", out)
+        self.assertIn("unknown-field", out)
+        self.assertIn("malformed-request", out)
+
+    def test_US1_AS2_a_different_stage_fails(self):
+        self.tree_with_rejection()
+        code, out = self.go("--caps", "rejection", "--mode", "wrong-stage")
+        self.assertEqual(code, 1, out)
+        self.assertIn("allowlist", out)
+        self.assertIn("resourceLimits", out)
+
+    def test_US1_AS2_an_error_without_the_pair_fails(self):
+        self.tree_with_rejection()
+        code, out = self.go("--caps", "rejection", "--mode", "no-pair")
+        self.assertEqual(code, 1, out)
+        self.assertIn("rejectedAt", out)
+
+    def test_US1_AS3_an_artifact_for_a_rejection_case_fails_as_accepted(self):
+        self.tree_with_rejection()
+        code, out = self.go("--caps", "rejection", "--mode", "accepts")
+        self.assertEqual(code, 1, out)
+        self.assertIn("accepted a request that must be rejected", out)
+
+    def test_US1_AS4_rejections_are_graded_and_no_longer_out_of_tier(self):
+        self.fixture("adv", "001-x", extra={"expected/rejection.json": REJECTION})
+        self.fixture("adv", "002-y", {"postgres": SQL}, extra={"expected/rejection.json": REJECTION})
+        report = self.tmp / "report.json"
+        code, out = self.go("--caps", "rejection", runner_args=("--json", str(report)))
+        self.assertEqual(code, 0, out)
+        self.assertRegex(out, r"(?m)^rejection\s+2\s+0\s+0$")
+        self.assertNotIn("rejection (SEC-6)", out)
+        self.assertEqual(json.loads(report.read_text())["totals"]["rejection"]["passed"], 2)
+
+    def test_US1_AS6_a_driver_without_the_capability_leaves_rejections_not_graded(self):
+        self.tree_with_rejection()
+        self.fixture("c", "001-x", {"postgres": SQL})
+        code, out = self.go()
+        self.assertEqual(code, 0, out)
+        self.assertRegex(out, r"(?m)^rejection\s+0\s+0\s+1$")
+        self.assertRegex(out, r"(?m)^postgres\s+1\s+0\s+0$")
+
+    def test_a_capability_outside_the_closed_set_is_a_protocol_failure(self):
+        self.tree_with_rejection()
+        code, out = self.go("--caps", "magic")
+        self.assertEqual(code, 2, out)
+        self.assertIn("capabilit", out)
+
+    def test_a_rejection_run_with_nothing_else_still_grades(self):
+        self.tree_with_rejection()
+        code, out = self.go("--caps", "rejection", "--backends", "oracle")
+        self.assertEqual(code, 0, out)
+
+    @unittest.skipUnless(REAL_FIXTURES.is_dir(), "spec/fixtures not present")
+    def test_US1_AS5_every_real_rejection_fixture_is_sent_and_graded(self):
+        expected = len(list(REAL_FIXTURES.glob("*/*/expected/rejection.json")))
+        self.assertGreater(expected, 20)
+        self.timeout = "30"
+        code, out = self.go("--caps", "rejection", fixtures=REAL_FIXTURES)
+        self.assertEqual(code, 0, out[-1500:])
+        self.assertRegex(out, rf"(?m)^rejection\s+{expected}\s+0\s+0$")
+
+
+class WriterGrading(RunnerCase):
+    """spec/conformance-runner.md §2.2, §4.2: CSV and TSV bytes (feature 009, US2)."""
+
+    BOM_CSV = b"\xef\xbb\xbfa\r\nx\r\n"
+
+    def tree_with_writer(self, name="001-x", expected=None, extra=None):
+        fid = self.fixture("pe", name, extra={"rowStream.json": ROWS, **(extra or {})})
+        (self.tree / "pe" / name / "expected" / "export.csv").write_bytes(expected if expected is not None else self.BOM_CSV)
+        return fid
+
+    def test_US2_AS1_identical_bytes_pass(self):
+        self.tree_with_writer()
+        code, out = self.go("--caps", "writer")
+        self.assertEqual(code, 0, out)
+        self.assertRegex(out, r"(?m)^writer\s+1\s+0\s+0$")
+
+    def test_US2_AS1_a_tsv_expected_file_is_graded_like_a_csv_one(self):
+        self.fixture("pe", "002-tab", extra={"rowStream.json": ROWS})
+        (self.tree / "pe" / "002-tab" / "expected" / "export.tsv").write_bytes(b"a\r\nx\r\n")
+        code, out = self.go("--caps", "writer")
+        self.assertEqual(code, 0, out)
+
+    def test_US2_AS2_a_differing_byte_fails_with_its_offset(self):
+        self.tree_with_writer()
+        code, out = self.go("--caps", "writer", "--mode", "flip-byte")
+        self.assertEqual(code, 1, out)
+        self.assertIn("FAIL pe/001-x#writer", out)
+        self.assertRegex(out, r"first differing byte at offset \d+")
+
+    def test_US2_AS3_a_missing_bom_fails(self):
+        self.tree_with_writer()
+        code, out = self.go("--caps", "writer", "--mode", "drop-bom")
+        self.assertEqual(code, 1, out)
+        self.assertIn("offset 0", out)
+
+    def test_US2_AS3_lf_where_crlf_is_expected_fails(self):
+        self.tree_with_writer()
+        code, out = self.go("--caps", "writer", "--mode", "lf-endings")
+        self.assertEqual(code, 1, out)
+
+    def test_US2_AS3_a_shorter_answer_fails_at_the_end_of_the_shorter_side(self):
+        self.tree_with_writer()
+        table = self.answers({"pe/001-x#writer": {"bytes": "77u/YQ0K"}})  # the BOM, "a", CRLF: the row is missing
+        code, out = self.go("--caps", "writer", "--answers", table)
+        self.assertEqual(code, 1, out)
+        self.assertIn("end of the actual bytes", out)
+
+    def test_US2_AS4_writer_config_reaches_the_driver_unchanged(self):
+        config = '{"delimiter":";","bom":false}'
+        self.tree_with_writer(expected=config.encode(), extra={"writerConfig.json": config})
+        code, out = self.go("--caps", "writer", "--mode", "echo-config")
+        self.assertEqual(code, 0, out)
+
+    def test_US2_AS4_without_a_config_file_none_is_sent(self):
+        self.tree_with_writer(expected=b"null")
+        code, out = self.go("--caps", "writer", "--mode", "echo-config")
+        self.assertEqual(code, 0, out)
+
+    def test_a_writer_error_answer_fails_the_case(self):
+        self.tree_with_writer()
+        code, out = self.go("--caps", "writer", "--mode", "writer-error")
+        self.assertEqual(code, 1, out)
+        self.assertIn("CsvWriterException", out)
+
+    def test_US2_AS6_a_driver_without_the_capability_leaves_writer_cases_not_graded(self):
+        self.tree_with_writer()
+        self.fixture("c", "001-x", {"postgres": SQL})
+        code, out = self.go()
+        self.assertEqual(code, 0, out)
+        self.assertRegex(out, r"(?m)^writer\s+0\s+0\s+1$")
+
+    @unittest.skipUnless(REAL_FIXTURES.is_dir(), "spec/fixtures not present")
+    def test_US2_AS5_every_real_writer_fixture_is_sent_and_graded(self):
+        expected = len(list(REAL_FIXTURES.glob("*/*/rowStream.json")))
+        self.assertGreater(expected, 10)
+        self.timeout = "30"
+        code, out = self.go("--caps", "writer", fixtures=REAL_FIXTURES)
+        self.assertEqual(code, 0, out[-1500:])
+        self.assertRegex(out, rf"(?m)^writer\s+{expected}\s+0\s+0$")
+
+    @unittest.skipUnless(REAL_FIXTURES.is_dir(), "spec/fixtures not present")
+    def test_the_whole_real_tree_with_both_capabilities_passes_and_lists_only_execution_equality(self):
+        self.timeout = "30"
+        code, out = self.go("--caps", "rejection,writer", fixtures=REAL_FIXTURES)
+        self.assertEqual(code, 0, out[-1500:])
+        listed = out.split("out of tier")[1] if "out of tier" in out else ""
+        self.assertNotIn("rejection (SEC-6)", listed)
+        self.assertNotIn("writer output", listed)
 
 
 if __name__ == "__main__":
