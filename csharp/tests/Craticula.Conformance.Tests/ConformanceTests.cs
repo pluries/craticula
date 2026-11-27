@@ -94,7 +94,7 @@ public class ConformanceTests
 
             using var report = JsonDocument.Parse(File.ReadAllText(reportPath));
             var capabilities = report.RootElement.GetProperty("hello").GetProperty("capabilities")
-                .EnumerateArray().Select(c => c.GetString()).Order(StringComparer.Ordinal).ToArray();
+                .EnumerateArray().Select(c => c.GetString()!).Order(StringComparer.Ordinal).ToArray();
             Assert.Equal(["rejection", "writer"], capabilities);
 
             foreach (var (kind, count) in new[] { ("rejection", rejections), ("writer", writers) })

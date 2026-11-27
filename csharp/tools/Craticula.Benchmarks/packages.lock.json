@@ -177,6 +177,7 @@
         "dependencies": {
           "Craticula.AgGrid": "[1.0.0, )",
           "Craticula.Core": "[1.0.0, )",
+          "Craticula.Export.Csv": "[1.0.0, )",
           "Craticula.Mongo": "[1.0.0, )",
           "Craticula.Search": "[1.0.0, )",
           "Craticula.Sql": "[1.0.0, )"
@@ -184,6 +185,12 @@
       },
       "craticula.core": {
         "type": "Project"
+      },
+      "craticula.export.csv": {
+        "type": "Project",
+        "dependencies": {
+          "Craticula.Core": "[1.0.0, )"
+        }
       },
       "craticula.mongo": {
         "type": "Project",
