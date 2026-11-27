@@ -319,6 +319,56 @@ class CodeqlWorkflowTests(unittest.TestCase):
         self.assertNotIn("continue-on-error", text)
 
 
+class CiRuntime11JobTests(unittest.TestCase):
+    """Feature 011 (ADR-0015, follow-up F-2): ci.yml's informational job on SDK 11 and the .NET 11 runtime.
+    Scenarios US2-AS1 US2-AS2 US2-AS3 US2-AS4."""
+
+    @staticmethod
+    def job() -> str:
+        lines = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8").splitlines()
+        text = "\n".join(line for line in lines if not line.strip().startswith("#")) + "\n"
+        match = re.search(r"(?m)^  runtime-11:\n((?:    .*\n|\n)+)", text)
+        assert match, "ci.yml has no runtime-11 job"
+        return match.group(0)
+
+    def test_US2_AS1_it_builds_on_sdk_11_and_runs_the_offline_unit_tests_on_the_11_runtime(self):
+        job = self.job()
+        self.assertRegex(job, r"(?m)^          dotnet-version: \|\n            10\.0\.x\n            11\.0\.x$")
+        self.assertIn("11.0.100", job)
+        self.assertIn("dotnet restore Craticula.sln --locked-mode", job)
+        self.assertIn("-warnaserror", job)
+        self.assertRegex(job, r"(?m)^          DOTNET_ROLL_FORWARD: LatestMajor$")
+        self.assertIn("dotnet test Craticula.sln --no-build", job)
+        self.assertIn("Conformance.Tests", job)  # left out of the filter: it starts the driver and the Python suites
+
+    def test_US2_AS2_it_is_informational_and_the_required_checks_keep_their_names(self):
+        job = self.job()
+        self.assertRegex(job, r"(?m)^    continue-on-error: true$")
+        self.assertRegex(job, r"(?m)^    name: runtime-11 \(informational, not a gate\)$")
+        text = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
+        for required in ("build", "test"):
+            self.assertRegex(text, rf"(?m)^  {required}:$")
+        self.assertNotIn("needs: runtime-11", text)
+
+    def test_US2_AS3_every_action_is_pinned_permissions_stay_read_only_and_no_secret(self):
+        text = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
+        job = self.job()
+        self.assertEqual([], unpinned_uses(job))
+        self.assertRegex(job, r"(?m)^        with:\n          persist-credentials: false$")
+        self.assertNotRegex(job, r"(?m)^\s+permissions:")  # the workflow's top-level contents: read applies
+        self.assertEqual([], secret_references(job))
+        self.assertTrue(is_read_only(text))
+
+    def test_US2_AS4_it_edits_only_a_copy_and_never_a_tracked_file(self):
+        job = self.job()
+        self.assertIn('cp -a "$GITHUB_WORKSPACE" "$RUNNER_TEMP/repo11"', job)
+        self.assertIn('"$RUNNER_TEMP/repo11/csharp/global.json"', job)
+        for line in (l for l in job.splitlines() if "sed -i" in l):
+            self.assertIn("RUNNER_TEMP", line)  # an in-place edit only ever names the copy
+        for forbidden in ("git commit", "git push", "git add"):
+            self.assertNotIn(forbidden, job)
+
+
 class ReleaseSignaturesWorkflowTests(unittest.TestCase):
     """release-signatures.yml (#4029, ADR 0014): after `NuGet publish` succeeds on main, sign the release packages with Sigstore and upload the
     bundles to the release. No checkout and no repository code; the only job with a write permission and an OIDC token. Line checks only."""
