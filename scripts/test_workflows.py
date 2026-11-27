@@ -369,6 +369,44 @@ class CiRuntime11JobTests(unittest.TestCase):
             self.assertNotIn(forbidden, job)
 
 
+class TypescriptJobTests(unittest.TestCase):
+    """Feature 012 (the TypeScript skeleton): ci.yml's `typescript` job. Scenarios US4-AS1 US4-AS2 US4-AS3."""
+
+    @staticmethod
+    def text() -> str:
+        lines = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8").splitlines()
+        return "\n".join(line for line in lines if not line.strip().startswith("#")) + "\n"
+
+    def job(self) -> str:
+        match = re.search(r"(?m)^  typescript:\n((?:    .*\n|\n)+)", self.text())
+        self.assertIsNotNone(match, "ci.yml has no typescript job")
+        return match.group(0)
+
+    def test_US4_AS1_it_installs_from_the_lock_file_builds_tests_and_runs_the_runner_on_the_driver(self):
+        job = self.job()
+        self.assertIn("run: npm ci", job)
+        self.assertIn("run: npm test", job)
+        self.assertRegex(job, r"(?m)^        working-directory: typescript$")
+        self.assertIn('python3 conformance/run.py --driver "node typescript/dist/src/driver.js" --only "sort-paging/*#postgres"', job)
+
+    def test_US4_AS2_it_runs_on_the_minimum_node_and_the_newest_lts_with_pinned_actions_and_no_secret(self):
+        job = self.job()
+        self.assertRegex(job, r"(?m)^        node: \['22', '24'\]$")
+        self.assertRegex(job, r"(?m)^      - uses: actions/setup-node@[0-9a-f]{40} # v7\.1\.0$")
+        self.assertEqual([], unpinned_uses(job))
+        self.assertEqual([], secret_references(job))
+        self.assertRegex(job, r"(?m)^        with:\n          persist-credentials: false$")
+        self.assertNotRegex(job, r"(?m)^\s+permissions:")
+        self.assertTrue(is_read_only((WORKFLOWS / "ci.yml").read_text(encoding="utf-8")))
+
+    def test_US4_AS3_the_required_checks_keep_their_names_and_this_job_is_not_continue_on_error(self):
+        text = self.text()
+        for required in ("build", "test"):
+            self.assertRegex(text, rf"(?m)^  {required}:$")
+        self.assertNotIn("needs: typescript", text)
+        self.assertNotIn("continue-on-error", self.job())
+
+
 class ReleaseSignaturesWorkflowTests(unittest.TestCase):
     """release-signatures.yml (#4029, ADR 0014): after `NuGet publish` succeeds on main, sign the release packages with Sigstore and upload the
     bundles to the release. No checkout and no repository code; the only job with a write permission and an OIDC token. Line checks only."""
