@@ -4,6 +4,8 @@
 # coverage with the 90% line gate (scripts/coverage.sh). Conformance and the SEC-2 lint run in the Jenkins build; the pack smoke
 # runs in the release workflow. The `test` job is also what the README coverage badge reads: a gate-status badge ("coverage gate
 # 90%"), not a percentage; the per-assembly numbers go to the job summary.
+# A `typescript` job (feature 012) installs the TypeScript skeleton from its lock file, builds, tests, and runs the conformance runner
+# against its driver on the sort-paging family; it is a plain job, not a required check.
 # A third job, `runtime-11`, is informational and never a required check (ADR-0015, follow-up F-2): it builds a copy of the sources
 # on .NET SDK 11 and runs the offline unit tests on the .NET 11 runtime, so a new difference shows when a servicing release lands.
 # No secret, read-only token, every action pinned to a commit SHA (scripts/test_workflows.py checks that).
@@ -120,3 +122,39 @@ jobs:
         env:
           DOTNET_ROLL_FORWARD: LatestMajor
         run: dotnet test Craticula.sln --no-build -c Release -v q --filter "FullyQualifiedName!~MongoDB.Driver.Tests&FullyQualifiedName!~OpenSearch.Client.Tests&FullyQualifiedName!~Integration.Tests.Containers&FullyQualifiedName!~Conformance.Tests"
+
+  # The TypeScript skeleton (feature 012, ADR-0016): the minimum Node (22) and the newest LTS (24). Install from the lock file only,
+  # without lifecycle scripts (typescript/.npmrc), then the package tests, then the unchanged runner against the driver. The runner is
+  # narrowed to the one family the skeleton covers; that is a debugging aid, not a conformance claim (spec/conformance-runner.md §9).
+  typescript:
+    name: typescript (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+
+      # The conformance runner is Python 3.10+, standard library only.
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+
+      - name: Install from the lock file
+        working-directory: typescript
+        run: npm ci
+
+      - name: Build and test the package
+        working-directory: typescript
+        run: npm test
+
+      - name: Conformance runner against the driver (sort-paging, PostgreSQL)
+        run: python3 conformance/run.py --driver "node typescript/dist/src/driver.js" --only "sort-paging/*#postgres"
