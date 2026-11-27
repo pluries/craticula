@@ -27,6 +27,12 @@ public sealed class AgGridRequestParseException(
     string? rejectionReason = null)
     : Exception(message, innerException)
 {
+    /// <summary>Keeps the constructor of earlier versions, so a caller compiled against them still binds.</summary>
+    public AgGridRequestParseException(string reason, string message, Exception? innerException)
+        : this(reason, message, innerException, ParsingStage, null)
+    {
+    }
+
     /// <summary>The stage of a failure that never reached IR validation.</summary>
     public const string ParsingStage = "requestParsing";
 
