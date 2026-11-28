@@ -101,3 +101,12 @@ describe("US2-AS3: count mode", () => {
     assert.ok(!body.includes('"sort"') && !body.includes('"from"'));
   });
 });
+
+describe("review round: decimals stay valid JSON", () => {
+  it("refuses a decimal with a leading zero, which the IR pattern allows and JSON does not", () => {
+    for (const value of ["007", "-00.50", "01"]) {
+      assert.throws(() => ask(filter("amount", "gt", { type: "decimal", value })), CompileError, value);
+    }
+    assert.match(ask(filter("amount", "gt", { type: "decimal", value: "0.50" })), /"gt":0\.50/);
+  });
+});

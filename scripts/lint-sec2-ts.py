@@ -143,7 +143,7 @@ class Source:
             j += 1
         if j >= len(text):
             raise ScanError(f"{self.path}:{start_line}: unterminated template literal")
-        self.templates.append({"line": start_line, "holes": holes, "at": i})
+        self.templates.append({"line": start_line, "holes": holes, "at": i, "raw": text[i + 1 : j]})
         return f"\x01T{len(self.templates) - 1}\x01", j + 1, line
 
 
@@ -501,26 +501,46 @@ class Scanner:
                 self.findings.append((source.path, self.line_of(source, offset), self.shown(source, value), "appended to query text and not a placeholder, a quoted identifier or a constant"))
 
     def _document_keys(self, source: Source) -> None:
-        """A key of a document (`doc(["key", value])`, `.set(key, value)`) must be a literal, a constant or a schema name the builder resolved."""
+        """A key of a document (`doc(["key", value])`, `new Map([[key, value]])`, `.set(key, value)`) must be a literal, a constant or a schema name the builder resolved."""
         for offset, key in self._keys_of(source.code):
-            if not self.safe(source, key):
+            escaped = any(name in key for name in DOCUMENT_ESCAPERS)
+            if escaped or not self.safe(source, key):
                 self.findings.append((source.path, self.line_of(source, offset), self.shown(source, key), "used as a document key and not a literal, a constant or a name the builder resolved from the schema"))
 
     @staticmethod
-    def _keys_of(code: str) -> list[tuple[int, str]]:
+    def _call_arguments(code: str, marker: str) -> list[tuple[int, str]]:
+        """(offset, argument text) of every call that starts with `marker`."""
         found: list[tuple[int, str]] = []
-        for marker, entries in (("doc(", True), (".set(", False)):
-            cursor = code.find(marker)
-            while cursor >= 0:
-                close = matching_paren(code, cursor + len(marker) - 1)
-                inner = code[cursor + len(marker) : close] if close > 0 else ""
-                for part in top_level_split(inner, ",") if not entries else [item for item in top_level_split(inner, ",")]:
-                    text = part.strip()
-                    if entries and text.startswith("["):
-                        found.append((cursor, top_level_split(text[1:], ",")[0]))
-                if not entries and inner:
-                    found.append((cursor, top_level_split(inner, ",")[0]))
-                cursor = code.find(marker, cursor + 1)
+        cursor = code.find(marker)
+        while cursor >= 0:
+            close = matching_paren(code, cursor + len(marker) - 1)
+            if close > 0:
+                found.append((cursor, code[cursor + len(marker) : close]))
+            cursor = code.find(marker, cursor + 1)
+        return found
+
+    @staticmethod
+    def _entry_keys(offset: int, arguments: list[str]) -> list[tuple[int, str]]:
+        """The key of each `[key, value]` entry among the arguments; an argument that is not an entry list is itself the unknown source of keys."""
+        keys: list[tuple[int, str]] = []
+        for argument in arguments:
+            text = argument.strip().removeprefix("...")
+            if not text:
+                continue
+            keys.append((offset, top_level_split(text[1:], ",")[0] if text.startswith("[") else text))
+        return keys
+
+    def _keys_of(self, code: str) -> list[tuple[int, str]]:
+        found: list[tuple[int, str]] = []
+        for offset, inner in self._call_arguments(code, "doc("):
+            found += self._entry_keys(offset, top_level_split(inner, ","))
+        for offset, inner in self._call_arguments(code, "new Map("):
+            outer = inner.strip()
+            entries = top_level_split(outer[1:-1], ",") if outer.startswith("[") and outer.endswith("]") else [outer]
+            found += self._entry_keys(offset, entries)
+        for offset, inner in self._call_arguments(code, ".set("):
+            if inner.strip():
+                found.append((offset, top_level_split(inner, ",")[0]))
         return found
 
     def _spreads(self, source: Source) -> None:
@@ -540,10 +560,12 @@ class Scanner:
             cursor = source.code.find("...", end)
 
     def _script_operators(self, source: Source) -> None:
-        for index, literal in enumerate(source.strings):
-            if literal[1:-1] in FORBIDDEN_OPERATORS:
-                at = source.code.find(f"\x01S{index}\x01")
-                self.findings.append((source.path, self.line_of(source, at), literal, "a server-side script or write operator, which a compile-only library never emits"))
+        literals = [(f"\x01S{index}\x01", literal[1:-1]) for index, literal in enumerate(source.strings)]
+        literals += [(f"\x01T{index}\x01", template["raw"]) for index, template in enumerate(source.templates) if not template["holes"]]
+        for token, text in literals:
+            if text in FORBIDDEN_OPERATORS:
+                at = source.code.find(token)
+                self.findings.append((source.path, self.line_of(source, at), text, "a server-side script or write operator, which a compile-only library never emits"))
 
     def _concatenations(self, source: Source) -> None:
         for match in re.finditer(r"(\x01[ST]\d+\x01)\s*\+(?!=)|(?<!\+)\+\s*(\x01[ST]\d+\x01)", source.code):

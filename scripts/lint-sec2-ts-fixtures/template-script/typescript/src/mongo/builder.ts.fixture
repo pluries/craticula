@@ -1,0 +1,7 @@
+export function doc(...entries: [string, unknown][]): Map<string, unknown> {
+  return new Map(entries);
+}
+
+export function build(): Map<string, unknown> {
+  return doc([`$function`, "x"]);
+}

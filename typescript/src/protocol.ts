@@ -85,33 +85,40 @@ function recoverLeading(line: string): { id: string; kind: string | undefined } 
 
 const MALFORMED = { rejectedAt: "requestParsing", reason: "malformed-request" } as const;
 
-/** The harness members of `requestContext` (§3) as parse options. They are read here, in the driver, and never by the library from a wire request. */
+function harnessError(message: string): CompileError {
+  return new CompileError("InvalidRequest", message, MALFORMED);
+}
+
+function harnessNow(value: unknown): (() => Date) | undefined {
+  if (value === undefined || value === null) return undefined;
+  const instant = typeof value === "string" && isIsoInstant(value) ? new Date(value) : undefined;
+  if (instant === undefined) throw harnessError("'requestContext.now' must be an ISO-8601 instant.");
+  return () => instant;
+}
+
+function harnessWhole(value: unknown, name: string, lowest: number, highest: number): number | undefined {
+  if (value === undefined || value === null) return undefined;
+  const whole = wholeNumber(value);
+  if (whole === undefined || whole < lowest || whole > highest) throw harnessError(`'requestContext.${name}' must be a whole number from ${lowest} to ${highest}.`);
+  return whole;
+}
+
+/** The harness members of `requestContext` (§3) as compile options. They are read here, in the driver, and never by the library from a wire request. */
 function harnessOf(request: unknown): { options: CompileOptions; countMode: boolean } {
   const context = isRecord(request) ? request["requestContext"] : undefined;
   if (context === undefined || context === null) return { options: {}, countMode: false };
-  if (!isRecord(context)) throw new CompileError("InvalidRequest", "'requestContext' must be a JSON object or null.", MALFORMED);
-  const options: { -readonly [K in keyof CompileOptions]: CompileOptions[K] } = {};
-  const now = context["now"];
-  if (now !== undefined && now !== null) {
-    const instant = typeof now === "string" && isIsoInstant(now) ? new Date(now) : undefined;
-    if (instant === undefined) throw new CompileError("InvalidRequest", "'requestContext.now' must be an ISO-8601 instant.", MALFORMED);
-    options.now = () => instant;
-  }
-  const size = context["defaultPageSize"];
-  if (size !== undefined && size !== null) {
-    const whole = wholeNumber(size);
-    if (whole === undefined || whole <= 0) throw new CompileError("InvalidRequest", "'requestContext.defaultPageSize' must be a positive whole number.", MALFORMED);
-    options.defaultPageSize = whole;
-  }
-  if (context["allowUnboundedRows"] === true) options.allowUnboundedRows = true;
-  const limit = context["maxQueryTimeMs"];
-  if (limit !== undefined && limit !== null) {
-    const whole = wholeNumber(limit);
-    if (whole === undefined || whole < 1 || whole > 2_147_483_647) throw new CompileError("InvalidRequest", "'requestContext.maxQueryTimeMs' must be a whole number from 1 to 2147483647 (TL-4).", MALFORMED);
-    options.maxQueryTimeMs = whole;
-  }
+  if (!isRecord(context)) throw harnessError("'requestContext' must be a JSON object or null.");
   const mode = context["compileMode"];
-  if (mode !== undefined && mode !== null && mode !== "count") throw new CompileError("InvalidRequest", `'requestContext.compileMode' ${JSON.stringify(mode)} is not supported.`, MALFORMED);
+  if (mode !== undefined && mode !== null && mode !== "count") throw harnessError(`'requestContext.compileMode' ${JSON.stringify(mode)} is not supported.`);
+  const now = harnessNow(context["now"]);
+  const defaultPageSize = harnessWhole(context["defaultPageSize"], "defaultPageSize", 1, Number.MAX_SAFE_INTEGER);
+  const maxQueryTimeMs = harnessWhole(context["maxQueryTimeMs"], "maxQueryTimeMs", 1, 2_147_483_647);
+  const options: CompileOptions = {
+    ...(now === undefined ? {} : { now }),
+    ...(defaultPageSize === undefined ? {} : { defaultPageSize }),
+    ...(maxQueryTimeMs === undefined ? {} : { maxQueryTimeMs }),
+    ...(context["allowUnboundedRows"] === true ? { allowUnboundedRows: true } : {}),
+  };
   return { options, countMode: mode === "count" };
 }
 

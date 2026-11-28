@@ -16,6 +16,16 @@ export function formatFor(type: FieldType): string | undefined {
   return type === "datetime" ? "strict_date_optional_time" : undefined;
 }
 
+/** A decimal's text as a JSON number literal. The IR's decimal pattern allows leading zeros, which JSON does not, and the body must stay valid JSON. */
+function jsonNumber(text: string, fieldName: string): JsonNumber {
+  const [integer = "", fraction] = text.replace(/^-/, "").split(".");
+  const leadingZero = integer.length > 1 && integer.startsWith("0");
+  if (integer.length === 0 || leadingZero || fraction === "") {
+    throw new CompileError("InvalidRequest", `The decimal value on field '${fieldName}' is not a JSON number literal (a leading zero is not valid JSON).`);
+  }
+  return new JsonNumber(text);
+}
+
 /** A typed IR value as a JSON value of a search query; a decimal is a JSON number with the digits it was written with. */
 export function encodeSearch(value: TypedValueIr, field: Field, fieldName: string): Value {
   if (value.type === "null") return null;
@@ -24,7 +34,7 @@ export function encodeSearch(value: TypedValueIr, field: Field, fieldName: strin
   }
   switch (value.type) {
     case "decimal":
-      return new JsonNumber(String(value.value));
+      return jsonNumber(String(value.value), fieldName);
     case "datetime":
       return normalizeSearchInstant(value.value);
     case "int64":

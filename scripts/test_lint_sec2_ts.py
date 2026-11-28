@@ -96,7 +96,22 @@ class NegativeFixtures(unittest.TestCase):
     def test_US4_AS2_a_server_side_script_operator_is_a_finding(self):
         result = lint("script-operator")
         self.assertEqual(1, result.returncode)
-        self.assertIn('"$where"', result.stdout)
+        self.assertIn("$where", result.stdout)
+
+    def test_US4_AS2_a_key_given_to_a_map_constructor_is_checked_like_a_doc_key(self):
+        result = lint("new-map-key")
+        self.assertEqual(1, result.returncode)
+        self.assertIn("request.key", result.stdout)
+
+    def test_US4_AS2_an_escaped_value_is_still_a_finding_in_key_position(self):
+        result = lint("escaper-key")
+        self.assertEqual(1, result.returncode)
+        self.assertIn("escapeRegex(request.key)", result.stdout)
+
+    def test_US4_AS2_a_script_operator_written_as_a_template_literal_is_a_finding(self):
+        result = lint("template-script")
+        self.assertEqual(1, result.returncode)
+        self.assertIn("$function", result.stdout)
 
     def test_an_error_message_may_carry_the_request_value(self):
         self.assertEqual(0, lint("message-exempt").returncode)

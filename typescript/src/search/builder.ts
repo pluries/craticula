@@ -234,7 +234,7 @@ function sortClauses(request: SearchRequest, context: Context): Value[] {
 
 function requireOutputName(aggregation: AggregationIr): string {
   const name = outputName(aggregation);
-  const legal = name.length > 0 && !/^\d/.test(name) && [...name].every((c) => /[A-Za-z0-9_]/.test(c));
+  const legal = name.length > 0 && !/^\d/.test(name) && [...name].every((c) => /\w/.test(c));
   if (aggregation.alias === undefined && !legal) {
     throw failure(`The default output name '${name}' for the '${aggregation.func}' of '${aggregation.field}' is not a legal aggregation name: send an explicit alias (AG Grid's ColumnVO.id) for this column.`);
   }
@@ -267,7 +267,7 @@ function groupFieldTarget(groupColumn: string, context: Context): string {
 
 function bucketOrder(groupColumn: string, aggregations: readonly AggregationIr[], request: SearchRequest): "asc" | "desc" {
   const items = (request.sort ?? []).map((item) => ({ field: item.field, direction: item.direction, nulls: item.nullsPosition }));
-  const keys = groupedSort(items, groupColumn, aggregations.map(columnId));
+  const keys = groupedSort(items, groupColumn, aggregations.map((aggregation) => columnId(aggregation)));
   for (const key of keys) {
     if (key.field === groupColumn) continue;
     if (aggregations.some((a) => columnId(a) === key.field)) {

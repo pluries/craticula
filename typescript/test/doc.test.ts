@@ -31,3 +31,23 @@ describe("the ordered document and its writer", () => {
     assert.throws(() => writeJson(Number.POSITIVE_INFINITY), RangeError);
   });
 });
+
+describe("numbers are written as .NET writes them, because the runner compares their text", () => {
+  it("uses scientific notation below 1E-4 and from 1E+17, with an upper-case E, a sign and two exponent digits at least", () => {
+    assert.equal(writeJson(1e21), "1E+21");
+    assert.equal(writeJson(1e19), "1E+19");
+    assert.equal(writeJson(4.9e-324), "5E-324");
+    assert.equal(writeJson(1e-5), "1E-05");
+    assert.equal(writeJson(1.5e-7), "1.5E-07");
+    assert.equal(writeJson(1.2345678901234568e17), "1.2345678901234568E+17");
+  });
+
+  it("keeps fixed notation in between, negative zero and plain integers", () => {
+    assert.equal(writeJson(1e16), "10000000000000000");
+    assert.equal(writeJson(0.0001), "0.0001");
+    assert.equal(writeJson(123456.789), "123456.789");
+    assert.equal(writeJson(100), "100");
+    assert.equal(writeJson(-0), "-0");
+    assert.equal(writeJson(0), "0");
+  });
+});

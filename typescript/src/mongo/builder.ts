@@ -283,7 +283,7 @@ function sortPlan(request: MongoRequest, plan: GroupingPlan | undefined, context
   const items = (request.sort ?? []).map((item) => ({ field: item.field, direction: item.direction, nulls: item.nullsPosition }));
   const groupColumn = plan?.groupColumn;
   const level = plan !== undefined && groupColumn !== undefined ? { ...plan, groupColumn } : undefined;
-  const keys = level === undefined ? effectiveSort(items, request.schema) : groupedSort(items, level.groupColumn, level.aggregations.map(columnId));
+  const keys = level === undefined ? effectiveSort(items, request.schema) : groupedSort(items, level.groupColumn, level.aggregations.map((aggregation) => columnId(aggregation)));
   const result: SortKeyPlan[] = [];
   for (const key of keys) {
     const target = level === undefined ? { bucket: `__${key.field}NullBucket`, path: pathOf(key.field, context), field: fieldOf(key.field, context) } : groupedTarget(key.field, level, context);
@@ -296,6 +296,19 @@ function sortPlan(request: MongoRequest, plan: GroupingPlan | undefined, context
   return result;
 }
 
+function claim(claimed: Map<string, string>, key: SortKeyPlan): void {
+  const owner = claimed.get(key.bucket);
+  if (owner === undefined) {
+    claimed.set(key.bucket, key.path);
+    return;
+  }
+  throw failure(
+    owner === key.path
+      ? `The sort names '${key.path}' twice outside SEM-6's exact tiebreaker (MDB-10): a $sort document holds a path once.`
+      : `The sort keys '${key.path}' and '${owner}' both emulate null placement through the bucket field '${key.bucket}', which can hold only one of them; '${GROUP_KEY_BUCKET}' is reserved for a grouped level's own _id key, so rename the aggregation whose output name is 'group'.`,
+  );
+}
+
 /** MDB-8 and MDB-10: the null-bucket `$addFields`, the `$sort`, and the `$unset` that removes the helper fields. */
 function sortStages(stages: Doc[], keys: readonly SortKeyPlan[]): void {
   const buckets: Doc = doc();
@@ -303,23 +316,16 @@ function sortStages(stages: Doc[], keys: readonly SortKeyPlan[]): void {
   const unset: string[] = [];
   const claimed = new Map<string, string>();
   for (const key of keys) {
-    if (key.exactField !== undefined) {
-      if (claimed.has(key.exactField)) throw failure(`The sort key '${key.path}' needs the exact-tiebreaker field '${key.exactField}' more than once (MDB-10).`);
-      claimed.set(key.exactField, key.path);
-      buckets.set(key.exactField, doc(["$toHashedIndexKey", reference(key.path)]));
-      sort.set(key.exactField, key.direction === "asc" ? 1 : -1);
-      unset.push(key.exactField);
+    const exact = key.exactField;
+    if (exact !== undefined) {
+      if (claimed.has(exact)) throw failure(`The sort key '${key.path}' needs the exact-tiebreaker field '${exact}' more than once (MDB-10).`);
+      claimed.set(exact, key.path);
+      buckets.set(exact, doc(["$toHashedIndexKey", reference(key.path)]));
+      sort.set(exact, key.direction === "asc" ? 1 : -1);
+      unset.push(exact);
       continue;
     }
-    const owner = claimed.get(key.bucket);
-    if (owner !== undefined) {
-      throw failure(
-        owner === key.path
-          ? `The sort names '${key.path}' twice outside SEM-6's exact tiebreaker (MDB-10): a $sort document holds a path once.`
-          : `The sort keys '${key.path}' and '${owner}' both emulate null placement through the bucket field '${key.bucket}', which can hold only one of them; '${GROUP_KEY_BUCKET}' is reserved for a grouped level's own _id key, so rename the aggregation whose output name is 'group'.`,
-      );
-    }
-    claimed.set(key.bucket, key.path);
+    claim(claimed, key);
     buckets.set(key.bucket, doc(["$cond", [isNull(reference(key.path)), 1, 0]]));
     sort.set(key.bucket, key.nulls === "last" ? 1 : -1);
     sort.set(key.path, key.direction === "asc" ? 1 : -1);
