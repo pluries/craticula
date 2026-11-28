@@ -1,5 +1,7 @@
 import { parseRequest, parseSetValues, type ExportSpecIr, type ParseOptions } from "./agrid/request.js";
+import { AUTO_GROUP_COLUMN } from "./agrid/groups.js";
 import { isRecord } from "./agrid/values.js";
+import { CompileError } from "./errors.js";
 import type { Ir } from "./ir.js";
 import { processRow, processSetValues } from "./pipeline.js";
 import { checkColumns, parseSchema, type GridSchema } from "./schema.js";
@@ -11,11 +13,27 @@ export interface PreparedRow {
 }
 
 /**
+ * The host's allowlist over every sort colId (`conformance-runner.md` §3), read from the raw request before it is parsed: an
+ * undeclared column is refused in every schema mode and in count mode, and an auto group column is not a schema field.
+ */
+function requireDeclaredSortColumns(schema: GridSchema, requestValue: unknown): void {
+  const sortModel = isRecord(requestValue) ? requestValue["sortModel"] : undefined;
+  if (!Array.isArray(sortModel)) return;
+  for (const entry of sortModel as unknown[]) {
+    const colId = isRecord(entry) ? entry["colId"] : undefined;
+    if (typeof colId === "string" && !colId.startsWith(AUTO_GROUP_COLUMN) && !schema.fields.has(colId)) {
+      throw new CompileError("UnknownField", `The sort column '${colId}' is not a declared field of the schema.`, { rejectedAt: "allowlist", reason: "unknown-field" });
+    }
+  }
+}
+
+/**
  * A row request through every stage before a compiler: the schema, the parse (with its parsing and coercion refusals), the allowlist over
  * the sort columns, then `processRow` (allowlist, limits, coercion). Count mode (CNT-8) ignores the sort and takes the unpaginated page.
  */
 export function prepareRow(schemaValue: unknown, requestValue: unknown, options: ParseOptions = {}, countMode = false): PreparedRow {
   const schema = parseSchema(schemaValue);
+  requireDeclaredSortColumns(schema, requestValue);
   const parsed = parseRequest(requestValue, schema, options);
   if (!countMode) checkColumns(schema, (parsed.ir.sort ?? []).map((item) => item.field), "sort");
   const staged: Ir = countMode ? { ...parsed.ir, page: { mode: "none" } } : parsed.ir;

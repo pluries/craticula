@@ -3,7 +3,7 @@ import type { Field, GridSchema } from "../schema.js";
 import { readFilterNode } from "./filter-node.js";
 import { resolveZone } from "./dates.js";
 import { mergeFilters, parseFilterModel, type DateContext } from "./filters.js";
-import { AUTO_GROUP_COLUMN, parseGroups, resolveAutoColumn } from "./groups.js";
+import { AUTO_GROUP_COLUMN, parseGroups, resolveAutoColumn, type ColumnVo } from "./groups.js";
 import { isRecord, malformed, requiredString, wholeNumber, type Obj } from "./values.js";
 import { CompileError } from "../errors.js";
 
@@ -59,11 +59,13 @@ function isEmpty(value: unknown): boolean {
   return value === undefined || value === null || (Array.isArray(value) && value.length === 0) || (isRecord(value) && Object.keys(value).length === 0);
 }
 
+const INT32_MAX = 2_147_483_647;
+
 function readOptionalInt(root: Obj, name: string): number | null {
   const value = root[name];
   if (value === undefined || value === null) return null;
   const whole = wholeNumber(value);
-  if (whole === undefined) throw malformed(`'${name}' must be a whole number or null.`);
+  if (whole === undefined || whole > INT32_MAX || whole < -INT32_MAX - 1) throw malformed(`'${name}' must be a whole number or null.`);
   return whole;
 }
 
@@ -104,34 +106,37 @@ function parseExport(root: Obj, schema: GridSchema): ExportSpecIr | undefined {
   const columnSpecs = hasColumns
     ? parseExportColumns(columnsRaw, schema)
     : [...schema.fields].filter(([, field]) => field.exportable).map(([colId, field]) => exportColumn(colId, field, undefined));
+  if (columnSpecs.length === 0) throw malformed("The GridSchema declares no exportable field, so an export without 'exportColumns' has nothing to project.");
   return { format, scope: resolvedScope, columns: columnSpecs.map((column) => column.colId), columnSpecs };
 }
 
-function parseSort(root: Obj, group: GroupSpecIr | undefined): SortItemIr[] {
+function parseSort(root: Obj, group: GroupSpecIr | undefined, rowGroupCols: readonly ColumnVo[]): SortItemIr[] {
   const raw = root["sortModel"];
   if (raw === undefined || raw === null) return [];
   if (!Array.isArray(raw)) throw malformed("'sortModel' must be an array.");
-  const entries = (raw as unknown[]).map((entry) => {
+  const items: SortItemIr[] = [];
+  // AG Grid sends the display column together with the source columns it stands for: they are one key, and the later ones are dropped.
+  const coupled = new Set<string>();
+  for (const entry of raw as unknown[]) {
     if (!isRecord(entry)) throw malformed("A 'sortModel' entry must be an object.");
     const colId = entry["colId"];
     const direction = entry["sort"];
     if (typeof colId !== "string" || colId.length === 0) throw malformed("A 'sortModel' entry needs a string 'colId'.");
-    if (direction !== "asc" && direction !== "desc") throw malformed(`The sortModel entry for '${colId}' needs 'sort' to be 'asc' or 'desc'.`);
-    return { colId, direction: direction as "asc" | "desc" };
-  });
-  // AG Grid sends the auto column together with the sorts of the group columns it stands for: only the level on show is kept.
-  const auto = entries.map((entry) => resolveAutoColumn(entry.colId, group));
-  const target = auto.find((resolved) => resolved !== undefined)?.field ?? null;
-  const covered = new Set(auto.some((resolved) => resolved !== undefined) ? (group?.groupCols ?? []).filter((col) => col !== target) : []);
-  const items: SortItemIr[] = [];
-  const seen = new Set<string>();
-  entries.forEach(({ colId, direction }, i) => {
-    const resolved = auto[i];
-    const field = resolved === undefined ? colId : resolved.field;
-    if (field === null || seen.has(field) || (resolved === undefined && covered.has(field))) return;
-    seen.add(field);
+    let field: string = colId;
+    if (direction !== "asc" && direction !== "desc") throw malformed(`The sortModel entry for '${field}' needs 'sort' to be 'asc' or 'desc'.`);
+    const isAuto = field.startsWith(AUTO_GROUP_COLUMN);
+    if (isAuto) {
+      const resolution = resolveAutoColumn(field, group, rowGroupCols);
+      if (resolution === null) continue;
+      resolution.coupled.forEach((name) => coupled.add(name));
+      field = resolution.field;
+    } else if (coupled.has(field)) {
+      continue;
+    }
+    const name = field;
+    if (isAuto && items.some((item) => item.field === name)) continue;
     items.push({ field, direction, nullsPosition: direction === "asc" ? "last" : "first" });
-  });
+  }
   return items;
 }
 
@@ -179,13 +184,13 @@ export function parseRequest(value: unknown, schema: GridSchema, options: ParseO
   if (!isRecord(value)) throw malformed("The AG Grid request must be a JSON object.");
   if (value["setValuesRequest"] !== undefined) throw malformed("'setValuesRequest' is the set-filter-values envelope, not a row request.");
   if (value["pivotMode"] === true) throw malformed("'pivotMode: true' is not supported.");
-  if (!isEmpty(value["pivotCols"])) throw malformed("A non-empty 'pivotCols' is not supported.");
+  if (Array.isArray(value["pivotCols"]) && value["pivotCols"].length > 0) throw malformed("A non-empty 'pivotCols' is not supported.");
 
   const custom = value["customFilters"];
   const filter = mergeFilters(parseFilterModel(value, schema, dateContext(value, options)), custom === undefined || custom === null ? undefined : readFilterNode(custom));
   const exportSpec = parseExport(value, schema);
-  const { group, aggregations } = parseGroups(value);
-  const sort = parseSort(value, group);
+  const { group, aggregations, rowGroupCols } = parseGroups(value, exportSpec !== undefined);
+  const sort = parseSort(value, group, rowGroupCols);
   const page = parsePage(value, exportSpec, options);
   const grouped = exportSpec === undefined ? { ...(group === undefined ? {} : { group }), ...(aggregations === undefined ? {} : { aggregations }) } : {};
   const ir: Ir = { ...(filter === undefined ? {} : { filter }), ...(sort.length > 0 ? { sort } : {}), ...grouped, page };
@@ -198,10 +203,10 @@ export function parseSetValues(value: unknown, schema: GridSchema, options: Pars
   const envelope = value["setValuesRequest"];
   if (!isRecord(envelope)) throw malformed("A set-filter values request needs a 'setValuesRequest' object.");
   const colId = envelope["colId"];
-  if (typeof colId !== "string") throw malformed("'setValuesRequest.colId' is required and must be a string.");
+  if (typeof colId !== "string" || colId.length === 0 || colId.length > 256) throw malformed("'setValuesRequest.colId' is required and must be a string of 1 to 256 characters.");
   if (!("filterModel" in envelope)) throw malformed("'setValuesRequest.filterModel' is required: send {} when the grid has no other active filters.");
   const prefix = envelope["searchPrefix"];
-  if (prefix !== undefined && prefix !== null && (typeof prefix !== "string" || prefix.length === 0)) throw malformed("'setValuesRequest.searchPrefix' must be a non-empty string or null.");
+  if (prefix !== undefined && prefix !== null && (typeof prefix !== "string" || prefix.length === 0 || prefix.length > 8192)) throw malformed("'setValuesRequest.searchPrefix' must be a string of 1 to 8192 characters or null.");
   const limit = readOptionalInt(envelope, "limit");
   if (limit !== null && limit < 1) throw malformed("'setValuesRequest.limit' must be at least 1.");
   const nativeFilter = parseFilterModel(envelope, schema, dateContext(value, options));

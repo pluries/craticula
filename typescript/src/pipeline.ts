@@ -137,8 +137,20 @@ function uncoercible(field: string, type: string, value: TypedValueIr): CompileE
   return new CompileError("InvalidRequest", `The value '${shown}' of '${field}' cannot be read as ${type}.`, { rejectedAt: "typeCoercion", reason: "uncoercible-value" });
 }
 
+const NUMBER_SPACE = "\t\n\v\f\r ";
+const BOOLEAN_SPACE = `${NUMBER_SPACE}\0\u0085\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000`;
+
+/** Trims the characters .NET's number or boolean parsing skips, which are fewer than JavaScript's `trim()` strips. */
+function trimOf(raw: string, space: string): string {
+  let start = 0;
+  let end = raw.length;
+  while (start < end && space.includes(raw.charAt(start))) start += 1;
+  while (end > start && space.includes(raw.charAt(end - 1))) end -= 1;
+  return raw.slice(start, end);
+}
+
 function parseText(raw: string, type: Field["type"]): TypedValueIr | undefined {
-  const text = raw.trim();
+  const text = trimOf(raw, type === "boolean" ? BOOLEAN_SPACE : NUMBER_SPACE);
   switch (type) {
     case "int64": {
       if (!/^[+-]?[0-9]+$/.test(text)) return undefined;

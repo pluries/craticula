@@ -12,7 +12,7 @@ const FUNCS: ReadonlySet<string> = new Set(["sum", "min", "max", "avg", "count"]
 
 export const AUTO_GROUP_COLUMN = "ag-Grid-AutoColumn";
 
-interface ColumnVo {
+export interface ColumnVo {
   readonly id: string;
   readonly field: string;
   readonly aggFunc: unknown;
@@ -26,7 +26,7 @@ function readColumns(root: Obj, name: string, max: number): ColumnVo[] {
   return (raw as unknown[]).map((entry, i) => {
     if (!isRecord(entry)) throw malformed(`'${name}[${i}]' must be an object.`);
     const id = requiredString(entry, "id", `${name}[${i}]`);
-    const field = entry["field"] === undefined || entry["field"] === null ? id : requiredString(entry, "field", `${name}[${i}]`);
+    const field = typeof entry["field"] === "string" ? entry["field"] : id;
     if (id.length === 0 || field.length === 0 || field.length > MAX_FIELD) throw malformed(`'${name}[${i}]' needs a non-empty id and a field of at most ${MAX_FIELD} characters.`);
     return { id, field, aggFunc: entry["aggFunc"] };
   });
@@ -40,13 +40,14 @@ function readGroupKeys(root: Obj): TypedValueIr[] {
   return (raw as unknown[]).map((key, i) => readTypedValue(key, `groupKeys[${i}]`));
 }
 
-function readAggregations(root: Obj): AggregationIr[] {
+function readAggregations(root: Obj, exporting: boolean): AggregationIr[] {
   const seen = new Set<string>();
   return readColumns(root, "valueCols", Number.MAX_SAFE_INTEGER).map((column) => {
     const func = column.aggFunc;
     if (typeof func !== "string") throw malformed(`The value column '${column.id}' needs an 'aggFunc'.`);
     if (!FUNCS.has(func)) throw unknownOperator(`The aggregation function '${func}' is not one of sum, min, max, avg, count.`);
     const alias = column.id === column.field ? undefined : column.id;
+    if (exporting) return { field: column.field, func: func as AggregationFunc };
     if (alias !== undefined && (alias.length > MAX_ALIAS || !ALIAS.test(alias))) throw malformed(`The alias '${alias}' is not an identifier of at most ${MAX_ALIAS} characters.`);
     const output = alias ?? `${column.field}_${func}`;
     if (seen.has(output)) {
@@ -57,25 +58,38 @@ function readAggregations(root: Obj): AggregationIr[] {
   });
 }
 
-/** The row-group state and the aggregations of a request. An export discards both after the sort has read them (the caller decides). */
-export function parseGroups(root: Obj): { group?: GroupSpecIr; aggregations?: AggregationIr[] } {
-  const groupCols = readColumns(root, "rowGroupCols", MAX_GROUP_COLS).map((column) => column.field);
+/**
+ * The row-group state and the aggregations of a request. An export discards both (EXP-1(a)), so it skips the checks that only
+ * concern a grouped query: duplicate names, aliases and a drill-down path longer than the group columns.
+ */
+export function parseGroups(root: Obj, exporting = false): { group?: GroupSpecIr; aggregations?: AggregationIr[]; rowGroupCols: ColumnVo[] } {
+  const rowGroupCols = readColumns(root, "rowGroupCols", MAX_GROUP_COLS);
+  const groupCols = rowGroupCols.map((column) => column.field);
   const groupKeys = readGroupKeys(root);
   if (groupCols.length === 0 && groupKeys.length > 0) throw malformed("'groupKeys' needs 'rowGroupCols'.");
-  if (groupKeys.length > groupCols.length) throw malformed("'groupKeys' has more entries than 'rowGroupCols'.");
-  const aggregations = readAggregations(root);
+  if (!exporting && groupKeys.length > groupCols.length) throw malformed("'groupKeys' has more entries than 'rowGroupCols'.");
+  const aggregations = readAggregations(root, exporting);
   return {
+    rowGroupCols,
     ...(groupCols.length > 0 ? { group: { groupCols, groupKeys } } : {}),
     ...(aggregations.length > 0 ? { aggregations } : {}),
   };
 }
 
-/** Maps a sort on the auto group column to the group column of the level on show, or of the named source. Returns undefined when it is no auto column or names nothing. */
-export function resolveAutoColumn(colId: string, group: GroupSpecIr | undefined): { field: string | null } | undefined {
-  if (!colId.startsWith(AUTO_GROUP_COLUMN) || group === undefined) return undefined;
-  const level = group.groupKeys?.length ?? 0;
-  if (colId === AUTO_GROUP_COLUMN) return { field: group.groupCols[level] ?? null };
-  const source = colId.startsWith(`${AUTO_GROUP_COLUMN}-`) ? colId.slice(AUTO_GROUP_COLUMN.length + 1) : undefined;
-  if (source !== undefined && group.groupCols.includes(source)) return { field: source };
-  return undefined;
+/**
+ * Resolves a sort on an auto group column (`ag-Grid-AutoColumn`, `ag-Grid-AutoColumn-<ColumnVO.id>`). Returns `null` for a column the
+ * request cannot resolve to anything to order by (the drill-down leaf, where every group column is consumed), and otherwise the field
+ * to sort by plus the group fields AG Grid's sort coupling sends beside it. An auto column that names no group column stays as
+ * written, to fail as the unknown column it is.
+ */
+export function resolveAutoColumn(colId: string, group: GroupSpecIr | undefined, rowGroupCols: readonly ColumnVo[]): { field: string; coupled: readonly string[] } | null {
+  if (colId.length > AUTO_GROUP_COLUMN.length) {
+    const sourceId = colId.slice(AUTO_GROUP_COLUMN.length + 1);
+    const match = rowGroupCols.find((column) => column.id === sourceId);
+    return match === undefined ? { field: colId, coupled: [] } : { field: match.field, coupled: [match.field] };
+  }
+  if (group === undefined) return { field: colId, coupled: [] };
+  const level = group.groupKeys.length;
+  const field = group.groupCols[level];
+  return field === undefined ? null : { field, coupled: rowGroupCols.map((column) => column.field) };
 }

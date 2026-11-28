@@ -65,8 +65,8 @@ function offsetMs(zone: string, instantMs: number): number {
 }
 
 export function validCalendar(year: number, month: number, day: number): boolean {
-  const ms = Date.UTC(year, month - 1, day);
-  const d = new Date(ms);
+  const d = new Date(0);
+  d.setUTCFullYear(year, month - 1, day);
   return month >= 1 && month <= 12 && d.getUTCFullYear() === year && d.getUTCMonth() === month - 1 && d.getUTCDate() === day;
 }
 
