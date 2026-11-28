@@ -188,19 +188,18 @@ function groupedTarget(sortField: string, plan: GroupingPlan & { groupColumn: st
 function orderBy(request: BuildRequest, plan: GroupingPlan | undefined, context: Context): string {
   const items = (request.sort ?? []).map((item) => ({ field: item.field, direction: item.direction, nulls: item.nullsPosition }));
   const groupColumn = plan?.groupColumn;
-  if (plan !== undefined && groupColumn !== undefined) {
-    const grouped = { ...plan, groupColumn };
-    return groupedSort(items, groupColumn, plan.aggregations.map(columnId))
-      .map((key) => {
-        const { column, field } = groupedTarget(key.field, grouped, context);
-        return context.dialect.sortKey(column, key.direction, key.nulls, orderingCaseSensitivity(field, true, key.appended));
-      })
-      .join(", ");
-  }
-  return effectiveSort(items, request.schema)
+  const grouped = plan !== undefined && groupColumn !== undefined ? { ...plan, groupColumn } : undefined;
+  const keys = grouped === undefined ? effectiveSort(items, request.schema) : groupedSort(items, grouped.groupColumn, grouped.aggregations.map(columnId));
+  const ordered = new Set<string>();
+  return keys
     .map((key) => {
-      const field = fieldOf(key.field, context);
-      return context.dialect.sortKey(columnOf(key.field, context), key.direction, key.nulls, orderingCaseSensitivity(field, false, key.appended));
+      const { column, field } = grouped === undefined ? { column: columnOf(key.field, context), field: fieldOf(key.field, context) } : groupedTarget(key.field, grouped, context);
+      let mode = orderingCaseSensitivity(field, grouped !== undefined, key.appended);
+      // SEM-6: a tiebreaker on a text column the sort already orders by folds nothing, whatever the request's own key did.
+      const alreadyOrdered = ordered.has(column);
+      ordered.add(column);
+      if (alreadyOrdered && key.appended && field.type === "string") mode = "sensitive";
+      return context.dialect.sortKey(column, key.direction, key.nulls, mode);
     })
     .join(", ");
 }

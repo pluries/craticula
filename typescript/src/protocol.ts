@@ -4,6 +4,7 @@ import { isRecord, wholeNumber } from "./agrid/values.js";
 import { compile } from "./compile.js";
 import { CompileError } from "./errors.js";
 import { JsonError, JsonNumber, readJson } from "./json.js";
+import { DIALECTS } from "./sql/dialects.js";
 import { checkRequest } from "./stages.js";
 
 /** The spec version this driver targets (`spec/VERSION`); a test keeps the two equal. */
@@ -19,7 +20,7 @@ export function assertSupportedNode(version: string): void {
 
 /** The first line a driver prints (`spec/conformance-runner.md` §2.1). */
 export function helloLine(): string {
-  return JSON.stringify({ hello: { impl: "typescript", specVersion: SPEC_VERSION, backends: ["postgres"], capabilities: ["rejection"] } });
+  return JSON.stringify({ hello: { impl: "typescript", specVersion: SPEC_VERSION, backends: [...DIALECTS.keys()], capabilities: ["rejection"] } });
 }
 
 export type Outcome = { readonly answer: string } | { readonly unanswerable: string };
@@ -141,8 +142,10 @@ export function answerFor(line: string): Outcome {
   if (kind !== undefined && kind !== "compile" && kind !== "rejection") {
     return errorLine(id, "Unsupported", `The request kind ${JSON.stringify(kind)} is not supported by this driver.`);
   }
-  if (kind !== "rejection" && request["backend"] !== "postgres") {
-    return errorLine(id, "Unsupported", `The backend '${String(request["backend"])}' is not one this driver declares (postgres).`);
+  const backend = request["backend"];
+  const dialect = typeof backend === "string" ? DIALECTS.get(backend as never) : undefined;
+  if (kind !== "rejection" && dialect === undefined) {
+    return errorLine(id, "Unsupported", `The backend '${String(backend).slice(0, 64)}' is not one this driver declares (${[...DIALECTS.keys()].join(", ")}).`);
   }
   try {
     const { options, countMode } = harnessOf(request["agGridRequest"]);
@@ -150,7 +153,7 @@ export function answerFor(line: string): Outcome {
       checkRequest(request["schema"], request["agGridRequest"], options, countMode);
       return { answer: JSON.stringify({ id, artifact: { accepted: true } }) };
     }
-    return { answer: stringify({ id, artifact: compile(request["schema"], request["agGridRequest"], options, countMode) }) };
+    return { answer: stringify({ id, artifact: compile(request["schema"], request["agGridRequest"], options, countMode, dialect) }) };
   } catch (error) {
     if (error instanceof CompileError) {
       return errorLine(id, error.kind, error.message, kind === "rejection" ? error : undefined);
