@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { Ajv2020 } from "ajv/dist/2020.js";
 
-import { parseRequest } from "../src/agrid/request.js";
+import { parseRequest, parseSetValues } from "../src/agrid/request.js";
 import { CompileError } from "../src/errors.js";
 import { readJson } from "../src/json.js";
 import { parseSchema } from "../src/schema.js";
@@ -17,6 +17,7 @@ const SPEC = fileURLToPath(new URL("../../../spec/", import.meta.url));
 const ajv = new Ajv2020({ strict: false, validateFormats: false, allErrors: true });
 ajv.addSchema(JSON.parse(readFileSync(`${SPEC}ir.schema.json`, "utf8")) as object);
 const validateIr = ajv.compile({ $ref: "https://schemas.pluries.dev/craticula/v1/ir.schema.json" });
+const validateSetValues = ajv.compile({ $ref: "https://schemas.pluries.dev/craticula/v1/ir.schema.json#/$defs/setValuesSpec" });
 
 const SCHEMA = parseSchema({
   mode: "strict",
@@ -173,7 +174,7 @@ describe("the auto group column in a sort", () => {
   });
 });
 
-describe("US2-AS1 and US2-AS2: every request fixture except set-values and export columns parses and its IR is valid", () => {
+describe("US2-AS1 and US2-AS2: every request fixture parses and its IR is valid", () => {
   const root = `${SPEC}fixtures/`;
 
   it("parses each, none refused as unsupported, each IR valid", () => {
@@ -189,14 +190,19 @@ describe("US2-AS1 and US2-AS2: every request fixture except set-values and expor
         try {
           const schema = parseSchema(readJson(readFileSync(`${dir}schema.json`, "utf8")));
           const request = readJson(readFileSync(`${dir}agGridRequest.json`, "utf8"), { numbers: "text" }) as Record<string, unknown>;
-          if (request["setValuesRequest"] !== undefined || (request["exportColumns"] !== undefined && request["exportColumns"] !== null)) continue;
           const context = (request["requestContext"] ?? {}) as Record<string, unknown>;
-          const result = parseRequest(request, schema, {
+          const options = {
             allowUnboundedRows: context["allowUnboundedRows"] === true,
             ...(typeof context["now"] === "string" ? { now: () => new Date(context["now"] as string) } : {}),
-          });
+          };
+          if (request["setValuesRequest"] !== undefined) {
+            const result = parseSetValues(request, schema, options);
+            if (!validateSetValues(result.setValues)) problems.push(`${name}: ${ajv.errorsText(validateSetValues.errors)}`);
+          } else {
+            const result = parseRequest(request, schema, options);
+            if (!validateIr(result.ir)) problems.push(`${name}: ${ajv.errorsText(validateIr.errors)}`);
+          }
           parsed += 1;
-          if (!validateIr(result.ir)) problems.push(`${name}: ${ajv.errorsText(validateIr.errors)}`);
         } catch (error) {
           problems.push(`${name}: ${String(error)}`);
         }

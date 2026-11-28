@@ -1,10 +1,10 @@
-import type { GroupSpecIr, Ir, PageIr, SortItemIr } from "../ir.js";
-import type { GridSchema } from "../schema.js";
+import type { FilterNodeIr, GroupSpecIr, Ir, PageIr, SortItemIr } from "../ir.js";
+import type { Field, GridSchema } from "../schema.js";
 import { readFilterNode } from "./filter-node.js";
 import { resolveZone } from "./dates.js";
 import { mergeFilters, parseFilterModel, type DateContext } from "./filters.js";
 import { AUTO_GROUP_COLUMN, parseGroups, resolveAutoColumn } from "./groups.js";
-import { isRecord, malformed, unsupported, wholeNumber, type Obj } from "./values.js";
+import { isRecord, malformed, requiredString, wholeNumber, type Obj } from "./values.js";
 import { CompileError } from "../errors.js";
 
 /** Harness and host settings that are not part of the wire request (`spec/conformance-runner.md` §3). */
@@ -21,11 +21,33 @@ export interface ParseOptions {
   readonly firstDayOfWeek?: number;
 }
 
+export interface ExportColumnIr {
+  readonly colId: string;
+  /** EXP-1(b): the header from the wire, else the schema label, else the colId. */
+  readonly header: string;
+  /** EXP-5: the field's own format, carried here because the writer is handed nothing else per field. */
+  readonly format?: Field["format"];
+}
+
 export interface ExportSpecIr {
   readonly format: "csv" | "tsv";
   readonly scope: "all" | "page";
   /** EXP-1(b): the colIds to write, the exportable fields in schema order. */
   readonly columns: readonly string[];
+  readonly columnSpecs: readonly ExportColumnIr[];
+}
+
+export interface SetValuesSpecIr {
+  readonly colId: string;
+  readonly searchPrefix?: string;
+  readonly limit?: number;
+}
+
+export interface ParsedSetValues {
+  readonly setValues: SetValuesSpecIr;
+  /** The envelope's own filter model. The own-field exclusion (GRP-6) belongs to the compiler, not the parser. */
+  readonly nativeFilter?: FilterNodeIr;
+  readonly customFilters?: FilterNodeIr;
 }
 
 export interface ParsedRequest {
@@ -45,10 +67,33 @@ function readOptionalInt(root: Obj, name: string): number | null {
   return whole;
 }
 
+function exportColumn(colId: string, field: Field, wireHeader: unknown): ExportColumnIr {
+  const header = typeof wireHeader === "string" ? wireHeader : (field.label ?? colId);
+  return { colId, header, ...(field.format === undefined ? {} : { format: field.format }) };
+}
+
+function parseExportColumns(raw: unknown, schema: GridSchema): ExportColumnIr[] {
+  if (!Array.isArray(raw)) throw malformed("'exportColumns' must be an array or null.");
+  const seen = new Set<string>();
+  const specs = (raw as unknown[]).map((entry) => {
+    if (!isRecord(entry)) throw malformed("An 'exportColumns' entry must be an object.");
+    const colId = requiredString(entry, "colId", "exportColumns");
+    const field = schema.fields.get(colId);
+    if (field === undefined) throw malformed(`'exportColumns' names '${colId}', which the GridSchema does not declare.`);
+    if (!field.exportable) throw malformed(`'exportColumns' names '${colId}', which the GridSchema declares 'exportable: false'.`);
+    if (seen.has(colId)) throw malformed(`'exportColumns' names '${colId}' more than once.`);
+    seen.add(colId);
+    return exportColumn(colId, field, entry["header"]);
+  });
+  if (specs.length === 0) throw malformed("'exportColumns' is present but empty: omit it for the default projection.");
+  return specs;
+}
+
 function parseExport(root: Obj, schema: GridSchema): ExportSpecIr | undefined {
   const format = root["exportFormat"];
   const scope = root["exportScope"];
-  const hasColumns = root["exportColumns"] !== undefined && root["exportColumns"] !== null;
+  const columnsRaw = root["exportColumns"];
+  const hasColumns = columnsRaw !== undefined && columnsRaw !== null;
   if (format === undefined || format === null) {
     if ((scope === undefined || scope === null) && !hasColumns) return undefined;
     throw malformed("'exportScope' and 'exportColumns' need an 'exportFormat' (\"csv\" or \"tsv\") on the same request.");
@@ -56,9 +101,10 @@ function parseExport(root: Obj, schema: GridSchema): ExportSpecIr | undefined {
   if (format !== "csv" && format !== "tsv") throw malformed("'exportFormat' must be \"csv\" or \"tsv\".");
   const resolvedScope = scope === undefined || scope === null ? "all" : scope;
   if (resolvedScope !== "all" && resolvedScope !== "page") throw malformed("'exportScope' must be \"all\" or \"page\".");
-  if (hasColumns) throw unsupported("'exportColumns' names its own export columns.");
-  const columns = [...schema.fields].filter(([, field]) => field.exportable).map(([colId]) => colId);
-  return { format, scope: resolvedScope, columns };
+  const columnSpecs = hasColumns
+    ? parseExportColumns(columnsRaw, schema)
+    : [...schema.fields].filter(([, field]) => field.exportable).map(([colId, field]) => exportColumn(colId, field, undefined));
+  return { format, scope: resolvedScope, columns: columnSpecs.map((column) => column.colId), columnSpecs };
 }
 
 function parseSort(root: Obj, group: GroupSpecIr | undefined): SortItemIr[] {
@@ -144,4 +190,26 @@ export function parseRequest(value: unknown, schema: GridSchema, options: ParseO
   const grouped = exportSpec === undefined ? { ...(group === undefined ? {} : { group }), ...(aggregations === undefined ? {} : { aggregations }) } : {};
   const ir: Ir = { ...(filter === undefined ? {} : { filter }), ...(sort.length > 0 ? { sort } : {}), ...grouped, page };
   return exportSpec === undefined ? { ir } : { ir, export: exportSpec };
+}
+
+/** BM-3's set-filter values request: a separate entry point with its own envelope, no page, no sort, no aggregation. */
+export function parseSetValues(value: unknown, schema: GridSchema, options: ParseOptions = {}): ParsedSetValues {
+  if (!isRecord(value)) throw malformed("The set-filter values request must be a JSON object.");
+  const envelope = value["setValuesRequest"];
+  if (!isRecord(envelope)) throw malformed("A set-filter values request needs a 'setValuesRequest' object.");
+  const colId = envelope["colId"];
+  if (typeof colId !== "string") throw malformed("'setValuesRequest.colId' is required and must be a string.");
+  if (!("filterModel" in envelope)) throw malformed("'setValuesRequest.filterModel' is required: send {} when the grid has no other active filters.");
+  const prefix = envelope["searchPrefix"];
+  if (prefix !== undefined && prefix !== null && (typeof prefix !== "string" || prefix.length === 0)) throw malformed("'setValuesRequest.searchPrefix' must be a non-empty string or null.");
+  const limit = readOptionalInt(envelope, "limit");
+  if (limit !== null && limit < 1) throw malformed("'setValuesRequest.limit' must be at least 1.");
+  const nativeFilter = parseFilterModel(envelope, schema, dateContext(value, options));
+  const custom = envelope["customFilters"];
+  const customFilters = custom === undefined || custom === null ? undefined : readFilterNode(custom);
+  return {
+    setValues: { colId, ...(typeof prefix === "string" ? { searchPrefix: prefix } : {}), ...(limit === null ? {} : { limit }) },
+    ...(nativeFilter === undefined ? {} : { nativeFilter }),
+    ...(customFilters === undefined ? {} : { customFilters }),
+  };
 }
