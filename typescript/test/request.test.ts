@@ -195,10 +195,8 @@ describe("US2-AS6: parsing is deterministic and reads no clock", () => {
 });
 
 describe("what S2a does not parse yet is refused, not guessed", () => {
-  it("refuses a filter, grouping, aggregation, pivoting and a set-values envelope", () => {
+  it("refuses grouping, aggregation, pivoting and a set-values envelope", () => {
     const cases: Record<string, unknown>[] = [
-      { filterModel: { name: { filterType: "text", type: "equals", filter: "x" } } },
-      { customFilters: { not: {} } },
       { rowGroupCols: [{ id: "name", field: "name", displayName: "Name" }] },
       { valueCols: [{ id: "id", field: "id", aggFunc: "sum", displayName: "Id" }] },
       { pivotMode: true },

@@ -11,6 +11,10 @@ import { readJson } from "../src/json.js";
 import { parseSchema } from "../src/schema.js";
 
 // Feature 013, T010 (second part, S2b-1): the filter families that need no date resolution. Scenarios US2-AS1 to US2-AS3 and the refusals US3 relies on.
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 const SPEC = fileURLToPath(new URL("../../../spec/", import.meta.url));
 
 const ajv = new Ajv2020({ strict: false, validateFormats: false, allErrors: true });
@@ -243,6 +247,7 @@ describe("US2-AS1 and US2-AS2: the request fixtures this slice reads, and only t
         try {
           const schema = parseSchema(readJson(readFileSync(`${dir}schema.json`, "utf8")));
           const request = readJson(readFileSync(`${dir}agGridRequest.json`, "utf8"), { numbers: "text" });
+          if (isRecord(request) && request["setValuesRequest"] !== undefined) continue; // the set-values envelope has its own entry point (a later slice)
           const result = parseRequest(request, schema, {});
           parsed += 1;
           if (!validateIr(result.ir)) problems.push(`${name}: ${ajv.errorsText(validateIr.errors)}`);

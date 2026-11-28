@@ -1,6 +1,9 @@
-import { CompileError } from "../errors.js";
 import type { Ir, PageIr, SortItemIr } from "../ir.js";
 import { checkColumns, type GridSchema } from "../schema.js";
+import { readFilterNode } from "./filter-node.js";
+import { mergeFilters, parseFilterModel } from "./filters.js";
+import { isRecord, malformed, unsupported, wholeNumber, type Obj } from "./values.js";
+import { CompileError } from "../errors.js";
 
 /** Harness and host settings that are not part of the wire request (`spec/conformance-runner.md` §3). */
 export interface ParseOptions {
@@ -24,20 +27,6 @@ export interface ParsedRequest {
 
 const AUTO_GROUP_COLUMN = "ag-Grid-AutoColumn";
 
-type Obj = Record<string, unknown>;
-
-function isRecord(value: unknown): value is Obj {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function malformed(message: string): CompileError {
-  return new CompileError("InvalidRequest", message, { rejectedAt: "requestParsing", reason: "malformed-request" });
-}
-
-function unsupported(message: string): CompileError {
-  return new CompileError("Unsupported", `${message} The TypeScript request parser does not read it yet.`);
-}
-
 function isEmpty(value: unknown): boolean {
   return value === undefined || value === null || (Array.isArray(value) && value.length === 0) || (isRecord(value) && Object.keys(value).length === 0);
 }
@@ -45,10 +34,9 @@ function isEmpty(value: unknown): boolean {
 function readOptionalInt(root: Obj, name: string): number | null {
   const value = root[name];
   if (value === undefined || value === null) return null;
-  if (typeof value !== "number" || !Number.isSafeInteger(value)) {
-    throw malformed(`'${name}' must be a whole number or null.`);
-  }
-  return value;
+  const whole = wholeNumber(value);
+  if (whole === undefined) throw malformed(`'${name}' must be a whole number or null.`);
+  return whole;
 }
 
 function parseExport(root: Obj, schema: GridSchema): ExportSpecIr | undefined {
@@ -117,13 +105,15 @@ export function parseRequest(value: unknown, schema: GridSchema, options: ParseO
   if (value["pivotMode"] === true) throw malformed("'pivotMode: true' is not supported.");
   if (!isEmpty(value["pivotCols"])) throw malformed("A non-empty 'pivotCols' is not supported.");
 
-  for (const [member, what] of [["filterModel", "A filter"], ["customFilters", "A custom filter"], ["rowGroupCols", "Grouping"], ["valueCols", "Aggregation"], ["groupKeys", "A group drill-down"], ["requestContext", "A request context"]] as const) {
+  for (const [member, what] of [["rowGroupCols", "Grouping"], ["valueCols", "Aggregation"], ["groupKeys", "A group drill-down"], ["requestContext", "A request context"]] as const) {
     if (!isEmpty(value[member])) throw unsupported(`${what} (${member}) is part of the request.`);
   }
 
+  const custom = value["customFilters"];
+  const filter = mergeFilters(parseFilterModel(value, schema), custom === undefined || custom === null ? undefined : readFilterNode(custom));
   const exportSpec = parseExport(value, schema);
   const sort = parseSort(value, schema);
   const page = parsePage(value, exportSpec, options);
-  const ir: Ir = sort.length > 0 ? { sort, page } : { page };
+  const ir: Ir = { ...(filter === undefined ? {} : { filter }), ...(sort.length > 0 ? { sort } : {}), page };
   return exportSpec === undefined ? { ir } : { ir, export: exportSpec };
 }

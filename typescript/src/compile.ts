@@ -40,6 +40,9 @@ function exportProjection(schema: GridSchema, columns: readonly string[]): strin
 export function compile(schemaValue: unknown, requestValue: unknown, options: ParseOptions = {}): Artifact {
   const schema = parseSchema(schemaValue);
   const { ir, export: exportSpec } = parseRequest(requestValue, schema, options);
+  if (ir.filter !== undefined) {
+    throw new CompileError("Unsupported", "This driver compiles sorting and paging only; a filter is parsed but not rendered to SQL yet.");
+  }
 
   const sort = effectiveSort((ir.sort ?? []).map((item) => ({ field: item.field, direction: item.direction, nulls: item.nullsPosition })), schema).map((key) => {
     const field = schema.fields.get(key.field)!;
