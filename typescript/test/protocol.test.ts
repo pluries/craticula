@@ -31,12 +31,12 @@ function parse(line: string | undefined): Record<string, unknown> {
 }
 
 describe("US2-AS1: the hello", () => {
-  it("is the first line and declares impl, the spec version, postgres and the rejection capability", () => {
+  it("is the first line and declares impl, the spec version, the five SQL dialects and the rejection capability", () => {
     const { stdout } = run([]);
     const hello = parse(stdout[0])["hello"] as Record<string, unknown>;
     assert.equal(hello["impl"], "typescript");
     assert.equal(hello["specVersion"], SPEC_VERSION);
-    assert.deepEqual(hello["backends"], ["postgres"]);
+    assert.deepEqual(hello["backends"], ["postgres", "mssql", "mysql", "oracle", "sqlite"]);
     assert.deepEqual(hello["capabilities"], ["rejection"]);
   });
 });
@@ -65,7 +65,7 @@ describe("US2-AS2 and US2-AS6: an artifact answer, protocol lines only", () => {
 
 describe("US2-AS3: unsupported requests get an error answer and the driver keeps running", () => {
   const cases: [string, string][] = [
-    ["another backend", request("x1", undefined, { backend: "mssql" })],
+    ["another backend", request("x1", undefined, { backend: "mongo" })],
     ["a writer request", request("x3", undefined, { kind: "writer" })],
     ["an unknown kind", request("x4", undefined, { kind: "teleport" })],
   ];

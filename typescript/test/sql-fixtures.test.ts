@@ -30,51 +30,58 @@ interface Case {
   readonly dir: string;
 }
 
-/** Every fixture with a PostgreSQL artifact: filters, sorting and paging, grouping, aggregation, count mode, set values, export. */
-function postgresCases(): Case[] {
+/** The dialects in the order the driver declares them. */
+const DIALECTS = ["postgres", "mssql", "mysql", "oracle", "sqlite"] as const;
+
+/** Every fixture that carries an artifact for the dialect: filters, sorting and paging, grouping, aggregation, count mode, set values, export. */
+function casesFor(dialect: string): Case[] {
   const found: Case[] = [];
   for (const category of readdirSync(FIXTURES, { withFileTypes: true })) {
     if (!category.isDirectory() || category.name === "schemas") continue;
     for (const fixture of readdirSync(`${FIXTURES}${category.name}`, { withFileTypes: true })) {
       const dir = `${FIXTURES}${category.name}/${fixture.name}/`;
-      if (!fixture.isDirectory() || !readdirSync(`${dir}expected`).includes("postgres.artifact.json")) continue;
+      if (!fixture.isDirectory() || !readdirSync(`${dir}expected`).includes(`${dialect}.artifact.json`)) continue;
       found.push({ name: `${category.name}/${fixture.name}`, dir });
     }
   }
   return found;
 }
 
-describe("US1-AS1, US1-AS4, US1-AS5, US3: the PostgreSQL artifact of every fixture", () => {
-  const cases = postgresCases();
+const COUNTS: Readonly<Record<string, number>> = { postgres: 246, mssql: 61, mysql: 57, oracle: 55, sqlite: 57 };
 
-  it("finds the 246 cases", () => {
-    assert.equal(cases.length, 246);
-  });
+for (const dialect of DIALECTS) {
+  describe(`US1-AS1, US2-AS1: the ${dialect} artifact of every fixture that carries one`, () => {
+    const cases = casesFor(dialect);
 
-  it("compiles each to the expected sql and params", () => {
-    const problems: string[] = [];
-    for (const { name, dir } of cases) {
-      const outcome = answerFor(lineFor(`${name}#postgres`, dir, "postgres"));
-      if (!("answer" in outcome)) {
-        problems.push(`${name}: unanswerable`);
-        continue;
+    it(`finds the ${COUNTS[dialect]} cases`, () => {
+      assert.equal(cases.length, COUNTS[dialect]);
+    });
+
+    it("compiles each to the expected sql and params", () => {
+      const problems: string[] = [];
+      for (const { name, dir } of cases) {
+        const outcome = answerFor(lineFor(`${name}#${dialect}`, dir, dialect));
+        if (!("answer" in outcome)) {
+          problems.push(`${name}: unanswerable`);
+          continue;
+        }
+        const reply = readJson(outcome.answer, { numbers: "text" }) as Record<string, JsonValue>;
+        const expected = readJson(readFileSync(`${dir}expected/${dialect}.artifact.json`, "utf8"), { numbers: "text" }) as Record<string, JsonValue>;
+        if (reply["artifact"] === undefined) {
+          problems.push(`${name}: ${JSON.stringify(reply["error"]).slice(0, 160)}`);
+          continue;
+        }
+        try {
+          assert.deepEqual(plain(reply["artifact"]), plain(expected));
+        } catch {
+          const got = reply["artifact"] as Record<string, JsonValue>;
+          problems.push(`${name}: expected ${String(expected["sql"])} ${JSON.stringify(plain(expected["params"] as JsonValue))} got ${String(got["sql"])} ${JSON.stringify(plain(got["params"] as JsonValue))}`);
+        }
       }
-      const reply = readJson(outcome.answer, { numbers: "text" }) as Record<string, JsonValue>;
-      const expected = readJson(readFileSync(`${dir}expected/postgres.artifact.json`, "utf8"), { numbers: "text" }) as Record<string, JsonValue>;
-      if (reply["artifact"] === undefined) {
-        problems.push(`${name}: ${JSON.stringify(reply["error"]).slice(0, 160)}`);
-        continue;
-      }
-      try {
-        assert.deepEqual(plain(reply["artifact"]), plain(expected));
-      } catch {
-        const got = reply["artifact"] as Record<string, JsonValue>;
-        problems.push(`${name}: expected ${String(expected["sql"])} ${JSON.stringify(plain(expected["params"] as JsonValue))} got ${String(got["sql"])} ${JSON.stringify(plain(got["params"] as JsonValue))}`);
-      }
-    }
-    assert.deepEqual(problems, []);
+      assert.deepEqual(problems, []);
+    });
   });
-});
+}
 
 describe("US1-AS2, US1-AS3, US1-AS7: values are parameters, names come from the schema, the output follows the request", () => {
   const dir = `${FIXTURES}operators/001-eq-string/`;
