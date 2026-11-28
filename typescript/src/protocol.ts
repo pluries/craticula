@@ -3,7 +3,7 @@ import { isIsoInstant } from "./agrid/dates.js";
 import { isRecord, wholeNumber } from "./agrid/values.js";
 import { compile } from "./compile.js";
 import { CompileError } from "./errors.js";
-import { JsonError, readJson } from "./json.js";
+import { JsonError, JsonNumber, readJson } from "./json.js";
 import { checkRequest } from "./stages.js";
 
 /** The spec version this driver targets (`spec/VERSION`); a test keeps the two equal. */
@@ -31,6 +31,19 @@ function errorLine(id: string, kind: string, message: string, rejection?: { read
     error["reason"] = rejection.reason;
   }
   return { answer: JSON.stringify({ id, error }) };
+}
+
+/** JSON text in which a JsonNumber is written as the digits it was read or built with, so an integer beyond 2^53 is not rounded. */
+function stringify(value: unknown): string {
+  const marks: string[] = [];
+  const text = JSON.stringify(value, (_key, item: unknown) => {
+    if (item instanceof JsonNumber) {
+      marks.push(item.text);
+      return `\u0000number:${marks.length - 1}`;
+    }
+    return item;
+  });
+  return marks.length === 0 ? text : text.replace(/"\\u0000number:(\d+)"/g, (_match, index: string) => marks[Number(index)] ?? "null");
 }
 
 const NO_ID = "it is not a JSON object with a readable string 'id'";
@@ -138,7 +151,7 @@ export function answerFor(line: string): Outcome {
       return { answer: JSON.stringify({ id, artifact: { accepted: true } }) };
     }
     if (countMode) throw new CompileError("Unsupported", "Count mode is not compiled by this driver yet.");
-    return { answer: JSON.stringify({ id, artifact: compile(request["schema"], request["agGridRequest"], options) }) };
+    return { answer: stringify({ id, artifact: compile(request["schema"], request["agGridRequest"], options) }) };
   } catch (error) {
     if (error instanceof CompileError) {
       return errorLine(id, error.kind, error.message, kind === "rejection" ? error : undefined);

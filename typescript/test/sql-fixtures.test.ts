@@ -142,3 +142,13 @@ describe("US1-AS6: the schema's static filter is injected and a request cannot r
     assert.match(sql, /<> \$/);
   });
 });
+
+describe("US1-AS2: an integer beyond 2^53 keeps its digits through the driver's output", () => {
+  it("writes the digits of a large int64 filter value into the artifact's params", () => {
+    const dir = `${FIXTURES}operators/003-eq-int64/`;
+    const raw = `{"id":"big","backend":"postgres","schema":${compact(`${dir}schema.json`)},"agGridRequest":{"startRow":0,"endRow":10,"sortModel":[],"customFilters":{"type":"comparison","field":"age","op":"eq","value":{"type":"int64","value":9007199254740993}}}}`;
+    const outcome = answerFor(raw);
+    assert.ok("answer" in outcome);
+    assert.match(outcome.answer, /"params":\[9007199254740993,10,0\]/);
+  });
+});

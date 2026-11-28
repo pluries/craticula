@@ -4,6 +4,7 @@ import { isIsoInstant, validCalendar } from "./agrid/dates.js";
 import type { ParsedSetValues } from "./agrid/request.js";
 import type { AggregationIr, ComparisonIr, FilterNodeIr, GroupSpecIr, Ir, PageIr, TypedValueIr } from "./ir.js";
 import { DEFAULT_LIMITS, type Limits } from "./limits.js";
+import { injectStaticFilter } from "./static-filter.js";
 import type { Field, GridSchema } from "./schema.js";
 
 /**
@@ -222,9 +223,10 @@ export function processRow(ir: Ir, schema: GridSchema, limits: Readonly<Limits> 
   checkLimits(both(drillDown, allowed), ir.page, limits);
   const coerced = allowed === undefined ? undefined : coerce(allowed, schema);
   checkDeclaredTypes(drillDown, schema);
+  const filter = injectStaticFilter(coerced, schema);
   const next: { -readonly [K in keyof Ir]: Ir[K] } = { ...ir };
   delete next.filter;
-  if (coerced !== undefined) next.filter = coerced;
+  if (filter !== undefined) next.filter = filter;
   return next;
 }
 
@@ -241,7 +243,7 @@ export function processSetValues(parsed: ParsedSetValues, schema: GridSchema, li
   }
   const allowed = allowlistFilter(both(scoped, prefix), schema);
   checkLimits(allowed, { mode: "none" }, limits);
-  const filter = allowed === undefined ? undefined : coerce(allowed, schema);
+  const filter = injectStaticFilter(allowed === undefined ? undefined : coerce(allowed, schema), schema);
   const rowLimit = Math.min(limit ?? limits.defaultSetValuesResults, limits.maxSetValuesResults);
   return { ...(filter === undefined ? {} : { filter }), rowLimit };
 }

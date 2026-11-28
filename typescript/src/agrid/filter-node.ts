@@ -39,7 +39,8 @@ export function readTypedValue(value: unknown, where: string): TypedValueIr {
       exactly(value, ["type", "value"], where);
       const text = numberText(raw);
       if (text === undefined || !/^-?\d+$/.test(text)) throw malformed(`${where}: an int64 value must be a whole number.`);
-      return { type, value: Number(text) };
+      const parsed = Number(text);
+      return { type, value: Number.isSafeInteger(parsed) ? parsed : text };
     }
     case "decimal":
       exactly(value, ["type", "value"], where);

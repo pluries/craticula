@@ -9,7 +9,7 @@ const ZONE_SHAPE = /^[A-Za-z0-9_+-]+(\/[A-Za-z0-9_+-]+)*$/;
 const NON_ZONES = new Set(["localtime", "factory", "posixrules"]);
 const DAY = 86_400_000;
 const WIRE_DATE = /^(\d{4})-(\d{2})-(\d{2})(?: (\d{2}):(\d{2}):(\d{2}))?$/;
-const INSTANT = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+const INSTANT = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})$/;
 
 export const PRESET_NAMES: readonly string[] = [
   "today", "yesterday", "tomorrow", "thisWeek", "lastWeek", "nextWeek", "thisMonth", "lastMonth", "nextMonth", "thisQuarter", "lastQuarter",
@@ -80,19 +80,39 @@ export function parseWireDate(raw: string): { date: string; time: string | undef
   return { date: `${y}-${mo}-${d}`, time };
 }
 
-/** Whether `raw` is an ISO-8601 instant with a date, a time and Z or an offset, and a real instant (month 13, `T24:00`, a 60th second and an offset beyond 14 hours are not). */
-export function isIsoInstant(raw: string): boolean {
+export interface IsoInstant {
+  readonly year: number;
+  readonly month: number;
+  readonly day: number;
+  readonly hour: number;
+  readonly minute: number;
+  readonly second: number;
+  /** The fraction digits as written, without the point (empty when there is none). */
+  readonly fraction: string;
+  /** The offset from UTC in minutes. */
+  readonly offsetMinutes: number;
+}
+
+/** An ISO-8601 instant with a date, a time and Z or an offset, or undefined: month 13, `T24:00`, a 60th second and an offset beyond 14 hours are not instants. */
+export function parseIsoInstant(raw: string): IsoInstant | undefined {
   const match = INSTANT.exec(raw);
-  if (match === null) return false;
-  const [, y, mo, d, h, mi, s, zone = ""] = match;
-  if (!validCalendar(Number(y), Number(mo), Number(d))) return false;
-  if (Number(h) > 23 || Number(mi) > 59 || Number(s) > 59) return false;
+  if (match === null) return undefined;
+  const [, y, mo, d, h, mi, s, fraction = "", zone = ""] = match;
+  const [year, month, day, hour, minute, second] = [y, mo, d, h, mi, s].map(Number) as [number, number, number, number, number, number];
+  if (!validCalendar(year, month, day) || hour > 23 || minute > 59 || second > 59) return undefined;
+  let offsetMinutes = 0;
   if (zone !== "Z") {
     const hours = Number(zone.slice(1, 3));
     const minutes = Number(zone.slice(4, 6));
-    if (hours > 14 || minutes > 59 || (hours === 14 && minutes !== 0)) return false;
+    if (hours > 14 || minutes > 59 || (hours === 14 && minutes !== 0)) return undefined;
+    offsetMinutes = (zone.startsWith("-") ? -1 : 1) * (hours * 60 + minutes);
   }
-  return true;
+  return { year, month, day, hour, minute, second, fraction, offsetMinutes };
+}
+
+/** Whether `raw` is an ISO-8601 instant that is a real instant. */
+export function isIsoInstant(raw: string): boolean {
+  return parseIsoInstant(raw) !== undefined;
 }
 
 /** A local wall-clock time (`YYYY-MM-DD HH:mm:ss`) in a zone as a UTC instant (`...Z`). An ambiguous time takes the later offset; a time that does not exist takes the standard offset. */

@@ -5,7 +5,9 @@ import { fileURLToPath } from "node:url";
 
 import { compile } from "../src/compile.js";
 import { CompileError } from "../src/errors.js";
-import { quoteIdentifier } from "../src/postgres.js";
+import { postgres } from "../src/sql/postgres.js";
+
+const quoteIdentifier = postgres.quoteIdentifier;
 
 // Scenarios US3-AS3 (the 17 sort-paging artifacts), US3-AS4 (a mutation changes the answer), US2-AS4 (hostile identifiers).
 const FIXTURES = fileURLToPath(new URL("../../../spec/fixtures/sort-paging/", import.meta.url));
@@ -90,9 +92,11 @@ describe("US2-AS4: no request text reaches the SQL except as a parameter or a de
 describe("US2-AS3: what the skeleton does not support is refused, not guessed", () => {
   const { schema, request } = fixture("001-single-key-string-asc-nulls-last-default");
 
-  it("refuses a filter model", () => {
+  it("compiles a filter model to a WHERE with the value bound (feature 014 replaced the skeleton's refusal)", () => {
     const filtered = { ...request, filterModel: { lastName: { filterType: "text", type: "equals", filter: "x" } } };
-    assert.throws(() => compile(schema, filtered), (error: unknown) => error instanceof CompileError && error.kind === "Unsupported");
+    const artifact = compile(schema, filtered);
+    assert.match(artifact.sql, /WHERE "last_name" COLLATE craticula_ci = \$1/);
+    assert.equal(artifact.params[0], "x");
   });
 
   it("refuses grouping", () => {
