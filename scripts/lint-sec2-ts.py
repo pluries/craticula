@@ -43,6 +43,7 @@ TAINTED_PREFIXES = ("escape", "encode", "normalize")
 UNQUOTED_NAMES = {"outputName", "columnId"}
 # The objects whose methods produce query text or placeholders: the dialect, the parameter sink and the parameter bag.
 DIALECT_RECEIVERS = {"dialect", "sink", "bag"}
+KEYWORDS = {"if", "for", "while", "switch", "catch", "return", "function", "await", "typeof", "new"}
 MESSAGE_CALLS = re.compile(r"(?:precondition|CompileError)\(\s*(?:\x01S\d+\x01\s*,\s*)?$")
 
 
@@ -70,46 +71,50 @@ class Source:
         depth = 0
         while i < len(text):
             c = text[i]
+            skipped = self._skip_comment(text, i, line)
             if c == "\n":
                 line += 1
                 out.append(c)
                 i += 1
-            elif text.startswith("//", i):
-                while i < len(text) and text[i] != "\n":
-                    i += 1
-            elif text.startswith("/*", i):
-                end = text.find("*/", i + 2)
-                if end < 0:
-                    raise ScanError(f"{self.path}: unterminated comment")
-                line += text.count("\n", i, end)
-                i = end + 2
+            elif skipped is not None:
+                i, line = skipped
             elif c in "'\"":
-                j = i + 1
-                while j < len(text) and text[j] != c:
-                    if text[j] == "\\":
-                        j += 1
-                    if j < len(text) and text[j] == "\n":
-                        raise ScanError(f"{self.path}:{line}: a string runs past the end of the line")
-                    j += 1
-                if j >= len(text):
-                    raise ScanError(f"{self.path}:{line}: unterminated string")
-                self.strings.append(text[i : j + 1])
-                out.append(f"\x01S{len(self.strings) - 1}\x01")
-                i = j + 1
+                token, i = self._string(text, i, line)
+                out.append(token)
             elif c == "`":
                 token, i, line = self._template(text, i, line)
                 out.append(token)
+            elif stop_at_brace and c == "}" and depth == 0:
+                return "".join(out), i, line
             else:
-                if stop_at_brace:
-                    if c == "{":
-                        depth += 1
-                    elif c == "}":
-                        if depth == 0:
-                            return "".join(out), i, line
-                        depth -= 1
+                depth += {"{": 1, "}": -1}.get(c, 0) if stop_at_brace else 0
                 out.append(c)
                 i += 1
         return "".join(out), i, line
+
+    def _skip_comment(self, text: str, i: int, line: int):
+        """The position and line after a comment that starts at `i`, or None when none does."""
+        if text.startswith("//", i):
+            end = text.find("\n", i)
+            return (len(text) if end < 0 else end), line
+        if text.startswith("/*", i):
+            end = text.find("*/", i + 2)
+            if end < 0:
+                raise ScanError(f"{self.path}: unterminated comment")
+            return end + 2, line + text.count("\n", i, end)
+        return None
+
+    def _string(self, text: str, i: int, line: int):
+        quote = text[i]
+        j = i + 1
+        while j < len(text) and text[j] != quote:
+            j += 2 if text[j] == "\\" else 1
+            if j < len(text) and text[j] == "\n":
+                raise ScanError(f"{self.path}:{line}: a string runs past the end of the line")
+        if j >= len(text):
+            raise ScanError(f"{self.path}:{line}: unterminated string")
+        self.strings.append(text[i : j + 1])
+        return f"\x01S{len(self.strings) - 1}\x01", j + 1
 
     def _template(self, text: str, i: int, line: int):
         start_line = line
@@ -192,76 +197,181 @@ def matching_paren(expr: str, open_index: int) -> int:
     return -1
 
 
+def skip_space(code: str, index: int) -> int:
+    while index < len(code) and code[index].isspace():
+        index += 1
+    return index
+
+
+def identifier_before(code: str, end: int) -> str:
+    """The identifier that ends just before `end` (spaces skipped), or an empty string."""
+    stop = end
+    while stop > 0 and code[stop - 1].isspace():
+        stop -= 1
+    start = stop
+    while start > 0 and (code[start - 1].isalnum() or code[start - 1] in "_$"):
+        start -= 1
+    return code[start:stop]
+
+
+def binding_before(code: str, index: int) -> str:
+    """The name an arrow is bound to (`name = (`, `name: (`), or an empty string for an anonymous one."""
+    stop = index
+    while stop > 0 and code[stop - 1].isspace():
+        stop -= 1
+    if stop == 0 or code[stop - 1] not in "=:":
+        return ""
+    return identifier_before(code, stop - 1)
+
+
+def return_type_end(code: str, colon: int) -> int:
+    """The index of the `{` or `=>` that ends a return type annotation starting at `colon`, or -1 when this is not one."""
+    for j in range(colon + 1, len(code)):
+        if code.startswith("=>", j) or code[j] == "{":
+            return j
+        if code[j] in ";),?" or (code[j] == "=" and not code.startswith("=>", j)):
+            return -1
+    return -1
+
+
+def definitions(code: str) -> list[tuple[str, str]]:
+    """(name, parameter text) of every function, method and arrow in the code; the name is empty for an anonymous arrow."""
+    found: list[tuple[str, str]] = []
+    for i, c in enumerate(code):
+        close = matching_paren(code, i) if c == "(" else -1
+        if close < 0:
+            continue
+        after = skip_space(code, close + 1)
+        if code.startswith(":", after):
+            after = return_type_end(code, after)
+        if after < 0 or not (code.startswith("{", after) or code.startswith("=>", after)):
+            continue
+        name = identifier_before(code, i)
+        if name in KEYWORDS:
+            continue
+        found.append((name or binding_before(code, i), code[i + 1 : close]))
+    return found
+
+
+def parameter_names(text: str) -> set[str]:
+    names: set[str] = set()
+    for item in top_level_split(text, ","):
+        word = item.strip().removeprefix("readonly ").removeprefix("...").strip()
+        end = 0
+        while end < len(word) and (word[end].isalnum() or word[end] in "_$"):
+            end += 1
+        if end:
+            names.add(word[:end])
+    return names
+
+
+def statement_end(code: str, start: int) -> int:
+    depth = 0
+    for i in range(start, len(code)):
+        c = code[i]
+        if c in "([{":
+            depth += 1
+        elif c in ")]}":
+            if depth == 0:
+                return i
+            depth -= 1
+        elif c == ";" and depth == 0:
+            return i
+    return len(code)
+
+
+def assignment_target(code: str, equals: int) -> tuple[str, bool]:
+    """The name an `=` or `+=` at `equals` assigns to, and whether it appends; an empty name for anything else (a member, a comparison)."""
+    if code.startswith(("==", "=>"), equals) or (equals > 0 and code[equals - 1] in "=!<>"):
+        return "", False
+    last = equals - 1
+    appends = last >= 0 and code[last] == "+"
+    if appends:
+        last -= 1
+    elif last >= 0 and code[last] in "-*/%|&^":
+        return "", False
+    begin = max(code.rfind(mark, 0, last + 1) for mark in (";", "{", "}", "\n")) + 1
+    head = code[begin : last + 1].strip()
+    keyword, _, rest = head.partition(" ")
+    if keyword in ("const", "let", "var"):
+        head = rest.strip().split(":", 1)[0].strip()
+    return (head if head.isidentifier() else ""), appends
+
+
+def pushed_values(code: str) -> list[tuple[str, str]]:
+    """(list name, pushed arguments) of every `list.push(...)`: the pushed value flows into the list."""
+    found: list[tuple[str, str]] = []
+    cursor = code.find(".push(")
+    while cursor >= 0:
+        receiver = identifier_before(code, cursor)
+        close = matching_paren(code, cursor + 5)
+        if receiver and close > 0:
+            found.append((receiver, code[cursor + 6 : close]))
+        cursor = code.find(".push(", cursor + 1)
+    return found
+
+
+def loop_sources(code: str) -> list[tuple[str, str]]:
+    """(loop variable, source list) of every `for (const x of list)`."""
+    found: list[tuple[str, str]] = []
+    cursor = code.find("for (")
+    while cursor >= 0:
+        close = matching_paren(code, cursor + 4)
+        keyword, _, rest = (code[cursor + 5 : close] if close > 0 else "").strip().partition(" ")
+        name, _, source_list = rest.partition(" of ")
+        if keyword in ("const", "let") and source_list and name.strip().isidentifier():
+            found.append((name.strip(), source_list))
+        cursor = code.find("for (", cursor + 1)
+    return found
+
+
+def collect_assignments(code: str) -> tuple[dict[str, list[str]], list[tuple[int, str]]]:
+    """Every value assigned to each name (`=`, `+=`, a pushed argument, a for-of source) and the values appended with `+=`."""
+    found: dict[str, list[str]] = {}
+    appended: list[tuple[int, str]] = []
+    for i, c in enumerate(code):
+        target, appends = assignment_target(code, i) if c == "=" else ("", False)
+        if not target:
+            continue
+        value = code[i + 1 : statement_end(code, i + 1)]
+        found.setdefault(target, []).append(value)
+        if appends:
+            appended.append((i, value))
+    for name, value in pushed_values(code) + loop_sources(code):
+        found.setdefault(name, []).append(value)
+    return found, appended
+
+
+def call_on(expr: str, method: str):
+    """`(receiver, arguments)` when the whole expression is `receiver.method(arguments)`, else None."""
+    marker = f".{method}("
+    index = expr.rfind(marker)
+    open_index = index + len(marker) - 1
+    if index < 0 or matching_paren(expr, open_index) != len(expr) - 1:
+        return None
+    return expr[:index], expr[open_index + 1 : -1]
+
+
+def arrow_body(arguments: str):
+    """The body of a single arrow function passed as the argument, or None."""
+    head, arrow, body = arguments.partition("=>")
+    if not arrow or not all(ch.isalnum() or ch in "_$, ()" for ch in head):
+        return None
+    return body.strip()
+
+
 class Scanner:
     def __init__(self, sources: list[Source], allowlist: dict) -> None:
         self.sources = sources
         self.allow = allowlist
         self.used: set = set()
-        self.declared = self._declared_names()
-        self.assignments = {source.path: self._assignments(source) for source in sources}
-        self.params = {source.path: self._parameters(source) for source in sources}
+        defs = {source.path: definitions(source.code) for source in sources}
+        self.declared = {name for found in defs.values() for name, _ in found if name and name not in KEYWORDS and not name.startswith(TAINTED_PREFIXES)}
+        self.params = {path: {name for _, text in found for name in parameter_names(text)} for path, found in defs.items()}
+        collected = {source.path: collect_assignments(source.code) for source in sources}
+        self.assignments = {path: values for path, (values, _) in collected.items()}
+        self.appended = {path: values for path, (_, values) in collected.items()}
         self.findings: list[tuple[str, int, str, str]] = []
-
-    def _declared_names(self) -> set[str]:
-        names: set[str] = set()
-        for source in self.sources:
-            code = source.code
-            names.update(re.findall(r"\bfunction\s+(\w+)\s*\(", code))
-            names.update(re.findall(r"\bconst\s+(\w+)\s*(?::[^=]+)?=\s*(?:\([^)]*\)|\w+)\s*(?::[^=>{]+)?=>", code))
-            names.update(re.findall(r"(?m)^\s*(?:async\s+)?(\w+)\s*\([^)]*\)\s*(?::\s*[^{=;]+)?\s*\{", code))
-            names.update(re.findall(r"(?m)^\s*(\w+)\s*:\s*(?:\([^)]*\)|\w+)\s*(?::\s*[^=>{]+)?=>", code))
-        return {name for name in names if not name.startswith(TAINTED_PREFIXES) and name not in {"if", "for", "while", "switch", "catch"}}
-
-    @staticmethod
-    def _parameters(source: Source) -> set[str]:
-        """Every name a function or arrow declares as a parameter: a value that comes from a caller, so it is never safe by assignment."""
-        code = source.code
-        lists = re.findall(r"\bfunction\s+\w+\s*\(([^)]*)\)", code)
-        lists += re.findall(r"(?m)^\s*(?:async\s+)?\w+\s*\(([^)]*)\)\s*(?::\s*[^{=;]+)?\s*\{", code)
-        lists += re.findall(r"(?m)^\s*\w+\s*:\s*\(([^)]*)\)\s*(?::\s*[^=>{]+)?=>", code)
-        lists += re.findall(r"\(([^()]*)\)\s*=>", code)
-        names: set[str] = set()
-        for group in lists:
-            for item in top_level_split(group, ","):
-                match = re.match(r"\s*(?:readonly\s+)?(?:\.\.\.)?(\w+)", item)
-                if match:
-                    names.add(match.group(1))
-        return names
-
-    def _assignments(self, source: Source) -> dict[str, list[str]]:
-        found: dict[str, list[str]] = {}
-        code = source.code
-        for match in re.finditer(r"\b(?:const|let|var)\s+(\w+)\s*(?::[^=;]+?)?=(?!=|>)\s*", code):
-            end = self._statement_end(code, match.end())
-            found.setdefault(match.group(1), []).append(code[match.end() : end])
-        for match in re.finditer(r"(?<![\w.])(\w+)\s*\+?=(?!=|>)\s*", code):
-            before = code[max(0, match.start() - 8) : match.start()]
-            if re.search(r"(?:const|let|var)\s*$", before):
-                continue
-            end = self._statement_end(code, match.end())
-            found.setdefault(match.group(1), []).append(code[match.end() : end])
-        for match in re.finditer(r"(?<![\w.])(\w+)\.push\(", code):
-            close = matching_paren(code, match.end() - 1)
-            if close > 0:
-                found.setdefault(match.group(1), []).append(code[match.end() : close])
-        for match in re.finditer(r"\bfor\s*\(\s*(?:const|let)\s+(\w+)\s+of\s+([^)]*)\)", code):
-            found.setdefault(match.group(1), []).append(match.group(2))
-        return found
-
-    @staticmethod
-    def _statement_end(code: str, start: int) -> int:
-        depth = 0
-        for i in range(start, len(code)):
-            c = code[i]
-            if c in "([{":
-                depth += 1
-            elif c in ")]}":
-                if depth == 0:
-                    return i
-                depth -= 1
-            elif c in ";\n" and depth == 0 and c == ";":
-                return i
-        return len(code)
 
     # ---- provenance -------------------------------------------------------------------------------------------------
 
@@ -280,9 +390,19 @@ class Scanner:
         if key in self.allow:
             self.used.add(key)
             return True
+        for rule in (self._safe_template, self._safe_branches, self._safe_constant, self._safe_array, self._safe_chain, self._safe_call, self._safe_name):
+            verdict = rule(source, e, seen)
+            if verdict is not None:
+                return verdict
+        return False
+
+    def _safe_template(self, source: Source, e: str, seen: frozenset):
         template = re.fullmatch(r"\x01T(\d+)\x01", e)
-        if template:
-            return all(self.safe(source, hole, seen) for hole in source.templates[int(template.group(1))]["holes"])
+        if template is None:
+            return None
+        return all(self.safe(source, hole, seen) for hole in source.templates[int(template.group(1))]["holes"])
+
+    def _safe_branches(self, source: Source, e: str, seen: frozenset):
         arms = ternary_arms(e)
         if arms is not None:
             return all(self.safe(source, arm, seen) for arm in arms)
@@ -290,39 +410,54 @@ class Scanner:
             parts = top_level_split(e, token)
             if len(parts) > 1:
                 return all(self.safe(source, part, seen) for part in parts)
-        if re.fullmatch(r"[A-Z][A-Z0-9_]+(?:\[[^\]]*\])?", e):
-            return True
-        if e.startswith("[") and matching_paren(e, 0) == len(e) - 1:
-            items = [item.strip() for item in top_level_split(e[1:-1], ",") if item.strip()]
-            return all(self.safe(source, item[3:] if item.startswith("...") else item, seen) for item in items)
-        joined = re.fullmatch(r"(.*)\.join\((.*)\)", e)
-        if joined and matching_paren(e, e.rindex(".join(") + 5) == len(e) - 1:
-            return self._safe_list(source, joined.group(1), seen)
-        mapped = re.fullmatch(r"(.*)\.map\((.*)\)", e, re.S)
-        if mapped and matching_paren(e, e.rindex(".map(") + 4) == len(e) - 1:
-            return self._safe_list(source, e, seen)
-        call = re.fullmatch(r"([\w$]+(?:\??\.[\w$]+)*)\s*(?:<[^>]*>)?\((.*)\)", e)
-        if call and matching_paren(e, e.index("(", len(call.group(1)))) == len(e) - 1:
-            path = re.split(r"\??\.", call.group(1))
-            if path[-1] in UNQUOTED_NAMES or path[-1] not in self.declared:
-                return False
-            return len(path) == 1 or path[-2] in DIALECT_RECEIVERS
-        if re.fullmatch(r"[A-Za-z_$][\w$]*", e):
-            if e in self.params[source.path]:
-                return False
-            if e in seen:
-                return True
-            values = self.assignments[source.path].get(e)
-            return bool(values) and all(self.safe(source, value, seen | {e}) for value in values)
-        return False
+        return None
 
-    def _safe_list(self, source: Source, receiver: str, seen: frozenset) -> bool:
+    @staticmethod
+    def _safe_constant(source: Source, e: str, seen: frozenset):
+        return True if re.fullmatch(r"[A-Z][A-Z0-9_]+(?:\[[^\]]*\])?", e) else None
+
+    def _safe_array(self, source: Source, e: str, seen: frozenset):
+        if not (e.startswith("[") and matching_paren(e, 0) == len(e) - 1):
+            return None
+        items = [item.strip() for item in top_level_split(e[1:-1], ",") if item.strip()]
+        return all(self.safe(source, item.removeprefix("..."), seen) for item in items)
+
+    def _safe_chain(self, source: Source, e: str, seen: frozenset):
+        joined = call_on(e, "join")
+        if joined is not None:
+            return self._safe_items(source, joined[0], seen)
+        if call_on(e, "map") is not None:
+            return self._safe_items(source, e, seen)
+        return None
+
+    def _safe_items(self, source: Source, receiver: str, seen: frozenset) -> bool:
         r = receiver.strip()
-        mapped = re.fullmatch(r"(.*)\.map\((.*)\)", r)
-        if mapped and matching_paren(r, r.rindex(".map(") + 4) == len(r) - 1:
-            body = re.fullmatch(r"\s*\(?[\w\s,]*\)?\s*=>\s*(.*)", mapped.group(2), re.S)
-            return body is not None and self.safe(source, body.group(1), seen)
+        mapped = call_on(r, "map")
+        body = arrow_body(mapped[1]) if mapped is not None else None
+        if body is not None:
+            return self.safe(source, body, seen)
         return self.safe(source, r, seen)
+
+    def _safe_call(self, source: Source, e: str, seen: frozenset):
+        open_index = e.find("(")
+        if open_index <= 0 or matching_paren(e, open_index) != len(e) - 1:
+            return None
+        path = e[:open_index].strip().replace("?.", ".").split(".")
+        if not all(part.isidentifier() for part in path):
+            return None
+        if path[-1] in UNQUOTED_NAMES or path[-1] not in self.declared:
+            return False
+        return len(path) == 1 or path[-2] in DIALECT_RECEIVERS
+
+    def _safe_name(self, source: Source, e: str, seen: frozenset):
+        if not e.isidentifier():
+            return None
+        if e in self.params[source.path]:
+            return False
+        if e in seen:
+            return True
+        values = self.assignments[source.path].get(e)
+        return bool(values) and all(self.safe(source, value, seen | {e}) for value in values)
 
     # ---- sinks ------------------------------------------------------------------------------------------------------
 
@@ -335,15 +470,15 @@ class Scanner:
             self._concatenations(source)
             self._appended_values(source)
 
-    def line_of(self, source: Source, offset: int) -> int:
+    @staticmethod
+    def line_of(source: Source, offset: int) -> int:
         return source.code.count("\n", 0, offset) + 1
 
     def _templates(self, source: Source) -> None:
         for index, template in enumerate(source.templates):
             token = f"\x01T{index}\x01"
             at = source.code.find(token)
-            before = source.code[max(0, at - 80) : at]
-            if MESSAGE_CALLS.search(before):
+            if MESSAGE_CALLS.search(source.code[max(0, at - 80) : at]):
                 continue
             for hole in template["holes"]:
                 if not self.safe(source, hole):
@@ -351,11 +486,9 @@ class Scanner:
 
     def _appended_values(self, source: Source) -> None:
         """`x += value` builds text, so its value is a sink of its own, even when no template or literal is next to it."""
-        for match in re.finditer(r"(?<![\w.])(\w+)\s*\+=(?!=)\s*", source.code):
-            end = self._statement_end(source.code, match.end())
-            value = source.code[match.end() : end]
+        for offset, value in self.appended[source.path]:
             if not self.safe(source, value):
-                self.findings.append((source.path, self.line_of(source, match.start()), self.shown(source, value), "appended to query text and not a placeholder, a quoted identifier or a constant"))
+                self.findings.append((source.path, self.line_of(source, offset), self.shown(source, value), "appended to query text and not a placeholder, a quoted identifier or a constant"))
 
     def _concatenations(self, source: Source) -> None:
         for match in re.finditer(r"(\x01[ST]\d+\x01)\s*\+(?!=)|(?<!\+)\+\s*(\x01[ST]\d+\x01)", source.code):
@@ -366,8 +499,7 @@ class Scanner:
                 self.used.add((source.path, snippet))
                 continue
             at = match.start()
-            before = source.code[max(0, at - 80) : at]
-            if MESSAGE_CALLS.search(before):
+            if MESSAGE_CALLS.search(source.code[max(0, at - 80) : at]):
                 continue
             self.findings.append((source.path, self.line_of(source, at), snippet, "concatenated into query text; build it as a template whose holes are safe"))
 
@@ -408,7 +540,11 @@ def main() -> int:
         files: list[Path] = []
         for scope in args.paths or DEFAULT_SCOPE:
             target = root / scope
-            found = [target] if target.is_file() else sorted(target.rglob("*.ts")) if target.is_dir() else []
+            found = []
+            if target.is_file():
+                found = [target]
+            elif target.is_dir():
+                found = sorted(target.rglob("*.ts"))
             if not found:
                 raise ScanError(f"scope path '{scope}' is missing or holds no .ts file")
             files.extend(found)

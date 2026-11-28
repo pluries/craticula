@@ -83,6 +83,32 @@ function blank(column: string, field: Field, context: Context): string {
   return `${column} IS NULL`;
 }
 
+function substringCondition(node: ComparisonIr, field: Field, column: string, context: Context): string {
+  if (field.type !== "string") throw precondition(`Field '${node.field}' is declared '${field.type}', but '${node.op}' is a substring match and needs a string field.`);
+  const value = requireValue(node);
+  if (value.type !== "string") throw precondition(`Operator '${node.op}' on field '${node.field}' needs a string value: the coercion stage runs before a compiler.`);
+  const mode = caseSensitivity(field, node.op).mode;
+  return context.dialect.substring(column, ANCHOR[node.op]!, node.op === "notContains", value.value, mode, context.bag);
+}
+
+function setCondition(node: ComparisonIr, field: Field, column: string, context: Context, nullInclusive: (predicate: string) => string): string {
+  const values = node.values;
+  if (values === undefined) throw precondition(`Operator '${node.op}' on field '${node.field}' requires 'values'.`);
+  if (values.length === 0) return node.op === "notIn" ? "1 = 1" : "1 = 0";
+  const mode = caseSensitivity(field, node.op).mode;
+  const encoded = values.map((value) => encodeValue(value, field, context.dialect));
+  return nullInclusive(context.dialect.setMembership(column, node.op === "notIn", encoded, field.type, mode, context.bag));
+}
+
+function rangeCondition(node: ComparisonIr, field: Field, column: string, context: Context): string {
+  if (node.from === undefined || node.to === undefined || node.fromInclusive === undefined || node.toInclusive === undefined) {
+    throw precondition(`Operator 'inRange' on field '${node.field}' requires 'from', 'to', 'fromInclusive' and 'toInclusive'.`);
+  }
+  const lower = scalar(column, field, node.fromInclusive ? "gte" : "gt", node.from, context);
+  const upper = scalar(column, field, node.toInclusive ? "lte" : "lt", node.to, context);
+  return `(${lower} AND ${upper})`;
+}
+
 function comparison(node: ComparisonIr, context: Context): string {
   const field = fieldOf(node.field, context);
   const column = columnOf(node.field, context);
@@ -108,30 +134,13 @@ function comparison(node: ComparisonIr, context: Context): string {
     case "contains":
     case "notContains":
     case "startsWith":
-    case "endsWith": {
-      if (field.type !== "string") throw precondition(`Field '${node.field}' is declared '${field.type}', but '${node.op}' is a substring match and needs a string field.`);
-      const value = requireValue(node);
-      if (value.type !== "string") throw precondition(`Operator '${node.op}' on field '${node.field}' needs a string value: the coercion stage runs before a compiler.`);
-      const mode = caseSensitivity(field, node.op).mode;
-      return nullInclusive(context.dialect.substring(column, ANCHOR[node.op]!, node.op === "notContains", value.value, mode, context.bag));
-    }
+    case "endsWith":
+      return nullInclusive(substringCondition(node, field, column, context));
     case "in":
-    case "notIn": {
-      const values = node.values;
-      if (values === undefined) throw precondition(`Operator '${node.op}' on field '${node.field}' requires 'values'.`);
-      if (values.length === 0) return node.op === "notIn" ? "1 = 1" : "1 = 0";
-      const mode = caseSensitivity(field, node.op).mode;
-      const encoded = values.map((value) => encodeValue(value, field, context.dialect));
-      return nullInclusive(context.dialect.setMembership(column, node.op === "notIn", encoded, field.type, mode, context.bag));
-    }
-    case "inRange": {
-      if (node.from === undefined || node.to === undefined || node.fromInclusive === undefined || node.toInclusive === undefined) {
-        throw precondition(`Operator 'inRange' on field '${node.field}' requires 'from', 'to', 'fromInclusive' and 'toInclusive'.`);
-      }
-      const lower = scalar(column, field, node.fromInclusive ? "gte" : "gt", node.from, context);
-      const upper = scalar(column, field, node.toInclusive ? "lte" : "lt", node.to, context);
-      return `(${lower} AND ${upper})`;
-    }
+    case "notIn":
+      return setCondition(node, field, column, context, nullInclusive);
+    case "inRange":
+      return rangeCondition(node, field, column, context);
     default:
       throw precondition(`Unknown comparison operator '${node.op}'.`);
   }

@@ -1,5 +1,5 @@
 import { CompileError } from "../errors.js";
-import type { CaseMode, Dialect } from "./dialect.js";
+import type { Anchor, CaseMode, Dialect } from "./dialect.js";
 import { COMPARISON_SYMBOL } from "./dialect.js";
 import { escapePatternWithBracket } from "./escape.js";
 
@@ -14,6 +14,11 @@ function collation(mode: CaseMode): string {
     default:
       return "";
   }
+}
+
+function likePattern(anchor: Anchor, placeholder: string): string {
+  if (anchor === "anywhere") return `'%' + ${placeholder} + '%'`;
+  return anchor === "start" ? `${placeholder} + '%'` : `'%' + ${placeholder}`;
 }
 
 /** SQL Server (T-SQL): bracket quoting, `@pN`, a collation on the column both ways, `+` concatenation, OFFSET/FETCH, a bucket key for null position. */
@@ -34,8 +39,7 @@ export const mssql: Dialect = {
 
   substring(column, anchor, negated, value, mode, sink): string {
     const placeholder = sink.bind(escapePatternWithBracket(value, PATTERN_ESCAPE));
-    const pattern = anchor === "anywhere" ? `'%' + ${placeholder} + '%'` : anchor === "start" ? `${placeholder} + '%'` : `'%' + ${placeholder}`;
-    return `${column}${collation(mode)} ${negated ? "NOT LIKE" : "LIKE"} ${pattern} ESCAPE '${PATTERN_ESCAPE}'`;
+    return `${column}${collation(mode)} ${negated ? "NOT LIKE" : "LIKE"} ${likePattern(anchor, placeholder)} ESCAPE '${PATTERN_ESCAPE}'`;
   },
 
   setMembership(column, negated, values, _type, mode, sink): string {

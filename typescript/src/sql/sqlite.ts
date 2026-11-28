@@ -1,5 +1,5 @@
 import { CompileError } from "../errors.js";
-import type { Anchor, Dialect } from "./dialect.js";
+import type { Anchor, CaseMode, Dialect } from "./dialect.js";
 import { COMPARISON_SYMBOL } from "./dialect.js";
 import { escapePattern } from "./escape.js";
 
@@ -22,6 +22,14 @@ function globPattern(anchor: Anchor, placeholder: string): string {
   return anchor === "start" ? `${placeholder} || '*'` : `'*' || ${placeholder}`;
 }
 
+function collatedColumn(column: string, mode: CaseMode): string {
+  return mode === "insensitive" ? `${column} COLLATE NOCASE` : column;
+}
+
+function collatedValue(placeholder: string, mode: CaseMode): string {
+  return mode === "insensitive" ? `${placeholder} COLLATE NOCASE` : placeholder;
+}
+
 /** SQLite: quoted identifiers, positional `?`, NOCASE on the value for a comparison and on the column elsewhere, GLOB for a case-sensitive match. */
 export const sqlite: Dialect = {
   name: "sqlite",
@@ -39,8 +47,7 @@ export const sqlite: Dialect = {
 
   /** SEM-1: SQLite takes the left operand's collation if it has one, else the right's, so the value is collated and the column stays bare. */
   scalar(column, op, value, _type, mode, sink): string {
-    const placeholder = sink.bind(value);
-    return `${column} ${COMPARISON_SYMBOL[op]} ${mode === "insensitive" ? `${placeholder} COLLATE NOCASE` : placeholder}`;
+    return `${column} ${COMPARISON_SYMBOL[op]} ${collatedValue(sink.bind(value), mode)}`;
   },
 
   substring(column, anchor, negated, value, mode, sink): string {
@@ -55,11 +62,11 @@ export const sqlite: Dialect = {
   /** `x IN (...)` takes x's own collation, so it goes on the column here. */
   setMembership(column, negated, values, _type, mode, sink): string {
     const placeholders = values.map((value) => sink.bind(value));
-    return `${mode === "insensitive" ? `${column} COLLATE NOCASE` : column} ${negated ? "NOT IN" : "IN"} (${placeholders.join(", ")})`;
+    return `${collatedColumn(column, mode)} ${negated ? "NOT IN" : "IN"} (${placeholders.join(", ")})`;
   },
 
   sortKey: (column, direction, nulls, mode): string =>
-    `${mode === "insensitive" ? `${column} COLLATE NOCASE` : column} ${direction === "asc" ? "ASC" : "DESC"} NULLS ${nulls === "first" ? "FIRST" : "LAST"}`,
+    `${collatedColumn(column, mode)} ${direction === "asc" ? "ASC" : "DESC"} NULLS ${nulls === "first" ? "FIRST" : "LAST"}`,
 
   paging(offset, limit, sink): string {
     const limitPlaceholder = sink.bind(limit);

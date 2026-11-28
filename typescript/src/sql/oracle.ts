@@ -1,5 +1,5 @@
 import { CompileError } from "../errors.js";
-import type { CaseMode, Dialect, Param } from "./dialect.js";
+import type { Anchor, CaseMode, Dialect, Param } from "./dialect.js";
 import { COMPARISON_SYMBOL } from "./dialect.js";
 import { escapePattern } from "./escape.js";
 
@@ -26,6 +26,11 @@ function rejectEmpty(value: Param | undefined, construct: string): void {
   }
 }
 
+function likePattern(anchor: Anchor, placeholder: string): string {
+  if (anchor === "anywhere") return `'%' || ${placeholder} || '%'`;
+  return anchor === "start" ? `${placeholder} || '%'` : `'%' || ${placeholder}`;
+}
+
 /** Oracle: quoted identifiers, `:pN`, COLLATE BINARY_CI on the column, `||`, OFFSET/FETCH, native null position. */
 export const oracle: Dialect = {
   name: "oracle",
@@ -48,8 +53,7 @@ export const oracle: Dialect = {
   substring(column, anchor, negated, value, mode, sink): string {
     rejectEmpty(value, "a substring match");
     const placeholder = sink.bind(escapePattern(value, PATTERN_ESCAPE));
-    const pattern = anchor === "anywhere" ? `'%' || ${placeholder} || '%'` : anchor === "start" ? `${placeholder} || '%'` : `'%' || ${placeholder}`;
-    return `${column}${collation(mode)} ${negated ? "NOT LIKE" : "LIKE"} ${pattern} ESCAPE '${PATTERN_ESCAPE}'`;
+    return `${column}${collation(mode)} ${negated ? "NOT LIKE" : "LIKE"} ${likePattern(anchor, placeholder)} ESCAPE '${PATTERN_ESCAPE}'`;
   },
 
   /** One empty member poisons a NOT IN list, so every member is checked before any is bound. */

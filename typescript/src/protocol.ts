@@ -44,7 +44,7 @@ function stringify(value: unknown): string {
     }
     return item;
   });
-  return marks.length === 0 ? text : text.replace(/"\\u0000number:(\d+)"/g, (_match, index: string) => marks[Number(index)] ?? "null");
+  return marks.length === 0 ? text : text.replaceAll(/"\\u0000number:(\d+)"/g, (_match, index: string) => marks[Number(index)] ?? "null");
 }
 
 const NO_ID = "it is not a JSON object with a readable string 'id'";

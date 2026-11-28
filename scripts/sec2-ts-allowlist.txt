@@ -34,7 +34,11 @@ trust typescript/src/sql/builder.ts | column | the column is built by columnOf, 
 
 # -- Conditions the builder rendered itself.
 trust typescript/src/sql/builder.ts | predicate | the parameter of nullInclusive and the local of where: a condition rendered by this builder, already made of placeholders and quoted names
-trust typescript/src/sql/sqlite.ts | placeholder | the parameter of likePattern and globPattern: the placeholder bind returned
+trust typescript/src/sql/postgres.ts | placeholder | the parameter of the pattern helper and the local of the dialect method: the placeholder bind returned
+trust typescript/src/sql/mssql.ts | placeholder | the parameter of the pattern helper and the local of the dialect method: the placeholder bind returned
+trust typescript/src/sql/mysql.ts | placeholder | the parameter of the pattern helper and the local of the dialect method: the placeholder bind returned
+trust typescript/src/sql/oracle.ts | placeholder | the parameter of the pattern helper and the local of the dialect method: the placeholder bind returned
+trust typescript/src/sql/sqlite.ts | placeholder | the parameter of the pattern and collation helpers: the placeholder bind returned
 
 # -- An output name, quoted by quoteIdentifier wherever it becomes SQL.
 trust typescript/src/sql/grouping.ts | aggregation.field | the default output name is a schema field name plus a function name; the builder quotes it (SQL-1, AGG-2)

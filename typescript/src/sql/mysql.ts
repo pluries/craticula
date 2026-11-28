@@ -1,11 +1,16 @@
 import { CompileError } from "../errors.js";
-import type { Dialect } from "./dialect.js";
+import type { Anchor, Dialect } from "./dialect.js";
 import { COMPARISON_SYMBOL } from "./dialect.js";
 import { escapePattern } from "./escape.js";
 
 const PATTERN_ESCAPE = "\\";
 /** The escape clause as MySQL reads its string literal: two backslashes spell one. */
 const PATTERN_ESCAPE_LITERAL = "\\\\";
+
+function likePattern(anchor: Anchor, placeholder: string): string {
+  if (anchor === "anywhere") return `CONCAT('%', ${placeholder}, '%')`;
+  return anchor === "start" ? `CONCAT(${placeholder}, '%')` : `CONCAT('%', ${placeholder})`;
+}
 
 /** MySQL: backtick quoting, positional `?`, the column's own (case-insensitive) collation, CONCAT, LIMIT/OFFSET, ISNULL for null position. */
 export const mysql: Dialect = {
@@ -25,8 +30,7 @@ export const mysql: Dialect = {
 
   substring(column, anchor, negated, value, _mode, sink): string {
     const placeholder = sink.bind(escapePattern(value, PATTERN_ESCAPE));
-    const pattern = anchor === "anywhere" ? `CONCAT('%', ${placeholder}, '%')` : anchor === "start" ? `CONCAT(${placeholder}, '%')` : `CONCAT('%', ${placeholder})`;
-    return `${column} ${negated ? "NOT LIKE" : "LIKE"} ${pattern} ESCAPE '${PATTERN_ESCAPE_LITERAL}'`;
+    return `${column} ${negated ? "NOT LIKE" : "LIKE"} ${likePattern(anchor, placeholder)} ESCAPE '${PATTERN_ESCAPE_LITERAL}'`;
   },
 
   setMembership(column, negated, values, _type, _mode, sink): string {

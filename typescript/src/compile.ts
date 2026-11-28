@@ -5,7 +5,7 @@ import type { Dialect } from "./sql/dialect.js";
 import { postgres } from "./sql/postgres.js";
 import { prepareRow, prepareSetValues } from "./stages.js";
 
-export type { Artifact };
+export type { Artifact } from "./sql/builder.js";
 
 /**
  * Compiles an AG Grid request against a GridSchema to a query for the dialect (PostgreSQL by default) with bound parameters: the stages of feature 013, then the SQL
