@@ -34,17 +34,53 @@ function errorLine(id: string, kind: string, message: string, rejection?: { read
 }
 
 const NO_ID = "it is not a JSON object with a readable string 'id'";
-const LEADING = /^\s*\{\s*"id"\s*:\s*("(?:[^"\\\u0000-\u001f]|\\.){0,512}")(?:\s*,\s*"kind"\s*:\s*("[a-z]{1,16}"))?/;
+const LEADING_SCAN = 2048;
+const MAX_ID_LITERAL = 514;
 
-/** The id (and kind) of a line the strict reader refused, when the line opens with them as the runner writes it (§2.2). */
-function recoverLeading(line: string): { id: string; kind: string | undefined } | undefined {
-  const match = LEADING.exec(line.slice(0, 2048));
-  if (match === null) return undefined;
+function skipSpace(text: string, from: number): number {
+  let at = from;
+  while (at < text.length && " \t\n\r".includes(text.charAt(at))) at += 1;
+  return at;
+}
+
+/** The end (exclusive) of the string literal that opens at `from`, or -1 when it is not one, runs past `limit` characters or holds a raw control character. */
+function endOfString(text: string, from: number, limit: number): number {
+  if (text.charAt(from) !== '"') return -1;
+  for (let at = from + 1; at < text.length && at - from < limit; at += 1) {
+    const c = text.charAt(at);
+    if (c === '"') return at + 1;
+    if (c === "\\") at += 1;
+    else if (c < " ") return -1;
+  }
+  return -1;
+}
+
+/** Reads `"<name>":"<string>"` at `from`: the decoded string and the position after it. */
+function member(text: string, from: number, name: string, limit: number): { value: string; end: number } | undefined {
+  const key = `"${name}"`;
+  if (!text.startsWith(key, from)) return undefined;
+  const colon = skipSpace(text, from + key.length);
+  if (text.charAt(colon) !== ":") return undefined;
+  const start = skipSpace(text, colon + 1);
+  const end = endOfString(text, start, limit);
+  if (end < 0) return undefined;
   try {
-    return { id: JSON.parse(match[1]!) as string, kind: match[2] === undefined ? undefined : (JSON.parse(match[2]) as string) };
+    return { value: JSON.parse(text.slice(start, end)) as string, end };
   } catch {
     return undefined;
   }
+}
+
+/** The id (and kind) of a line the strict reader refused, when the line opens with them as the runner writes it (§2.2). */
+function recoverLeading(line: string): { id: string; kind: string | undefined } | undefined {
+  const text = line.slice(0, LEADING_SCAN);
+  const open = skipSpace(text, 0);
+  if (text.charAt(open) !== "{") return undefined;
+  const id = member(text, skipSpace(text, open + 1), "id", MAX_ID_LITERAL);
+  if (id === undefined) return undefined;
+  const comma = skipSpace(text, id.end);
+  const kind = text.charAt(comma) === "," ? member(text, skipSpace(text, comma + 1), "kind", 18) : undefined;
+  return { id: id.value, kind: kind?.value };
 }
 
 const MALFORMED = { rejectedAt: "requestParsing", reason: "malformed-request" } as const;

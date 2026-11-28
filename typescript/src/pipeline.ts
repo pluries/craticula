@@ -131,7 +131,6 @@ const INT64_MIN = -(2n ** 63n);
 const INT64_MAX = 2n ** 63n - 1n;
 const DECIMAL = /^-?[0-9]+(\.[0-9]+)?$/;
 const DATE = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/;
-const DOUBLE = /^[+-]?([0-9]+\.?[0-9]*|\.[0-9]+)([eE][+-]?[0-9]+)?$/;
 
 function uncoercible(field: string, type: string, value: TypedValueIr): CompileError {
   const shown = "value" in value ? String(value.value).slice(0, 64) : "null";
@@ -150,7 +149,7 @@ function parseText(raw: string, type: Field["type"]): TypedValueIr | undefined {
     case "decimal":
       return DECIMAL.test(raw) && raw.length <= 128 ? { type: "decimal", value: raw } : undefined;
     case "double": {
-      if (!DOUBLE.test(text)) return undefined;
+      if (text.length === 0 || [...text].some((c) => !"0123456789.eE+-".includes(c))) return undefined;
       const parsed = Number(text);
       return Number.isFinite(parsed) ? { type: "double", value: parsed } : undefined;
     }
@@ -211,8 +210,10 @@ export function processRow(ir: Ir, schema: GridSchema, limits: Readonly<Limits> 
   checkLimits(both(drillDown, allowed), ir.page, limits);
   const coerced = allowed === undefined ? undefined : coerce(allowed, schema);
   checkDeclaredTypes(drillDown, schema);
-  const { filter: _dropped, ...rest } = ir;
-  return coerced === undefined ? rest : { ...rest, filter: coerced };
+  const next: { -readonly [K in keyof Ir]: Ir[K] } = { ...ir };
+  delete next.filter;
+  if (coerced !== undefined) next.filter = coerced;
+  return next;
 }
 
 /** BM-3 and GRP-6: the filter of a distinct-values query and the cap it compiles with. */

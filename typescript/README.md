@@ -27,5 +27,16 @@ A sort-and-page AG Grid request against a `GridSchema`: the sort keys with SEM-1
 positions and SEM-6's stable-key tiebreak (with its dropping rules), a row window as bound `LIMIT` and `OFFSET`, and the unpaginated
 export with its default column list. A filter, grouping, another backend or another kind of request gets an `error` answer.
 
+Before that, every request goes through the stages a host runs: the AG Grid request becomes the IR, then the allowlist over every
+column it names (sort, group, aggregation, set-values target, filter), the SEC-3 limits (depth 8, 64 leaves, 1,000 values in a set,
+page size 1,000, each configurable and none switchable off) and the coercion of values to the declared field types. The driver
+declares the `rejection` capability, so the 33 shared rejection fixtures run against it:
+
+```bash
+python3 ../conformance/run.py --driver "node dist/src/driver.js" --only "*#rejection"
+```
+
+`npm test` also prints line coverage of `src/` and fails below 90%.
+
 Values are always bound parameters. The only text of a request or schema that reaches the SQL is a column name the schema
 declares, quoted by one function; a sort column the schema does not declare is refused.
