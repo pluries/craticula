@@ -1,8 +1,8 @@
-import { parseRequest, type ParseOptions } from "./agrid/request.js";
+import type { ParseOptions } from "./agrid/request.js";
 import { CompileError } from "./errors.js";
-import { DEFAULT_LIMITS } from "./limits.js";
 import { ParameterBag, quoteIdentifier, renderPaging, renderSortKey } from "./postgres.js";
-import { checkColumns, parseSchema, type Field, type GridSchema } from "./schema.js";
+import type { Field, GridSchema } from "./schema.js";
+import { prepareRow } from "./stages.js";
 import { effectiveSort } from "./sort.js";
 
 export interface Artifact {
@@ -38,10 +38,7 @@ function exportProjection(schema: GridSchema, columns: readonly string[]): strin
 
 /** Compiles a sort-and-page AG Grid request against a GridSchema to a PostgreSQL query with bound parameters. */
 export function compile(schemaValue: unknown, requestValue: unknown, options: ParseOptions = {}): Artifact {
-  const schema = parseSchema(schemaValue);
-  const { ir, export: exportSpec } = parseRequest(requestValue, schema, options);
-  // The host's allowlist over every sort column (`conformance-runner.md` §3): the parser keeps them as the request names them.
-  checkColumns(schema, (ir.sort ?? []).map((item) => item.field), "sort");
+  const { schema, ir, export: exportSpec } = prepareRow(schemaValue, requestValue, options);
   if (ir.group !== undefined || ir.aggregations !== undefined) {
     throw new CompileError("Unsupported", "This driver compiles sorting and paging only; grouping and aggregation are parsed but not rendered to SQL yet.");
   }
@@ -60,12 +57,6 @@ export function compile(schemaValue: unknown, requestValue: unknown, options: Pa
   let sql = `SELECT ${projection} FROM ${quoteIdentifier(schema.source)} ORDER BY ${sort.join(", ")}`;
   if (ir.page.mode === "range") {
     const limit = ir.page.endRow - ir.page.startRow;
-    if (limit > DEFAULT_LIMITS.maxPageSize) {
-      throw new CompileError("LimitExceeded", `A page of ${limit} rows is above the limit of ${DEFAULT_LIMITS.maxPageSize}.`, {
-        rejectedAt: "resourceLimits",
-        reason: "max-page-size-exceeded",
-      });
-    }
     sql += ` ${renderPaging(limit, ir.page.startRow, parameters)}`;
   }
   return { dialect: "postgres", sql, params: parameters.values };

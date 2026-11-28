@@ -36,6 +36,8 @@ export interface ReadOptions {
   readonly maxLength?: number;
   /** `native` (default) returns numbers; `text` returns a JsonNumber that keeps the written text. */
   readonly numbers?: "native" | "text";
+  /** `refuse` (default) rejects a repeated key; `last` keeps the last one. Only for recovering the id of a line that is refused anyway. */
+  readonly duplicateKeys?: "refuse" | "last";
 }
 
 const NUMBER = /-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?/y;
@@ -50,6 +52,7 @@ class Reader {
     private readonly text: string,
     private readonly maxDepth: number,
     private readonly keepNumberText: boolean,
+    private readonly allowDuplicates: boolean,
   ) {}
 
   read(): JsonValue {
@@ -108,7 +111,7 @@ class Reader {
       this.skipWhitespace();
       if (this.text.charAt(this.position) !== '"') throw this.fail("expected a string key");
       const key = this.string();
-      if (Object.hasOwn(result, key)) {
+      if (!this.allowDuplicates && Object.hasOwn(result, key)) {
         throw new JsonError("duplicate-key", `the key ${JSON.stringify(key)} appears twice in one object`);
       }
       this.skipWhitespace();
@@ -202,5 +205,5 @@ export function readJson(text: string, options: ReadOptions = {}): JsonValue {
   if (text.length > maxLength) {
     throw new JsonError("too-long", `the document is longer than ${maxLength} characters`);
   }
-  return new Reader(text, options.maxDepth ?? 64, options.numbers === "text").read();
+  return new Reader(text, options.maxDepth ?? 64, options.numbers === "text", options.duplicateKeys === "last").read();
 }

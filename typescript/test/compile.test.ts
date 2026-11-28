@@ -91,13 +91,15 @@ describe("US2-AS3: what the skeleton does not support is refused, not guessed", 
   const { schema, request } = fixture("001-single-key-string-asc-nulls-last-default");
 
   it("refuses a filter model", () => {
-    const filtered = { ...request, filterModel: { last_name: { filterType: "text", type: "equals", filter: "x" } } };
+    const filtered = { ...request, filterModel: { lastName: { filterType: "text", type: "equals", filter: "x" } } };
     assert.throws(() => compile(schema, filtered), (error: unknown) => error instanceof CompileError && error.kind === "Unsupported");
   });
 
   it("refuses grouping", () => {
-    const grouped = { ...request, rowGroupCols: [{ id: "department", displayName: "Department", field: "department" }] };
-    assert.throws(() => compile(schema, grouped), (error: unknown) => error instanceof CompileError && error.kind === "Unsupported");
+    const declared = schema as { fields: Record<string, Record<string, unknown>> };
+    const groupable = { ...declared, fields: { ...declared.fields, lastName: { ...declared.fields["lastName"], groupable: true } } };
+    const grouped = { ...request, rowGroupCols: [{ id: "lastName", displayName: "Last name", field: "lastName" }] };
+    assert.throws(() => compile(groupable, grouped), (error: unknown) => error instanceof CompileError && error.kind === "Unsupported");
   });
 
   it("refuses a request that is not an object", () => {

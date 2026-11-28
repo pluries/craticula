@@ -1,5 +1,10 @@
+import type { ParseOptions } from "./agrid/request.js";
+import { isIsoInstant } from "./agrid/dates.js";
+import { isRecord, wholeNumber } from "./agrid/values.js";
 import { compile } from "./compile.js";
 import { CompileError } from "./errors.js";
+import { JsonError, readJson } from "./json.js";
+import { checkRequest } from "./stages.js";
 
 /** The spec version this driver targets (`spec/VERSION`); a test keeps the two equal. */
 export const SPEC_VERSION = "1.0.0";
@@ -14,44 +19,93 @@ export function assertSupportedNode(version: string): void {
 
 /** The first line a driver prints (`spec/conformance-runner.md` §2.1). */
 export function helloLine(): string {
-  return JSON.stringify({ hello: { impl: "typescript", specVersion: SPEC_VERSION, backends: ["postgres"] } });
+  return JSON.stringify({ hello: { impl: "typescript", specVersion: SPEC_VERSION, backends: ["postgres"], capabilities: ["rejection"] } });
 }
 
 export type Outcome = { readonly answer: string } | { readonly unanswerable: string };
 
-function errorLine(id: string, kind: string, message: string): Outcome {
-  return { answer: JSON.stringify({ id, error: { kind, message } }) };
+function errorLine(id: string, kind: string, message: string, rejection?: { readonly rejectedAt?: string | undefined; readonly reason?: string | undefined }): Outcome {
+  const error: Record<string, string> = { kind, message };
+  if (rejection?.rejectedAt !== undefined && rejection.reason !== undefined) {
+    error["rejectedAt"] = rejection.rejectedAt;
+    error["reason"] = rejection.reason;
+  }
+  return { answer: JSON.stringify({ id, error }) };
+}
+
+const NO_ID = "it is not a JSON object with a readable string 'id'";
+const LEADING = /^\s*\{\s*"id"\s*:\s*("(?:[^"\\\u0000-\u001f]|\\.){0,512}")(?:\s*,\s*"kind"\s*:\s*("[a-z]{1,16}"))?/;
+
+/** The id (and kind) of a line the strict reader refused, when the line opens with them as the runner writes it (§2.2). */
+function recoverLeading(line: string): { id: string; kind: string | undefined } | undefined {
+  const match = LEADING.exec(line.slice(0, 2048));
+  if (match === null) return undefined;
+  try {
+    return { id: JSON.parse(match[1]!) as string, kind: match[2] === undefined ? undefined : (JSON.parse(match[2]) as string) };
+  } catch {
+    return undefined;
+  }
+}
+
+const MALFORMED = { rejectedAt: "requestParsing", reason: "malformed-request" } as const;
+
+/** The harness members of `requestContext` (§3) as parse options. They are read here, in the driver, and never by the library from a wire request. */
+function harnessOf(request: unknown): { options: ParseOptions; countMode: boolean } {
+  const context = isRecord(request) ? request["requestContext"] : undefined;
+  if (context === undefined || context === null) return { options: {}, countMode: false };
+  if (!isRecord(context)) throw new CompileError("InvalidRequest", "'requestContext' must be a JSON object or null.", MALFORMED);
+  const options: { -readonly [K in keyof ParseOptions]: ParseOptions[K] } = {};
+  const now = context["now"];
+  if (now !== undefined && now !== null) {
+    const instant = typeof now === "string" && isIsoInstant(now) ? new Date(now) : undefined;
+    if (instant === undefined) throw new CompileError("InvalidRequest", "'requestContext.now' must be an ISO-8601 instant.", MALFORMED);
+    options.now = () => instant;
+  }
+  const size = context["defaultPageSize"];
+  if (size !== undefined && size !== null) {
+    const whole = wholeNumber(size);
+    if (whole === undefined || whole <= 0) throw new CompileError("InvalidRequest", "'requestContext.defaultPageSize' must be a positive whole number.", MALFORMED);
+    options.defaultPageSize = whole;
+  }
+  if (context["allowUnboundedRows"] === true) options.allowUnboundedRows = true;
+  const mode = context["compileMode"];
+  if (mode !== undefined && mode !== null && mode !== "count") throw new CompileError("InvalidRequest", `'requestContext.compileMode' ${JSON.stringify(mode)} is not supported.`, MALFORMED);
+  return { options, countMode: mode === "count" };
 }
 
 /** One request line to one protocol line, or the reason the line cannot be answered because it has no id to echo (§2.4). */
 export function answerFor(line: string): Outcome {
   let request: unknown;
   try {
-    request = JSON.parse(line);
+    request = readJson(line, { numbers: "text" });
   } catch (error) {
-    return { unanswerable: `it is not JSON (${error instanceof Error ? error.message : String(error)})` };
+    if (!(error instanceof JsonError)) throw error;
+    const leading = recoverLeading(line);
+    if (leading === undefined) return { unanswerable: `it is not JSON, or the strict reader refused it and it opens with no id (${error.message})` };
+    return errorLine(leading.id, "InvalidRequest", `The request line was refused: ${error.message}.`, leading.kind === "rejection" ? MALFORMED : undefined);
   }
-  if (typeof request !== "object" || request === null || Array.isArray(request)) {
-    return { unanswerable: "it is not a JSON object with a readable string 'id'" };
-  }
-  const fields = request as Record<string, unknown>;
-  const id = fields["id"];
-  if (typeof id !== "string") {
-    return { unanswerable: "it is not a JSON object with a readable string 'id'" };
-  }
+  if (!isRecord(request)) return { unanswerable: NO_ID };
+  const id = request["id"];
+  if (typeof id !== "string") return { unanswerable: NO_ID };
 
-  const kind = fields["kind"];
-  if (kind !== undefined && kind !== "compile") {
+  const kind = request["kind"];
+  if (kind !== undefined && kind !== "compile" && kind !== "rejection") {
     return errorLine(id, "Unsupported", `The request kind ${JSON.stringify(kind)} is not supported by this driver.`);
   }
-  if (fields["backend"] !== "postgres") {
-    return errorLine(id, "Unsupported", `The backend '${String(fields["backend"])}' is not one this driver declares (postgres).`);
+  if (kind !== "rejection" && request["backend"] !== "postgres") {
+    return errorLine(id, "Unsupported", `The backend '${String(request["backend"])}' is not one this driver declares (postgres).`);
   }
   try {
-    return { answer: JSON.stringify({ id, artifact: compile(fields["schema"], fields["agGridRequest"]) }) };
+    const { options, countMode } = harnessOf(request["agGridRequest"]);
+    if (kind === "rejection") {
+      checkRequest(request["schema"], request["agGridRequest"], options, countMode);
+      return { answer: JSON.stringify({ id, artifact: { accepted: true } }) };
+    }
+    if (countMode) throw new CompileError("Unsupported", "Count mode is not compiled by this driver yet.");
+    return { answer: JSON.stringify({ id, artifact: compile(request["schema"], request["agGridRequest"], options) }) };
   } catch (error) {
     if (error instanceof CompileError) {
-      return errorLine(id, error.kind, error.message);
+      return errorLine(id, error.kind, error.message, kind === "rejection" ? error : undefined);
     }
     return errorLine(id, error instanceof Error ? error.name : "Error", error instanceof Error ? error.message : String(error));
   }
