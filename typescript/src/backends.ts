@@ -2,6 +2,7 @@ import type { ParseOptions } from "./agrid/request.js";
 import { compile } from "./compile.js";
 import { doc, type Value } from "./doc/ordered.js";
 import { compileMongo } from "./mongo/compile.js";
+import { compileSearch } from "./search/compile.js";
 import type { Artifact } from "./sql/builder.js";
 import { DIALECTS } from "./sql/dialects.js";
 
@@ -21,4 +22,5 @@ function sqlArtifact(artifact: Artifact): Value {
 export const BACKENDS: ReadonlyMap<string, Backend> = new Map<string, Backend>([
   ...[...DIALECTS].map(([name, dialect]): [string, Backend] => [name, (schemaValue, requestValue, options, countMode) => sqlArtifact(compile(schemaValue, requestValue, options, countMode, dialect))]),
   ["mongo", compileMongo],
+  ["search", compileSearch],
 ]);

@@ -62,6 +62,7 @@ export interface PreparedSetValues {
   readonly colId: string;
   readonly filter?: import("./ir.js").FilterNodeIr;
   readonly rowLimit: number;
+  readonly searchPrefix?: string;
 }
 
 /** A set-values request (BM-3) through the same stages, or undefined when the request is a row request. */
@@ -70,5 +71,5 @@ export function prepareSetValues(schemaValue: unknown, requestValue: unknown, op
   const schema = parseSchema(schemaValue);
   const parsed = parseSetValues(requestValue, schema, options);
   const { filter, rowLimit } = processSetValues(parsed, schema);
-  return { schema, colId: parsed.setValues.colId, ...(filter === undefined ? {} : { filter }), rowLimit };
+  return { schema, colId: parsed.setValues.colId, ...(filter === undefined ? {} : { filter }), ...(parsed.setValues.searchPrefix === undefined ? {} : { searchPrefix: parsed.setValues.searchPrefix }), rowLimit };
 }
