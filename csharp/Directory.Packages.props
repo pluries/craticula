@@ -50,7 +50,7 @@
     <PackageVersion Include="Testcontainers.OpenSearch" Version="4.16.0" />
     <PackageVersion Include="Testcontainers.Elasticsearch" Version="4.16.0" />
     <PackageVersion Include="Npgsql" Version="10.0.3" />
-    <PackageVersion Include="MySqlConnector" Version="2.6.2" />
+    <PackageVersion Include="MySqlConnector" Version="3.0.0" />
     <PackageVersion Include="Microsoft.Data.SqlClient" Version="7.1.0" />
     <!-- #2882 (story #2880, OQ-6): Oracle joins the execution-equality tier, approved in docs/compliance/tech-stack.approved.md on
          2026-10-22 and used by Craticula.Integration.Tests only (AR-3), never by a package under csharp/src/.
