@@ -188,13 +188,13 @@ function groupedTarget(sortField: string, plan: GroupingPlan & { groupColumn: st
 function orderBy(request: BuildRequest, plan: GroupingPlan | undefined, context: Context): string {
   const items = (request.sort ?? []).map((item) => ({ field: item.field, direction: item.direction, nulls: item.nullsPosition }));
   const groupColumn = plan?.groupColumn;
-  const grouped = plan !== undefined && groupColumn !== undefined ? { ...plan, groupColumn } : undefined;
-  const keys = grouped === undefined ? effectiveSort(items, request.schema) : groupedSort(items, grouped.groupColumn, grouped.aggregations.map(columnId));
+  const level = plan !== undefined && groupColumn !== undefined ? { ...plan, groupColumn } : undefined;
+  const keys = level === undefined ? effectiveSort(items, request.schema) : groupedSort(items, level.groupColumn, level.aggregations.map(columnId));
   const ordered = new Set<string>();
   return keys
     .map((key) => {
-      const { column, field } = grouped === undefined ? { column: columnOf(key.field, context), field: fieldOf(key.field, context) } : groupedTarget(key.field, grouped, context);
-      let mode = orderingCaseSensitivity(field, grouped !== undefined, key.appended);
+      const { column, field } = level === undefined ? { column: columnOf(key.field, context), field: fieldOf(key.field, context) } : groupedTarget(key.field, level, context);
+      let mode = orderingCaseSensitivity(field, level !== undefined, key.appended);
       // SEM-6: a tiebreaker on a text column the sort already orders by folds nothing, whatever the request's own key did.
       const alreadyOrdered = ordered.has(column);
       ordered.add(column);

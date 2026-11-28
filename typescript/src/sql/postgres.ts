@@ -34,10 +34,10 @@ export const postgres: Dialect = {
   },
 
   substring(column, anchor, negated, value, mode, sink): string {
-    const op = `${negated ? "NOT " : ""}${mode === "insensitive" ? "ILIKE" : "LIKE"}`;
+    const operator = `${negated ? "NOT " : ""}${mode === "insensitive" ? "ILIKE" : "LIKE"}`;
     const placeholder = sink.bind(escapePattern(value, PATTERN_ESCAPE));
     const pattern = anchor === "anywhere" ? `'%' || ${placeholder} || '%'` : anchor === "start" ? `${placeholder} || '%'` : `'%' || ${placeholder}`;
-    return `${column} ${op} ${pattern} ESCAPE '${PATTERN_ESCAPE}'`;
+    return `${column} ${operator} ${pattern} ESCAPE '${PATTERN_ESCAPE}'`;
   },
 
   /** SQL-4: one array parameter, so the number of placeholders never depends on the number of values. */

@@ -12,9 +12,14 @@ function escapeGlob(value: string): string {
   return escaped;
 }
 
-function around(anchor: Anchor, placeholder: string, wildcard: string, join: string): string {
-  if (anchor === "anywhere") return `'${wildcard}' ${join} ${placeholder} ${join} '${wildcard}'`;
-  return anchor === "start" ? `${placeholder} ${join} '${wildcard}'` : `'${wildcard}' ${join} ${placeholder}`;
+function likePattern(anchor: Anchor, placeholder: string): string {
+  if (anchor === "anywhere") return `'%' || ${placeholder} || '%'`;
+  return anchor === "start" ? `${placeholder} || '%'` : `'%' || ${placeholder}`;
+}
+
+function globPattern(anchor: Anchor, placeholder: string): string {
+  if (anchor === "anywhere") return `'*' || ${placeholder} || '*'`;
+  return anchor === "start" ? `${placeholder} || '*'` : `'*' || ${placeholder}`;
 }
 
 /** SQLite: quoted identifiers, positional `?`, NOCASE on the value for a comparison and on the column elsewhere, GLOB for a case-sensitive match. */
@@ -41,10 +46,10 @@ export const sqlite: Dialect = {
   substring(column, anchor, negated, value, mode, sink): string {
     if (mode !== "insensitive") {
       const placeholder = sink.bind(escapeGlob(value));
-      return `${column} ${negated ? "NOT GLOB" : "GLOB"} ${around(anchor, placeholder, "*", "||")}`;
+      return `${column} ${negated ? "NOT GLOB" : "GLOB"} ${globPattern(anchor, placeholder)}`;
     }
     const placeholder = sink.bind(escapePattern(value, PATTERN_ESCAPE));
-    return `${column} ${negated ? "NOT LIKE" : "LIKE"} ${around(anchor, placeholder, "%", "||")} ESCAPE '${PATTERN_ESCAPE}'`;
+    return `${column} ${negated ? "NOT LIKE" : "LIKE"} ${likePattern(anchor, placeholder)} ESCAPE '${PATTERN_ESCAPE}'`;
   },
 
   /** `x IN (...)` takes x's own collation, so it goes on the column here. */

@@ -1,0 +1,7 @@
+import { quoteIdentifier } from "./primitives.js";
+
+export function build(table: string, request: { schema: { source: string } }): string {
+  let sql = `SELECT * FROM ${quoteIdentifier(table)} `;
+  sql += request.schema.source;
+  return sql;
+}

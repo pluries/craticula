@@ -118,6 +118,13 @@ class ThreatModelTests(unittest.TestCase):
         for needle in ("identifier", "nesting", "error message"):
             self.assertIn(needle, " ".join(rows).lower())
 
+    @unittest.skipUnless((ROOT / "docs").is_dir(), PRIVATE)
+    def test_014_US1_AS2_the_threat_model_has_the_typescript_sql_compiler_rows(self):
+        rows = [line for line in self.MODEL.read_text(encoding="utf-8").splitlines() if "spec 014" in line and line.startswith("|")]
+        text = " ".join(rows).lower()
+        for needle in ("tampering", "denial of service", "information disclosure", "bound parameter", "quoteidentifier", "sec-2 lint"):
+            self.assertIn(needle, text)
+
 
 if __name__ == "__main__":
     unittest.main()

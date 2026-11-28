@@ -1,4 +1,4 @@
-import { parseIsoInstant } from "../agrid/dates.js";
+import { parseIsoInstant, utcMs } from "../agrid/dates.js";
 import { CompileError } from "../errors.js";
 import type { TypedValueIr } from "../ir.js";
 import { JsonNumber } from "../json.js";
@@ -19,14 +19,13 @@ function floorDiv(a: bigint, b: bigint): bigint {
 /** An ISO-8601 instant as UTC text: no fraction when it is whole seconds, else the fraction without trailing zeros (up to 100 ns); `fixedWidth` prints milliseconds. */
 export function normalizeInstant(value: string, fixedWidth: boolean, rounding: Rounding): string {
   const instant = parseIsoInstant(value);
-  if (instant === undefined || instant.fraction.length > 7) {
+  if (instant === undefined) {
     throw new CompileError("InvalidRequest", `The datetime value '${value.slice(0, 64)}' is not an ISO-8601 instant.`);
   }
-  const wall = new Date(0);
-  wall.setUTCFullYear(instant.year, instant.month - 1, instant.day);
-  wall.setUTCHours(instant.hour, instant.minute, instant.second, 0);
-  const seconds = BigInt(wall.getTime() / 1000 - instant.offsetMinutes * 60);
-  let ticks = seconds * TICKS_PER_SECOND + BigInt(instant.fraction.padEnd(7, "0"));
+  const seconds = BigInt(utcMs(instant.year, instant.month - 1, instant.day, instant.hour, instant.minute, instant.second) / 1000 - instant.offsetMinutes * 60);
+  // .NET reads up to 7 fraction digits as ticks and rounds a longer fraction half up, which can carry into the next second.
+  const roundUp = instant.fraction.length > 7 && Number(instant.fraction.charAt(7)) >= 5 ? 1n : 0n;
+  let ticks = seconds * TICKS_PER_SECOND + BigInt(instant.fraction.slice(0, 7).padEnd(7, "0")) + roundUp;
 
   const subMillisecond = ((ticks % TICKS_PER_MILLISECOND) + TICKS_PER_MILLISECOND) % TICKS_PER_MILLISECOND;
   if (fixedWidth && rounding !== "none" && subMillisecond !== 0n) {
@@ -35,6 +34,7 @@ export function normalizeInstant(value: string, fixedWidth: boolean, rounding: R
   }
 
   const wholeSeconds = floorDiv(ticks, TICKS_PER_SECOND);
+  if (wholeSeconds >= BigInt(utcMs(10_000, 0) / 1000)) throw new CompileError("InvalidRequest", `The datetime value '${value.slice(0, 64)}' rounds past the last representable instant.`);
   const fractionTicks = ticks - wholeSeconds * TICKS_PER_SECOND;
   const stamp = new Date(Number(wholeSeconds) * 1000).toISOString().slice(0, 19);
   if (fixedWidth && fractionTicks % TICKS_PER_MILLISECOND === 0n) {

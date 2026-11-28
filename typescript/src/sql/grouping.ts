@@ -36,6 +36,7 @@ export function resolveGrouping(group: GroupSpecIr | undefined, aggregations: re
       throw new CompileError(
         "InvalidRequest",
         `aggregations[${colliding.join(", ")}] resolve to the output name '${groupColumn}', which collides with this grouped level's own group column (GRP-3 projects it under that name). Give the valueCol an id (alias) that differs from it.`,
+        { rejectedAt: "requestParsing", reason: "duplicate-output-name" },
       );
     }
   }

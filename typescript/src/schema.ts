@@ -1,3 +1,4 @@
+import { readFilterNode } from "./agrid/filter-node.js";
 import { CompileError } from "./errors.js";
 
 const FIELD_TYPES = ["string", "int64", "decimal", "double", "boolean", "date", "datetime"] as const;
@@ -41,6 +42,16 @@ type Obj = Record<string, unknown>;
 
 function isRecord(value: unknown): value is Obj {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** SC-5: a malformed static filter is a mistake of the host's schema, found when the schema is read, before any request is looked at. */
+function checkStaticFilter(filter: unknown): void {
+  try {
+    readFilterNode(filter);
+  } catch (error) {
+    if (error instanceof CompileError) throw invalid(`The schema's staticFilter is not a valid filter node: ${error.message}`);
+    throw error;
+  }
 }
 
 function invalid(message: string): CompileError {
@@ -181,6 +192,7 @@ export function parseSchema(value: unknown): GridSchema {
   }
   if (!fields.has(stableKey)) throw invalid(`The stableKey '${stableKey}' is not a declared field.`);
 
+  if (value["staticFilter"] !== undefined) checkStaticFilter(value["staticFilter"]);
   return { mode, source, stableKey, fields, ...(value["staticFilter"] === undefined ? {} : { staticFilter: value["staticFilter"] }) };
 }
 

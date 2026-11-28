@@ -13,6 +13,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
 const ZONE = /^[A-Za-z0-9_+-]+(\/[A-Za-z0-9_+-]+)*$/;
 const DECIMAL = /^-?\d+(\.\d+)?$/;
+const INT64_MIN = -(2n ** 63n);
+const INT64_MAX = 2n ** 63n - 1n;
 
 function exactly(source: Obj, allowed: readonly string[], where: string): void {
   for (const key of Object.keys(source)) {
@@ -39,12 +41,14 @@ export function readTypedValue(value: unknown, where: string): TypedValueIr {
       exactly(value, ["type", "value"], where);
       const text = numberText(raw);
       if (text === undefined || !/^-?\d+$/.test(text)) throw malformed(`${where}: an int64 value must be a whole number.`);
+      const big = BigInt(text);
+      if (big < INT64_MIN || big > INT64_MAX) throw malformed(`${where}: an int64 value must fit 64 bits.`);
       const parsed = Number(text);
       return { type, value: Number.isSafeInteger(parsed) ? parsed : text };
     }
     case "decimal":
       exactly(value, ["type", "value"], where);
-      if (typeof raw !== "string" || !DECIMAL.test(raw)) throw malformed(`${where}: a decimal value must be text such as "19.99".`);
+      if (typeof raw !== "string" || raw.length > 128 || !DECIMAL.test(raw)) throw malformed(`${where}: a decimal value must be text such as "19.99", at most 128 characters.`);
       return { type, value: raw };
     case "double": {
       exactly(value, ["type", "value"], where);

@@ -1,0 +1,6 @@
+import { quoteIdentifier } from "./primitives.js";
+
+export function build(table: string, column: string): string {
+  const from = quoteIdentifier(table);
+  return "SELECT " + column + " FROM " + from;
+}

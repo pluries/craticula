@@ -4,6 +4,8 @@ import { isRecord } from "./agrid/values.js";
 import { CompileError } from "./errors.js";
 import type { Ir } from "./ir.js";
 import { processRow, processSetValues } from "./pipeline.js";
+import { build, buildCount, buildSetValues } from "./sql/builder.js";
+import { postgres } from "./sql/postgres.js";
 import { checkColumns, parseSchema, type GridSchema } from "./schema.js";
 
 export interface PreparedRow {
@@ -35,23 +37,26 @@ function requireDeclaredSortColumns(schema: GridSchema, requestValue: unknown): 
 export function prepareRow(schemaValue: unknown, requestValue: unknown, options: ParseOptions = {}, countMode = false): PreparedRow {
   const schema = parseSchema(schemaValue);
   const parsed = parseRequest(requestValue, schema, options);
-  if (!countMode) checkColumns(schema, (parsed.ir.sort ?? []).map((item) => item.field), "sort");
+  // A grouped level sorts by its group column or an aggregate's id (GRP-4): the builder resolves those, so the schema check is for flat requests.
+  if (!countMode && parsed.ir.group === undefined) checkColumns(schema, (parsed.ir.sort ?? []).map((item) => item.field), "sort");
   const staged: Ir = countMode ? { ...parsed.ir, page: { mode: "none" } } : parsed.ir;
   const ir = processRow(staged, schema);
   return parsed.export === undefined ? { schema, ir } : { schema, ir, export: parsed.export };
 }
 
-/** The same stages for any request, row or set-values, answering nothing: it either returns or throws the refusal. */
+/** The same stages for any request, row or set-values, then the PostgreSQL builder as the C# driver does: it either returns or throws the refusal. */
 export function checkRequest(schemaValue: unknown, requestValue: unknown, options: ParseOptions = {}, countMode = false): void {
   if (isRecord(requestValue) && requestValue["setValuesRequest"] !== undefined) {
-    const schema = parseSchema(schemaValue);
-    processSetValues(parseSetValues(requestValue, schema, options), schema);
+    const prepared = prepareSetValues(schemaValue, requestValue, options);
+    if (prepared !== undefined) buildSetValues({ schema: prepared.schema, colId: prepared.colId, filter: prepared.filter, rowLimit: prepared.rowLimit }, postgres);
     return;
   }
   requireDeclaredSortColumns(parseSchema(schemaValue), requestValue);
-  prepareRow(schemaValue, requestValue, options, countMode);
+  const { schema, ir, export: exportSpec } = prepareRow(schemaValue, requestValue, options, countMode);
+  const request = { schema, filter: ir.filter, sort: ir.sort, page: ir.page, projection: exportSpec?.columns, group: ir.group, aggregations: ir.aggregations };
+  if (countMode) buildCount(request, postgres);
+  else build(request, postgres);
 }
-
 export interface PreparedSetValues {
   readonly schema: GridSchema;
   readonly colId: string;

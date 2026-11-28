@@ -8,6 +8,14 @@ const ZONE_SHAPE = /^[A-Za-z0-9_+-]+(\/[A-Za-z0-9_+-]+)*$/;
 /** tzdata files that load as zones but name whatever zone the server happens to be configured with. */
 const NON_ZONES = new Set(["localtime", "factory", "posixrules"]);
 const DAY = 86_400_000;
+
+/** Date.UTC with the year read literally: `Date.UTC` maps the years 0 to 99 to 1900 to 1999. The month is zero-based, as in Date.UTC. */
+export function utcMs(year: number, monthIndex: number, day = 1, hour = 0, minute = 0, second = 0): number {
+  const d = new Date(0);
+  d.setUTCFullYear(year, monthIndex, day);
+  d.setUTCHours(hour, minute, second, 0);
+  return d.getTime();
+}
 const WIRE_DATE = /^(\d{4})-(\d{2})-(\d{2})(?: (\d{2}):(\d{2}):(\d{2}))?$/;
 const INSTANT = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})$/;
 
@@ -61,7 +69,7 @@ function wallOf(zone: string, instantMs: number): Wall {
 /** The zone's UTC offset at an instant, in milliseconds. */
 function offsetMs(zone: string, instantMs: number): number {
   const w = wallOf(zone, instantMs);
-  return Date.UTC(w.year, w.month - 1, w.day, w.hour, w.minute, w.second) - Math.floor(instantMs / 1000) * 1000;
+  return utcMs(w.year, w.month - 1, w.day, w.hour, w.minute, w.second) - Math.floor(instantMs / 1000) * 1000;
 }
 
 export function validCalendar(year: number, month: number, day: number): boolean {
@@ -107,6 +115,8 @@ export function parseIsoInstant(raw: string): IsoInstant | undefined {
     if (hours > 14 || minutes > 59 || (hours === 14 && minutes !== 0)) return undefined;
     offsetMinutes = (zone.startsWith("-") ? -1 : 1) * (hours * 60 + minutes);
   }
+  const utc = utcMs(year, month - 1, day, hour, minute, second) - offsetMinutes * 60_000;
+  if (utc < utcMs(1, 0) || utc >= utcMs(10_000, 0)) return undefined;
   return { year, month, day, hour, minute, second, fraction, offsetMinutes };
 }
 
@@ -121,7 +131,7 @@ export function localDateTimeToInstant(wallClock: string, zone: string): string 
   if (parsed?.time === undefined) throw malformed(`'${wallClock}' is not a date and time.`);
   const [y, mo, d] = parsed.date.split("-").map(Number) as [number, number, number];
   const [h, mi, s] = parsed.time.split(":").map(Number) as [number, number, number];
-  const wall = Date.UTC(y, mo - 1, d, h, mi, s);
+  const wall = utcMs(y, mo - 1, d, h, mi, s);
   const candidates = [...new Set([offsetMs(zone, wall - DAY), offsetMs(zone, wall + DAY)])];
   const valid = candidates.filter((offset) => offsetMs(zone, wall - offset) === offset);
   const chosen = valid.length > 0 ? Math.max(...valid) : Math.min(...candidates);
@@ -137,13 +147,13 @@ function addMonths(ms: number, months: number): number {
   const index = d.getUTCMonth() + months;
   const year = d.getUTCFullYear() + Math.floor(index / 12);
   const month = ((index % 12) + 12) % 12;
-  const last = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-  return Date.UTC(year, month, Math.min(d.getUTCDate(), last));
+  const last = new Date(utcMs(year, month + 1, 0)).getUTCDate();
+  return utcMs(year, month, Math.min(d.getUTCDate(), last));
 }
 
 function localToday(zone: string, now: Date): number {
   const w = wallOf(zone, now.getTime());
-  return Date.UTC(w.year, w.month - 1, w.day);
+  return utcMs(w.year, w.month - 1, w.day);
 }
 
 /** The half-open civil range `[from, to)` a preset names, in the zone's calendar; undefined when `name` is not a preset. */
@@ -154,9 +164,9 @@ export function resolvePreset(name: string, now: Date, zone: string, firstDayOfW
   const dow = new Date(today).getUTCDay();
   const week = today - ((dow - firstDayOfWeek + 7) % 7) * DAY;
   const t = new Date(today);
-  const month = Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), 1);
-  const quarter = Date.UTC(t.getUTCFullYear(), Math.floor(t.getUTCMonth() / 3) * 3, 1);
-  const year = Date.UTC(t.getUTCFullYear(), 0, 1);
+  const month = utcMs(t.getUTCFullYear(), t.getUTCMonth(), 1);
+  const quarter = utcMs(t.getUTCFullYear(), Math.floor(t.getUTCMonth() / 3) * 3, 1);
+  const year = utcMs(t.getUTCFullYear(), 0, 1);
   const range = ((): [number, number] => {
     switch (name) {
       case "today": return [today, tomorrow];
