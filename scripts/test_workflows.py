@@ -389,6 +389,9 @@ class TypescriptJobTests(unittest.TestCase):
         self.assertRegex(job, r"(?m)^        working-directory: typescript$")
         self.assertIn('python3 conformance/run.py --driver "node typescript/dist/src/driver.js" --only "sort-paging/*#postgres"', job)
 
+    def test_US4_AS2_it_also_runs_the_33_shared_rejection_cases_through_the_runner(self):
+        self.assertIn('python3 conformance/run.py --driver "node typescript/dist/src/driver.js" --only "*#rejection"', self.job())
+
     def test_US4_AS2_it_runs_on_the_minimum_node_and_the_newest_lts_with_pinned_actions_and_no_secret(self):
         job = self.job()
         self.assertRegex(job, r"(?m)^        node: \['22', '24'\]$")

@@ -158,3 +158,6 @@ jobs:
 
       - name: Conformance runner against the driver (sort-paging, PostgreSQL)
         run: python3 conformance/run.py --driver "node typescript/dist/src/driver.js" --only "sort-paging/*#postgres"
+
+      - name: Conformance runner against the driver (the 33 shared rejections)
+        run: python3 conformance/run.py --driver "node typescript/dist/src/driver.js" --only "*#rejection"
