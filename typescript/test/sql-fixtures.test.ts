@@ -31,7 +31,7 @@ interface Case {
 }
 
 /** The dialects in the order the driver declares them. */
-const DIALECTS = ["postgres", "mssql", "mysql", "oracle", "sqlite", "mongo"] as const;
+const DIALECTS = ["postgres", "mssql", "mysql", "oracle", "sqlite", "mongo", "search"] as const;
 
 /** Every fixture that carries an artifact for the dialect: filters, sorting and paging, grouping, aggregation, count mode, set values, export. */
 function casesFor(dialect: string): Case[] {
@@ -47,7 +47,7 @@ function casesFor(dialect: string): Case[] {
   return found;
 }
 
-const COUNTS: Readonly<Record<string, number>> = { postgres: 246, mssql: 61, mysql: 57, oracle: 55, sqlite: 57, mongo: 232 };
+const COUNTS: Readonly<Record<string, number>> = { postgres: 246, mssql: 61, mysql: 57, oracle: 55, sqlite: 57, mongo: 232, search: 231 };
 
 for (const dialect of DIALECTS) {
   describe(`US1-AS1, US2-AS1: the ${dialect} artifact of every fixture that carries one (a document backend is compared whole, key order included)`, () => {
