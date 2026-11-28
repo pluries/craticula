@@ -63,7 +63,12 @@ function usableFixtures(root: string): string[] {
     for (const fixture of readdirSync(`${root}${category.name}`, { withFileTypes: true })) {
       if (!fixture.isDirectory()) continue;
       const dir = `${root}${category.name}/${fixture.name}/`;
-      const req = load(`${dir}agGridRequest.json`) as Record<string, unknown>;
+      let req: Record<string, unknown>;
+      try {
+        req = load(`${dir}agGridRequest.json`) as Record<string, unknown>;
+      } catch {
+        continue; // a request the strict reader refuses (adversarial/021's duplicate keys) is a rejection case, not an acceptance case
+      }
       const sortIds = ((req["sortModel"] as { colId: string }[] | null | undefined) ?? []).map((s) => s.colId);
       const plain =
         ["filterModel", "customFilters", "rowGroupCols", "valueCols", "pivotCols", "groupKeys", "setValuesRequest", "exportColumns", "requestContext"].every((m) => isEmpty(req[m])) &&
