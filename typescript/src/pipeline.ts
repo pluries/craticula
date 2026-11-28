@@ -4,6 +4,7 @@ import { isIsoInstant, validCalendar } from "./agrid/dates.js";
 import type { ParsedSetValues } from "./agrid/request.js";
 import type { AggregationIr, ComparisonIr, FilterNodeIr, GroupSpecIr, Ir, PageIr, TypedValueIr } from "./ir.js";
 import { DEFAULT_LIMITS, type Limits } from "./limits.js";
+import { drillDownOf } from "./sql/grouping.js";
 import { injectStaticFilter } from "./static-filter.js";
 import type { Field, GridSchema } from "./schema.js";
 
@@ -83,12 +84,6 @@ function allowlistFilter(filter: Node | undefined, schema: GridSchema): Node | u
     if (error !== undefined) throw error;
   }
   return strip(filter, stripped);
-}
-
-function drillDownOf(group: GroupSpecIr | undefined): Node | undefined {
-  const predicates: Node[] = (group?.groupKeys ?? []).map((value, i) => ({ type: "comparison", field: group!.groupCols[i]!, op: "eq", value }));
-  if (predicates.length === 0) return undefined;
-  return predicates.length === 1 ? predicates[0] : { type: "and", nodes: predicates };
 }
 
 function both(a: Node | undefined, b: Node | undefined): Node | undefined {

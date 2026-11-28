@@ -5,7 +5,7 @@ import { parseRequest, parseSetValues } from "../src/agrid/request.js";
 import { CompileError } from "../src/errors.js";
 import { processRow } from "../src/pipeline.js";
 import { parseSchema } from "../src/schema.js";
-import { prepareRow } from "../src/stages.js";
+import { checkRequest } from "../src/stages.js";
 
 // Feature 013, review round (autopilot): behaviours where the first port diverged from the C# reference.
 const base = {
@@ -39,13 +39,13 @@ function pairOf(action: () => unknown): [string | undefined, string | undefined]
 
 const parse = (extra: Record<string, unknown>) => parseRequest({ startRow: 0, endRow: 10, ...extra }, strict, {});
 
-describe("the sort allowlist reads the raw request, in every mode", () => {
+describe("the sort allowlist of a rejection request reads the raw request, in every mode", () => {
   const sortModel = [{ colId: "ghost", sort: "asc" }];
 
   it("refuses an undeclared sort column in a lenient schema and in count mode, and before the window is checked", () => {
     const lenient = { mode: "lenient", ...base };
     for (const [request, countMode] of [[{ startRow: 0, endRow: 10, sortModel }, false], [{ startRow: 0, endRow: 10, sortModel }, true], [{ startRow: 10, endRow: 5, sortModel }, false]] as const) {
-      assert.deepEqual(pairOf(() => prepareRow(lenient, request, {}, countMode)), ["allowlist", "unknown-field"], JSON.stringify(request));
+      assert.deepEqual(pairOf(() => checkRequest(lenient, request, {}, countMode)), ["allowlist", "unknown-field"], JSON.stringify(request));
     }
   });
 });

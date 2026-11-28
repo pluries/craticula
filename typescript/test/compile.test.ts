@@ -99,11 +99,11 @@ describe("US2-AS3: what the skeleton does not support is refused, not guessed", 
     assert.equal(artifact.params[0], "x");
   });
 
-  it("refuses grouping", () => {
+  it("compiles grouping now (feature 014): the group column and its drill-down are projected and bound", () => {
     const declared = schema as { fields: Record<string, Record<string, unknown>> };
     const groupable = { ...declared, fields: { ...declared.fields, lastName: { ...declared.fields["lastName"], groupable: true } } };
     const grouped = { ...request, rowGroupCols: [{ id: "lastName", displayName: "Last name", field: "lastName" }] };
-    assert.throws(() => compile(groupable, grouped), (error: unknown) => error instanceof CompileError && error.kind === "Unsupported");
+    assert.match(compile(groupable, grouped).sql, /^SELECT "last_name" AS "lastName" FROM "employees" GROUP BY "last_name"/);
   });
 
   it("refuses a request that is not an object", () => {

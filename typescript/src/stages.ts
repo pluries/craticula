@@ -13,8 +13,9 @@ export interface PreparedRow {
 }
 
 /**
- * The host's allowlist over every sort colId (`conformance-runner.md` §3), read from the raw request before it is parsed: an
- * undeclared column is refused in every schema mode and in count mode, and an auto group column is not a schema field.
+ * The host's allowlist over every sort colId (`conformance-runner.md` §3) for a rejection request, read from the raw request before it
+ * is parsed: an undeclared column is refused in every schema mode and in count mode, and an auto group column is not a schema field.
+ * A compile request is not held to it: count mode ignores the sort (`count-mode/011`).
  */
 function requireDeclaredSortColumns(schema: GridSchema, requestValue: unknown): void {
   const sortModel = isRecord(requestValue) ? requestValue["sortModel"] : undefined;
@@ -33,7 +34,6 @@ function requireDeclaredSortColumns(schema: GridSchema, requestValue: unknown): 
  */
 export function prepareRow(schemaValue: unknown, requestValue: unknown, options: ParseOptions = {}, countMode = false): PreparedRow {
   const schema = parseSchema(schemaValue);
-  requireDeclaredSortColumns(schema, requestValue);
   const parsed = parseRequest(requestValue, schema, options);
   if (!countMode) checkColumns(schema, (parsed.ir.sort ?? []).map((item) => item.field), "sort");
   const staged: Ir = countMode ? { ...parsed.ir, page: { mode: "none" } } : parsed.ir;
@@ -48,5 +48,22 @@ export function checkRequest(schemaValue: unknown, requestValue: unknown, option
     processSetValues(parseSetValues(requestValue, schema, options), schema);
     return;
   }
+  requireDeclaredSortColumns(parseSchema(schemaValue), requestValue);
   prepareRow(schemaValue, requestValue, options, countMode);
+}
+
+export interface PreparedSetValues {
+  readonly schema: GridSchema;
+  readonly colId: string;
+  readonly filter?: import("./ir.js").FilterNodeIr;
+  readonly rowLimit: number;
+}
+
+/** A set-values request (BM-3) through the same stages, or undefined when the request is a row request. */
+export function prepareSetValues(schemaValue: unknown, requestValue: unknown, options: ParseOptions = {}): PreparedSetValues | undefined {
+  if (!isRecord(requestValue) || requestValue["setValuesRequest"] === undefined) return undefined;
+  const schema = parseSchema(schemaValue);
+  const parsed = parseSetValues(requestValue, schema, options);
+  const { filter, rowLimit } = processSetValues(parsed, schema);
+  return { schema, colId: parsed.setValues.colId, ...(filter === undefined ? {} : { filter }), rowLimit };
 }

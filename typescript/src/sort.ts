@@ -47,3 +47,25 @@ export function effectiveSort(items: readonly SortItem[], schema: GridSchema): S
   }
   return [...kept, { field: schema.stableKey, direction: "asc", nulls: "last", appended: true }];
 }
+
+/**
+ * GRP-4: the effective sort of a grouped level. The keys can name only the group column or an aggregate, and the group column is
+ * the stable key: a sort that names only those stops at the group column and otherwise gets it appended as the tiebreaker.
+ */
+export function groupedSort(items: readonly SortItem[], groupColumn: string, aggregateColumnIds: readonly string[]): SortKey[] {
+  const stop = items.every((item) => item.field === groupColumn || aggregateColumnIds.includes(item.field));
+  const seen = new Set<string>();
+  const kept: SortKey[] = [];
+  let reached = false;
+  for (const item of items) {
+    if (seen.has(item.field)) continue;
+    seen.add(item.field);
+    kept.push({ ...item, appended: false });
+    if (stop && item.field === groupColumn) {
+      reached = true;
+      break;
+    }
+  }
+  const total = stop ? reached : kept.at(-1)?.field === groupColumn;
+  return total ? kept : [...kept, { field: groupColumn, direction: "asc", nulls: "last", appended: true }];
+}

@@ -150,8 +150,7 @@ export function answerFor(line: string): Outcome {
       checkRequest(request["schema"], request["agGridRequest"], options, countMode);
       return { answer: JSON.stringify({ id, artifact: { accepted: true } }) };
     }
-    if (countMode) throw new CompileError("Unsupported", "Count mode is not compiled by this driver yet.");
-    return { answer: stringify({ id, artifact: compile(request["schema"], request["agGridRequest"], options) }) };
+    return { answer: stringify({ id, artifact: compile(request["schema"], request["agGridRequest"], options, countMode) }) };
   } catch (error) {
     if (error instanceof CompileError) {
       return errorLine(id, error.kind, error.message, kind === "rejection" ? error : undefined);
