@@ -18,7 +18,7 @@ function kindOf(action: () => unknown): string | undefined {
 describe("the strict JSON reader", () => {
   it("reads ordinary documents", () => {
     const value = readJson('{"a":[1,2,{"b":"x"}],"c":null,"d":true}') as Record<string, unknown>;
-    assert.deepEqual(value["a"], [1, 2, { b: "x" }]);
+    assert.equal(JSON.stringify(value["a"]), '[1,2,{"b":"x"}]');
     assert.equal(value["c"], null);
     assert.equal(value["d"], true);
   });

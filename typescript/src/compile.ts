@@ -1,6 +1,6 @@
 import { CompileError } from "./errors.js";
 import { ParameterBag, quoteIdentifier, renderPaging, renderSortKey } from "./postgres.js";
-import { parseSchema, type GridSchema } from "./schema.js";
+import { checkColumns, parseSchema, type Field, type GridSchema } from "./schema.js";
 import { defaultNulls, effectiveSort, type SortItem } from "./sort.js";
 
 export interface Artifact {
@@ -60,10 +60,7 @@ function readSort(request: Record<string, unknown>, schema: GridSchema): SortIte
       throw new CompileError("InvalidRequest", "A sortModel entry's sort must be 'asc' or 'desc'.");
     }
     const colId = entry["colId"];
-    const field = schema.fields.get(colId);
-    if (!field?.sortable) {
-      throw new CompileError("UnknownField", `The sort column '${colId}' is not a declared, sortable field of the schema.`);
-    }
+    checkColumns(schema, [colId], "sort");
     return { field: colId, direction, nulls: defaultNulls(direction) };
   });
 }
@@ -84,11 +81,23 @@ function readWindow(request: Record<string, unknown>): { limit: number; offset: 
   return { limit, offset: start };
 }
 
+/** The plain SQL column of a field: the only mapping this skeleton compiles. */
+function columnOf(colId: string, field: Field): string {
+  if (field.sql === undefined) {
+    throw new CompileError("Unsupported", `Field '${colId}' has no SQL mapping.`);
+  }
+  if (field.sql.kind !== "column") {
+    throw new CompileError("Unsupported", `Field '${colId}' maps to a qualified column or an expression; this driver reads plain columns only.`);
+  }
+  return field.sql.text;
+}
+
 /** EXP-1(b), the default projection: the exportable fields in schema order, aliased to their colId where the column differs. */
 function exportProjection(schema: GridSchema): string {
   const columns = [...schema.fields].filter(([, field]) => field.exportable).map(([colId, field]) => {
-    const column = quoteIdentifier(field.column);
-    return field.column === colId ? column : `${column} AS ${quoteIdentifier(colId)}`;
+    const physical = columnOf(colId, field);
+    const column = quoteIdentifier(physical);
+    return physical === colId ? column : `${column} AS ${quoteIdentifier(colId)}`;
   });
   if (columns.length === 0) {
     throw new CompileError("InvalidSchema", "The schema declares no exportable field.");
@@ -116,7 +125,7 @@ export function compile(schemaValue: unknown, requestValue: unknown): Artifact {
   const sort = effectiveSort(readSort(requestValue, schema), schema).map((key) => {
     const field = schema.fields.get(key.field)!;
     const insensitive = !key.appended && field.type === "string" && !field.caseSensitive;
-    return renderSortKey(quoteIdentifier(field.column), key.direction, key.nulls, insensitive);
+    return renderSortKey(quoteIdentifier(columnOf(key.field, field)), key.direction, key.nulls, insensitive);
   });
 
   const parameters = new ParameterBag();
