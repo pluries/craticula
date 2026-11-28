@@ -29,7 +29,7 @@ export function numberText(value: unknown): string | undefined {
 /** A whole number from a JsonNumber or a native number, or undefined. */
 export function wholeNumber(value: unknown): number | undefined {
   const text = numberText(value);
-  if (text === undefined || !/^-?[0-9]+$/.test(text)) return undefined;
+  if (text === undefined || !/^-?\d+$/.test(text)) return undefined;
   const parsed = Number(text);
   return Number.isSafeInteger(parsed) ? parsed : undefined;
 }

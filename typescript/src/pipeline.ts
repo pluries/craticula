@@ -129,8 +129,8 @@ function checkLimits(filter: Node | undefined, page: PageIr, limits: Limits): vo
 
 const INT64_MIN = -(2n ** 63n);
 const INT64_MAX = 2n ** 63n - 1n;
-const DECIMAL = /^-?[0-9]+(\.[0-9]+)?$/;
-const DATE = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/;
+const DECIMAL = /^-?\d+(\.\d+)?$/;
+const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 function uncoercible(field: string, type: string, value: TypedValueIr): CompileError {
   const shown = "value" in value ? String(value.value).slice(0, 64) : "null";
@@ -153,7 +153,7 @@ function parseText(raw: string, type: Field["type"]): TypedValueIr | undefined {
   const text = trimOf(raw, type === "boolean" ? BOOLEAN_SPACE : NUMBER_SPACE);
   switch (type) {
     case "int64": {
-      if (!/^[+-]?[0-9]+$/.test(text)) return undefined;
+      if (!/^[+-]?\d+$/.test(text)) return undefined;
       const big = BigInt(text);
       if (big < INT64_MIN || big > INT64_MAX) return undefined;
       return { type: "int64", value: Number.isSafeInteger(Number(big)) ? Number(big) : big.toString() };

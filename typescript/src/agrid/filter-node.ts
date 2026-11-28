@@ -9,10 +9,10 @@ import { isRecord, malformed, numberText, type Obj } from "./values.js";
 const UNARY = ["blank", "notBlank", "true", "false"];
 const BINARY = ["eq", "neq", "gt", "gte", "lt", "lte", "contains", "notContains", "startsWith", "endsWith"];
 const SET = ["in", "notIn"];
-const DATE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
-const DATETIME = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$/;
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
 const ZONE = /^[A-Za-z0-9_+-]+(\/[A-Za-z0-9_+-]+)*$/;
-const DECIMAL = /^-?[0-9]+(\.[0-9]+)?$/;
+const DECIMAL = /^-?\d+(\.\d+)?$/;
 
 function exactly(source: Obj, allowed: readonly string[], where: string): void {
   for (const key of Object.keys(source)) {
@@ -38,7 +38,7 @@ export function readTypedValue(value: unknown, where: string): TypedValueIr {
     case "int64": {
       exactly(value, ["type", "value"], where);
       const text = numberText(raw);
-      if (text === undefined || !/^-?[0-9]+$/.test(text)) throw malformed(`${where}: an int64 value must be a whole number.`);
+      if (text === undefined || !/^-?\d+$/.test(text)) throw malformed(`${where}: an int64 value must be a whole number.`);
       return { type, value: Number(text) };
     }
     case "decimal":

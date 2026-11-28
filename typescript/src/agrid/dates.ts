@@ -8,8 +8,8 @@ const ZONE_SHAPE = /^[A-Za-z0-9_+-]+(\/[A-Za-z0-9_+-]+)*$/;
 /** tzdata files that load as zones but name whatever zone the server happens to be configured with. */
 const NON_ZONES = new Set(["localtime", "factory", "posixrules"]);
 const DAY = 86_400_000;
-const WIRE_DATE = /^([0-9]{4})-([0-9]{2})-([0-9]{2})(?: ([0-9]{2}):([0-9]{2}):([0-9]{2}))?$/;
-const INSTANT = /^([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})(?:\.[0-9]+)?(Z|[+-]([0-9]{2}):([0-9]{2}))$/;
+const WIRE_DATE = /^(\d{4})-(\d{2})-(\d{2})(?: (\d{2}):(\d{2}):(\d{2}))?$/;
+const INSTANT = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
 
 export const PRESET_NAMES: readonly string[] = [
   "today", "yesterday", "tomorrow", "thisWeek", "lastWeek", "nextWeek", "thisMonth", "lastMonth", "nextMonth", "thisQuarter", "lastQuarter",
@@ -84,12 +84,12 @@ export function parseWireDate(raw: string): { date: string; time: string | undef
 export function isIsoInstant(raw: string): boolean {
   const match = INSTANT.exec(raw);
   if (match === null) return false;
-  const [, y, mo, d, h, mi, s, zone, oh, om] = match;
+  const [, y, mo, d, h, mi, s, zone = ""] = match;
   if (!validCalendar(Number(y), Number(mo), Number(d))) return false;
   if (Number(h) > 23 || Number(mi) > 59 || Number(s) > 59) return false;
   if (zone !== "Z") {
-    const hours = Number(oh);
-    const minutes = Number(om);
+    const hours = Number(zone.slice(1, 3));
+    const minutes = Number(zone.slice(4, 6));
     if (hours > 14 || minutes > 59 || (hours === 14 && minutes !== 0)) return false;
   }
   return true;
