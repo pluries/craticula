@@ -1,8 +1,9 @@
-import type { Ir, PageIr, SortItemIr } from "../ir.js";
+import type { GroupSpecIr, Ir, PageIr, SortItemIr } from "../ir.js";
 import type { GridSchema } from "../schema.js";
 import { readFilterNode } from "./filter-node.js";
 import { resolveZone } from "./dates.js";
 import { mergeFilters, parseFilterModel, type DateContext } from "./filters.js";
+import { AUTO_GROUP_COLUMN, parseGroups, resolveAutoColumn } from "./groups.js";
 import { isRecord, malformed, unsupported, wholeNumber, type Obj } from "./values.js";
 import { CompileError } from "../errors.js";
 
@@ -32,8 +33,6 @@ export interface ParsedRequest {
   readonly export?: ExportSpecIr;
 }
 
-const AUTO_GROUP_COLUMN = "ag-Grid-AutoColumn";
-
 function isEmpty(value: unknown): boolean {
   return value === undefined || value === null || (Array.isArray(value) && value.length === 0) || (isRecord(value) && Object.keys(value).length === 0);
 }
@@ -62,20 +61,31 @@ function parseExport(root: Obj, schema: GridSchema): ExportSpecIr | undefined {
   return { format, scope: resolvedScope, columns };
 }
 
-function parseSort(root: Obj): SortItemIr[] {
+function parseSort(root: Obj, group: GroupSpecIr | undefined): SortItemIr[] {
   const raw = root["sortModel"];
   if (raw === undefined || raw === null) return [];
   if (!Array.isArray(raw)) throw malformed("'sortModel' must be an array.");
-  const items: SortItemIr[] = [];
-  for (const entry of raw as unknown[]) {
+  const entries = (raw as unknown[]).map((entry) => {
     if (!isRecord(entry)) throw malformed("A 'sortModel' entry must be an object.");
     const colId = entry["colId"];
     const direction = entry["sort"];
     if (typeof colId !== "string" || colId.length === 0) throw malformed("A 'sortModel' entry needs a string 'colId'.");
     if (direction !== "asc" && direction !== "desc") throw malformed(`The sortModel entry for '${colId}' needs 'sort' to be 'asc' or 'desc'.`);
-    if (colId.startsWith(AUTO_GROUP_COLUMN)) throw unsupported("A sort on the auto group column belongs to a grouped request.");
-    items.push({ field: colId, direction, nullsPosition: direction === "asc" ? "last" : "first" });
-  }
+    return { colId, direction: direction as "asc" | "desc" };
+  });
+  // AG Grid sends the auto column together with the sorts of the group columns it stands for: only the level on show is kept.
+  const auto = entries.map((entry) => resolveAutoColumn(entry.colId, group));
+  const target = auto.find((resolved) => resolved !== undefined)?.field ?? null;
+  const covered = new Set(auto.some((resolved) => resolved !== undefined) ? (group?.groupCols ?? []).filter((col) => col !== target) : []);
+  const items: SortItemIr[] = [];
+  const seen = new Set<string>();
+  entries.forEach(({ colId, direction }, i) => {
+    const resolved = auto[i];
+    const field = resolved === undefined ? colId : resolved.field;
+    if (field === null || seen.has(field) || (resolved === undefined && covered.has(field))) return;
+    seen.add(field);
+    items.push({ field, direction, nullsPosition: direction === "asc" ? "last" : "first" });
+  });
   return items;
 }
 
@@ -125,15 +135,13 @@ export function parseRequest(value: unknown, schema: GridSchema, options: ParseO
   if (value["pivotMode"] === true) throw malformed("'pivotMode: true' is not supported.");
   if (!isEmpty(value["pivotCols"])) throw malformed("A non-empty 'pivotCols' is not supported.");
 
-  for (const [member, what] of [["rowGroupCols", "Grouping"], ["valueCols", "Aggregation"], ["groupKeys", "A group drill-down"]] as const) {
-    if (!isEmpty(value[member])) throw unsupported(`${what} (${member}) is part of the request.`);
-  }
-
   const custom = value["customFilters"];
   const filter = mergeFilters(parseFilterModel(value, schema, dateContext(value, options)), custom === undefined || custom === null ? undefined : readFilterNode(custom));
   const exportSpec = parseExport(value, schema);
-  const sort = parseSort(value);
+  const { group, aggregations } = parseGroups(value);
+  const sort = parseSort(value, group);
   const page = parsePage(value, exportSpec, options);
-  const ir: Ir = { ...(filter === undefined ? {} : { filter }), ...(sort.length > 0 ? { sort } : {}), page };
+  const grouped = exportSpec === undefined ? { ...(group === undefined ? {} : { group }), ...(aggregations === undefined ? {} : { aggregations }) } : {};
+  const ir: Ir = { ...(filter === undefined ? {} : { filter }), ...(sort.length > 0 ? { sort } : {}), ...grouped, page };
   return exportSpec === undefined ? { ir } : { ir, export: exportSpec };
 }

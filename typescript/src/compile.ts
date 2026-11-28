@@ -42,6 +42,9 @@ export function compile(schemaValue: unknown, requestValue: unknown, options: Pa
   const { ir, export: exportSpec } = parseRequest(requestValue, schema, options);
   // The host's allowlist over every sort column (`conformance-runner.md` §3): the parser keeps them as the request names them.
   checkColumns(schema, (ir.sort ?? []).map((item) => item.field), "sort");
+  if (ir.group !== undefined || ir.aggregations !== undefined) {
+    throw new CompileError("Unsupported", "This driver compiles sorting and paging only; grouping and aggregation are parsed but not rendered to SQL yet.");
+  }
   if (ir.filter !== undefined) {
     throw new CompileError("Unsupported", "This driver compiles sorting and paging only; a filter is parsed but not rendered to SQL yet.");
   }

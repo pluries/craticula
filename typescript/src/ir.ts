@@ -1,6 +1,6 @@
 /**
  * The IR (`spec/ir.schema.json`), the vendor-neutral request every compiler reads. Only the parts the parser produces so far are typed
- * here; grouping and aggregations arrive with a later slice of feature 013.
+ * here.
  */
 export interface SortItemIr {
   readonly field: string;
@@ -36,8 +36,23 @@ export type FilterNodeIr =
   | { readonly type: "not"; readonly node: FilterNodeIr }
   | ComparisonIr;
 
+export interface GroupSpecIr {
+  readonly groupCols: readonly string[];
+  readonly groupKeys: readonly TypedValueIr[];
+}
+
+export type AggregationFunc = "sum" | "min" | "max" | "avg" | "count";
+
+export interface AggregationIr {
+  readonly field: string;
+  readonly func: AggregationFunc;
+  readonly alias?: string;
+}
+
 export interface Ir {
   readonly filter?: FilterNodeIr;
   readonly sort?: readonly SortItemIr[];
+  readonly group?: GroupSpecIr;
+  readonly aggregations?: readonly AggregationIr[];
   readonly page: PageIr;
 }

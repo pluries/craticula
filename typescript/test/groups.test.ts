@@ -55,7 +55,7 @@ describe("US2-AS5: grouping and group keys", () => {
   });
 
   it("uses the id when a column carries no field", () => {
-    const ir = parse({ rowGroupCols: [{ id: "region", displayName: "Region" }] }).ir as { group?: { groupCols: string[] } };
+    const ir = parse({ rowGroupCols: [{ id: "region", displayName: "Region" }] }).ir;
     assert.deepEqual(ir.group?.groupCols, ["region"]);
   });
 
@@ -97,7 +97,7 @@ describe("US2-AS5: aggregations", () => {
 
   it("knows the five functions of the closed set", () => {
     for (const func of ["sum", "min", "max", "avg", "count"]) {
-      const ir = parse({ valueCols: [col("amount", { aggFunc: func })] }).ir as { aggregations?: { func: string }[] };
+      const ir = parse({ valueCols: [col("amount", { aggFunc: func })] }).ir;
       assert.equal(ir.aggregations?.[0]?.func, func);
     }
   });
