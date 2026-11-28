@@ -125,6 +125,13 @@ class ThreatModelTests(unittest.TestCase):
         for needle in ("tampering", "denial of service", "information disclosure", "bound parameter", "quoteidentifier", "sec-2 lint"):
             self.assertIn(needle, text)
 
+    @unittest.skipUnless((ROOT / "docs").is_dir(), PRIVATE)
+    def test_015_US1_AS2_the_threat_model_has_the_typescript_document_engine_rows(self):
+        rows = [line for line in self.MODEL.read_text(encoding="utf-8").splitlines() if "spec 015" in line and line.startswith("|")]
+        text = " ".join(rows).lower()
+        for needle in ("tampering", "denial of service", "information disclosure", "operator", "sec-2 lint", "time limit"):
+            self.assertIn(needle, text)
+
 
 if __name__ == "__main__":
     unittest.main()

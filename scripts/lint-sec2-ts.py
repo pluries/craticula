@@ -37,14 +37,19 @@ import re
 import sys
 from pathlib import Path
 
-DEFAULT_SCOPE = ["typescript/src/sql"]
+DEFAULT_SCOPE = ["typescript/src/sql", "typescript/src/mongo", "typescript/src/search", "typescript/src/doc"]
+# Server-side script and write operators: a compile-only library has no use for them, and a value reaching one would run as code.
+FORBIDDEN_OPERATORS = {"$where", "$function", "$accumulator", "$out", "$merge", "script", "script_score", "scripted_metric", "script_fields"}
 TAINTED_PREFIXES = ("escape", "encode", "normalize")
 # Functions that return a name or a value the client chose, not text the builder wrote: they are never safe to splice, whatever they are called.
 UNQUOTED_NAMES = {"outputName", "columnId"}
+# Pattern escapers: in a document builder their result is a pattern VALUE embedded as a JSON value (a regular expression, a wildcard), never a key
+# or query text. In SQL text an escaped value is still a finding: escaping does not make it text, binding does.
+DOCUMENT_ESCAPERS = {"escapeRegex", "escapeSearchRegex", "escapeWildcard"}
 # The objects whose methods produce query text or placeholders: the dialect, the parameter sink and the parameter bag.
 DIALECT_RECEIVERS = {"dialect", "sink", "bag"}
 KEYWORDS = {"if", "for", "while", "switch", "catch", "return", "function", "await", "typeof", "new"}
-MESSAGE_CALLS = re.compile(r"(?:precondition|CompileError)\(\s*(?:\x01S\d+\x01\s*,\s*)?$")
+MESSAGE_CALLS = re.compile(r"(?:precondition|failure|CompileError)\(\s*(?:\x01S\d+\x01\s*,\s*)?$")
 
 
 class ScanError(Exception):
@@ -414,7 +419,7 @@ class Scanner:
 
     @staticmethod
     def _safe_constant(source: Source, e: str, seen: frozenset):
-        return True if re.fullmatch(r"[A-Z][A-Z0-9_]+(?:\[[^\]]*\])?", e) else None
+        return True if re.fullmatch(r"[A-Z][A-Z0-9_]+(?:\[[^\]]*\])?!?", e) else None
 
     def _safe_array(self, source: Source, e: str, seen: frozenset):
         if not (e.startswith("[") and matching_paren(e, 0) == len(e) - 1):
@@ -433,10 +438,10 @@ class Scanner:
     def _safe_items(self, source: Source, receiver: str, seen: frozenset) -> bool:
         r = receiver.strip()
         mapped = call_on(r, "map")
-        body = arrow_body(mapped[1]) if mapped is not None else None
-        if body is not None:
-            return self.safe(source, body, seen)
-        return self.safe(source, r, seen)
+        if mapped is None:
+            return self.safe(source, r, seen)
+        body = arrow_body(mapped[1])
+        return body is not None and self.safe(source, body, seen)
 
     def _safe_call(self, source: Source, e: str, seen: frozenset):
         open_index = e.find("(")
@@ -445,6 +450,8 @@ class Scanner:
         path = e[:open_index].strip().replace("?.", ".").split(".")
         if not all(part.isidentifier() for part in path):
             return None
+        if path[-1] in DOCUMENT_ESCAPERS and ("/mongo/" in source.path or "/search/" in source.path):
+            return True
         if path[-1] in UNQUOTED_NAMES or path[-1] not in self.declared:
             return False
         return len(path) == 1 or path[-2] in DIALECT_RECEIVERS
@@ -469,6 +476,9 @@ class Scanner:
             self._templates(source)
             self._concatenations(source)
             self._appended_values(source)
+            self._document_keys(source)
+            self._spreads(source)
+            self._script_operators(source)
 
     @staticmethod
     def line_of(source: Source, offset: int) -> int:
@@ -489,6 +499,51 @@ class Scanner:
         for offset, value in self.appended[source.path]:
             if not self.safe(source, value):
                 self.findings.append((source.path, self.line_of(source, offset), self.shown(source, value), "appended to query text and not a placeholder, a quoted identifier or a constant"))
+
+    def _document_keys(self, source: Source) -> None:
+        """A key of a document (`doc(["key", value])`, `.set(key, value)`) must be a literal, a constant or a schema name the builder resolved."""
+        for offset, key in self._keys_of(source.code):
+            if not self.safe(source, key):
+                self.findings.append((source.path, self.line_of(source, offset), self.shown(source, key), "used as a document key and not a literal, a constant or a name the builder resolved from the schema"))
+
+    @staticmethod
+    def _keys_of(code: str) -> list[tuple[int, str]]:
+        found: list[tuple[int, str]] = []
+        for marker, entries in (("doc(", True), (".set(", False)):
+            cursor = code.find(marker)
+            while cursor >= 0:
+                close = matching_paren(code, cursor + len(marker) - 1)
+                inner = code[cursor + len(marker) : close] if close > 0 else ""
+                for part in top_level_split(inner, ",") if not entries else [item for item in top_level_split(inner, ",")]:
+                    text = part.strip()
+                    if entries and text.startswith("["):
+                        found.append((cursor, top_level_split(text[1:], ",")[0]))
+                if not entries and inner:
+                    found.append((cursor, top_level_split(inner, ",")[0]))
+                cursor = code.find(marker, cursor + 1)
+        return found
+
+    def _spreads(self, source: Source) -> None:
+        """`{ ...x }` copies every member of x into a document: x must be something the builder made, never a request object."""
+        cursor = source.code.find("...")
+        while cursor >= 0:
+            end = cursor + 3
+            while end < len(source.code) and (source.code[end].isalnum() or source.code[end] in "_$"):
+                end += 1
+            operand = source.code[cursor + 3 : end]
+            enclosing = source.code.rfind("{", 0, cursor)
+            key = (source.path, f"...{operand}")
+            if key in self.allow:
+                self.used.add(key)
+            elif operand and enclosing > source.code.rfind("[", 0, cursor) and not self.safe(source, operand):
+                self.findings.append((source.path, self.line_of(source, cursor), f"...{operand}", "spread into an object; spread only what the builder made"))
+            cursor = source.code.find("...", end)
+
+    def _script_operators(self, source: Source) -> None:
+        for index, literal in enumerate(source.strings):
+            if literal[1:-1] in FORBIDDEN_OPERATORS:
+                at = source.code.find(f"\x01S{index}\x01")
+                self.findings.append((source.path, self.line_of(source, at), literal, "a server-side script or write operator, which a compile-only library never emits"))
 
     def _concatenations(self, source: Source) -> None:
         for match in re.finditer(r"(\x01[ST]\d+\x01)\s*\+(?!=)|(?<!\+)\+\s*(\x01[ST]\d+\x01)", source.code):

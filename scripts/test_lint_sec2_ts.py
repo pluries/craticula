@@ -83,6 +83,21 @@ class NegativeFixtures(unittest.TestCase):
         self.assertEqual(1, result.returncode)
         self.assertIn("outputName(aggregation)", result.stdout)
 
+    def test_US4_AS2_a_request_value_used_as_a_document_key_is_a_finding(self):
+        result = lint("doc-key-from-value")
+        self.assertEqual(1, result.returncode)
+        self.assertIn("used as a document key", result.stdout)
+
+    def test_US4_AS2_a_request_object_spread_into_a_document_is_a_finding(self):
+        result = lint("spread-request")
+        self.assertEqual(1, result.returncode)
+        self.assertIn("...request", result.stdout)
+
+    def test_US4_AS2_a_server_side_script_operator_is_a_finding(self):
+        result = lint("script-operator")
+        self.assertEqual(1, result.returncode)
+        self.assertIn('"$where"', result.stdout)
+
     def test_an_error_message_may_carry_the_request_value(self):
         self.assertEqual(0, lint("message-exempt").returncode)
 
@@ -113,7 +128,7 @@ class Wiring(unittest.TestCase):
     def test_US4_AS4_the_public_ci_runs_the_lint_and_the_runner_for_every_declared_dialect(self):
         ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
         self.assertIn("python3 scripts/lint-sec2-ts.py", ci)
-        for dialect in ("postgres", "mssql", "mysql", "oracle", "sqlite"):
+        for dialect in ("postgres", "mssql", "mysql", "oracle", "sqlite", "mongo", "search"):
             self.assertIn(f'--only "*#{dialect}"', ci)
 
     def test_US4_AS4_the_jenkinsfile_runs_the_lint_next_to_the_csharp_one(self):

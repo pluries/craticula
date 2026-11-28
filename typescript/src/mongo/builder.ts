@@ -120,13 +120,18 @@ function nullInclusive(predicate: Doc, op: string, path: string): Doc {
   return isNullInclusive(op) ? doc(["$or", [predicate, doc([path, null])]]) : predicate;
 }
 
+function anchored(op: string, escaped: string): string {
+  if (op === "startsWith") return `^${escaped}`;
+  return op === "endsWith" ? `${escaped}$` : escaped;
+}
+
 function substring(path: string, field: Field, node: ComparisonIr, context: Context): Doc {
   const mode = resolveMode(field, node.field, node.op, "patternMatch", context);
   if (field.type !== "string") throw failure(`Field '${node.field}' is declared '${field.type}', but '${node.op}' is a substring match and needs a string field.`);
   const value = requireValue(node);
   if (value.type !== "string") throw failure(`Operator '${node.op}' on field '${node.field}' needs a string value: the coercion stage runs before a compiler.`);
   const escaped = escapeRegex(value.value);
-  const pattern = node.op === "startsWith" ? `^${escaped}` : node.op === "endsWith" ? `${escaped}$` : escaped;
+  const pattern = anchored(node.op, escaped);
   const regex = mode === "insensitive" ? doc(["$regex", pattern], ["$options", "i"]) : doc(["$regex", pattern]);
   return doc([path, node.op === "notContains" ? doc(["$not", regex]) : regex]);
 }
@@ -352,8 +357,8 @@ function pipelineOf(request: MongoRequest): MongoQuery {
     throw failure(`The sort orders '${sink.exactStringSortKeys.join("', '")}', declared caseSensitivity: "sensitive", while another construct in the same request needs SEM-1's case-insensitive collation; MongoDB's collation is a query-level option with no per-stage form (MDB-9). Split the request, or declare the fields with one case sensitivity.`);
   }
   if (!sink.exactStringComparisons) return assemble(stages, sink, suppress);
-  const escaped = new CollationSink();
-  return assemble(compose(request, { schema: request.schema, sink: escaped, exactStringComparison: true }), escaped, suppress);
+  const exactSink = new CollationSink();
+  return assemble(compose(request, { schema: request.schema, sink: exactSink, exactStringComparison: true }), exactSink, suppress);
 }
 
 function requirePositiveLimit(limit: number | undefined): void {

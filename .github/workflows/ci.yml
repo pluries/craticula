@@ -5,7 +5,7 @@
 # runs in the release workflow. The `test` job is also what the README coverage badge reads: a gate-status badge ("coverage gate
 # 90%"), not a percentage; the per-assembly numbers go to the job summary.
 # A `typescript` job (features 012 to 014) installs the TypeScript port from its lock file, builds, tests, runs the SEC-2 lint on its query
-# builders and the conformance runner against its driver (rejections and each declared SQL dialect); it is a plain job, not a required check.
+# builders and the conformance runner against its driver (rejections and each declared backend); it is a plain job, not a required check.
 # A third job, `runtime-11`, is informational and never a required check (ADR-0015, follow-up F-2): it builds a copy of the sources
 # on .NET SDK 11 and runs the offline unit tests on the .NET 11 runtime, so a new difference shows when a servicing release lands.
 # No secret, read-only token, every action pinned to a commit SHA (scripts/test_workflows.py checks that).
@@ -176,6 +176,12 @@ jobs:
 
       - name: Conformance runner against the driver (sqlite)
         run: python3 conformance/run.py --driver "node typescript/dist/src/driver.js" --only "*#sqlite"
+
+      - name: Conformance runner against the driver (mongo)
+        run: python3 conformance/run.py --driver "node typescript/dist/src/driver.js" --only "*#mongo"
+
+      - name: Conformance runner against the driver (search)
+        run: python3 conformance/run.py --driver "node typescript/dist/src/driver.js" --only "*#search"
 
       # SEC-2 for the TypeScript query builders: only a placeholder, a quoted identifier or a constant may be spliced into query text.
       - name: SEC-2 lint (TypeScript query builders)

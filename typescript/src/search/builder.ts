@@ -138,6 +138,11 @@ function rangeCondition(target: Target, node: ComparisonIr, context: Context): D
   return doc(["range", doc([orderingTarget(target, mode, node.field, "range query"), body])]);
 }
 
+function wildcardOf(op: string, escaped: string): string {
+  if (op === "startsWith") return `${escaped}*`;
+  return op === "endsWith" ? `*${escaped}` : `*${escaped}*`;
+}
+
 function substringCondition(target: Target, node: ComparisonIr, context: Context): Doc {
   if (target.config.type !== "string") throw failure(`Field '${node.field}' is declared '${target.config.type}', but '${node.op}' is a substring match and needs a string field.`);
   const mode = resolveMode(target, node.field, node.op, "patternMatch", context);
@@ -150,7 +155,7 @@ function substringCondition(target: Target, node: ComparisonIr, context: Context
     return doc(["match", doc([target.raw, doc(["query", value.value], ["operator", "and"])])]);
   }
   const escaped = escapeWildcard(value.value);
-  const pattern = node.op === "startsWith" ? `${escaped}*` : node.op === "endsWith" ? `*${escaped}` : `*${escaped}*`;
+  const pattern = wildcardOf(node.op, escaped);
   const body: Doc = doc(["value", pattern]);
   if (mode === "insensitive") body.set("case_insensitive", true);
   return doc(["wildcard", doc([target.keyword, body])]);
