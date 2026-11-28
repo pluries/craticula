@@ -1,7 +1,8 @@
 import type { Ir, PageIr, SortItemIr } from "../ir.js";
-import { checkColumns, type GridSchema } from "../schema.js";
+import type { GridSchema } from "../schema.js";
 import { readFilterNode } from "./filter-node.js";
-import { mergeFilters, parseFilterModel } from "./filters.js";
+import { resolveZone } from "./dates.js";
+import { mergeFilters, parseFilterModel, type DateContext } from "./filters.js";
 import { isRecord, malformed, unsupported, wholeNumber, type Obj } from "./values.js";
 import { CompileError } from "../errors.js";
 
@@ -11,6 +12,12 @@ export interface ParseOptions {
   readonly defaultPageSize?: number;
   /** PG-3: whether `ignorePageLimit` may ask for every row. Default false. */
   readonly allowUnboundedRows?: boolean;
+  /** The clock a date preset reads, injected by the host or the harness (`requestContext.now`). Read only when a preset appears. */
+  readonly now?: () => Date;
+  /** SEM-4: the zone used when the request names none. Default UTC. */
+  readonly defaultZone?: string;
+  /** The first day of the week for week presets, 0 = Sunday. Default 1 = Monday. */
+  readonly firstDayOfWeek?: number;
 }
 
 export interface ExportSpecIr {
@@ -55,7 +62,7 @@ function parseExport(root: Obj, schema: GridSchema): ExportSpecIr | undefined {
   return { format, scope: resolvedScope, columns };
 }
 
-function parseSort(root: Obj, schema: GridSchema): SortItemIr[] {
+function parseSort(root: Obj): SortItemIr[] {
   const raw = root["sortModel"];
   if (raw === undefined || raw === null) return [];
   if (!Array.isArray(raw)) throw malformed("'sortModel' must be an array.");
@@ -67,7 +74,6 @@ function parseSort(root: Obj, schema: GridSchema): SortItemIr[] {
     if (typeof colId !== "string" || colId.length === 0) throw malformed("A 'sortModel' entry needs a string 'colId'.");
     if (direction !== "asc" && direction !== "desc") throw malformed(`The sortModel entry for '${colId}' needs 'sort' to be 'asc' or 'desc'.`);
     if (colId.startsWith(AUTO_GROUP_COLUMN)) throw unsupported("A sort on the auto group column belongs to a grouped request.");
-    if (checkColumns(schema, [colId], "sort").length === 0) continue;
     items.push({ field: colId, direction, nullsPosition: direction === "asc" ? "last" : "first" });
   }
   return items;
@@ -99,20 +105,34 @@ function parsePage(root: Obj, exportSpec: ExportSpecIr | undefined, options: Par
 }
 
 /** Reads an AG Grid server-side row request into the IR. Everything the parser cannot read yet is refused, never guessed. */
+function dateContext(root: Obj, options: ParseOptions): DateContext {
+  const context = root["requestContext"];
+  let zone = options.defaultZone ?? "UTC";
+  if (context !== undefined && context !== null) {
+    if (!isRecord(context)) throw malformed("'requestContext' must be a JSON object or null.");
+    const requested = context["zone"];
+    if (requested !== undefined && requested !== null) {
+      if (typeof requested !== "string") throw malformed("'requestContext.zone' must be a string IANA time zone id.");
+      zone = requested;
+    }
+  }
+  return { zone: resolveZone(zone), now: options.now ?? (() => new Date()), firstDayOfWeek: options.firstDayOfWeek ?? 1 };
+}
+
 export function parseRequest(value: unknown, schema: GridSchema, options: ParseOptions = {}): ParsedRequest {
   if (!isRecord(value)) throw malformed("The AG Grid request must be a JSON object.");
   if (value["setValuesRequest"] !== undefined) throw malformed("'setValuesRequest' is the set-filter-values envelope, not a row request.");
   if (value["pivotMode"] === true) throw malformed("'pivotMode: true' is not supported.");
   if (!isEmpty(value["pivotCols"])) throw malformed("A non-empty 'pivotCols' is not supported.");
 
-  for (const [member, what] of [["rowGroupCols", "Grouping"], ["valueCols", "Aggregation"], ["groupKeys", "A group drill-down"], ["requestContext", "A request context"]] as const) {
+  for (const [member, what] of [["rowGroupCols", "Grouping"], ["valueCols", "Aggregation"], ["groupKeys", "A group drill-down"]] as const) {
     if (!isEmpty(value[member])) throw unsupported(`${what} (${member}) is part of the request.`);
   }
 
   const custom = value["customFilters"];
-  const filter = mergeFilters(parseFilterModel(value, schema), custom === undefined || custom === null ? undefined : readFilterNode(custom));
+  const filter = mergeFilters(parseFilterModel(value, schema, dateContext(value, options)), custom === undefined || custom === null ? undefined : readFilterNode(custom));
   const exportSpec = parseExport(value, schema);
-  const sort = parseSort(value, schema);
+  const sort = parseSort(value);
   const page = parsePage(value, exportSpec, options);
   const ir: Ir = { ...(filter === undefined ? {} : { filter }), ...(sort.length > 0 ? { sort } : {}), page };
   return exportSpec === undefined ? { ir } : { ir, export: exportSpec };

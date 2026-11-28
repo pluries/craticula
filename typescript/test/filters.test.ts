@@ -248,7 +248,11 @@ describe("US2-AS1 and US2-AS2: the request fixtures this slice reads, and only t
           const schema = parseSchema(readJson(readFileSync(`${dir}schema.json`, "utf8")));
           const request = readJson(readFileSync(`${dir}agGridRequest.json`, "utf8"), { numbers: "text" });
           if (isRecord(request) && request["setValuesRequest"] !== undefined) continue; // the set-values envelope has its own entry point (a later slice)
-          const result = parseRequest(request, schema, {});
+          const context = isRecord(request) && isRecord(request["requestContext"]) ? request["requestContext"] : {};
+          const result = parseRequest(request, schema, {
+            allowUnboundedRows: context["allowUnboundedRows"] === true,
+            ...(typeof context["now"] === "string" ? { now: () => new Date(context["now"] as string) } : {}),
+          });
           parsed += 1;
           if (!validateIr(result.ir)) problems.push(`${name}: ${ajv.errorsText(validateIr.errors)}`);
         } catch (error) {

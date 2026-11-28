@@ -2,7 +2,7 @@ import { parseRequest, type ParseOptions } from "./agrid/request.js";
 import { CompileError } from "./errors.js";
 import { DEFAULT_LIMITS } from "./limits.js";
 import { ParameterBag, quoteIdentifier, renderPaging, renderSortKey } from "./postgres.js";
-import { parseSchema, type Field, type GridSchema } from "./schema.js";
+import { checkColumns, parseSchema, type Field, type GridSchema } from "./schema.js";
 import { effectiveSort } from "./sort.js";
 
 export interface Artifact {
@@ -40,6 +40,8 @@ function exportProjection(schema: GridSchema, columns: readonly string[]): strin
 export function compile(schemaValue: unknown, requestValue: unknown, options: ParseOptions = {}): Artifact {
   const schema = parseSchema(schemaValue);
   const { ir, export: exportSpec } = parseRequest(requestValue, schema, options);
+  // The host's allowlist over every sort column (`conformance-runner.md` §3): the parser keeps them as the request names them.
+  checkColumns(schema, (ir.sort ?? []).map((item) => item.field), "sort");
   if (ir.filter !== undefined) {
     throw new CompileError("Unsupported", "This driver compiles sorting and paging only; a filter is parsed but not rendered to SQL yet.");
   }

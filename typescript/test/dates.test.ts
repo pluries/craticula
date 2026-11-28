@@ -227,7 +227,7 @@ describe("the date-presets fixtures agree with the bounds the expected PostgreSQ
 
   it("resolves the first two parameters of each single-range preset fixture", () => {
     const problems: string[] = [];
-    for (const name of readdirSync(dir).sort()) {
+    for (const name of readdirSync(dir).sort().filter((entry) => /^\d{3}-/.test(entry))) {
       const folder = `${dir}${name}/`;
       if (readdirSync(`${folder}expected`).includes("rejection.json")) continue;
       const request = readJson(readFileSync(`${folder}agGridRequest.json`, "utf8"), { numbers: "text" }) as Record<string, unknown>;

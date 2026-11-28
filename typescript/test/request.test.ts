@@ -7,7 +7,7 @@ import { Ajv2020 } from "ajv/dist/2020.js";
 
 import { CompileError } from "../src/errors.js";
 import { readJson } from "../src/json.js";
-import { parseSchema } from "../src/schema.js";
+import { checkColumns, parseSchema } from "../src/schema.js";
 import { parseRequest, type ParseOptions } from "../src/agrid/request.js";
 
 // Feature 013, T010 (first part, S2a): the non-filter half of the request parser. Scenarios US2-AS1 and US2-AS2 for the requests that
@@ -178,10 +178,12 @@ describe("the sort model", () => {
     }
   });
 
-  it("refuses every undeclared sort column as an allowlist rejection, wherever it sits", () => {
-    const models = [[{ colId: "ghost", sort: "asc" }], [{ colId: "id", sort: "asc" }, { colId: "ghost", sort: "asc" }]];
-    for (const sortModel of models) {
-      assert.deepEqual(pairOf(() => parse({ sortModel })), ["allowlist", "unknown-field"]);
+  it("keeps a sort column the schema does not declare: the allowlist is the host's stage, and count mode ignores sort altogether", () => {
+    const parsed = parse({ sortModel: [{ colId: "id", sort: "asc" }, { colId: "ghost", sort: "asc" }] });
+    assert.deepEqual(parsed.ir.sort?.map((item) => item.field), ["id", "ghost"]);
+    for (const sortModel of [[{ colId: "ghost", sort: "asc" }], [{ colId: "id", sort: "asc" }, { colId: "ghost", sort: "asc" }]]) {
+      const fields = (parse({ sortModel }).ir.sort ?? []).map((item) => item.field);
+      assert.deepEqual(pairOf(() => checkColumns(SCHEMA, fields, "sort")), ["allowlist", "unknown-field"]);
     }
   });
 });
