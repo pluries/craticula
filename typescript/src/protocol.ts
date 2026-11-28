@@ -1,10 +1,9 @@
-import type { ParseOptions } from "./agrid/request.js";
 import { isIsoInstant } from "./agrid/dates.js";
 import { isRecord, wholeNumber } from "./agrid/values.js";
-import { compile } from "./compile.js";
+import { BACKENDS, type CompileOptions } from "./backends.js";
+import { doc, writeJson } from "./doc/ordered.js";
 import { CompileError } from "./errors.js";
-import { JsonError, JsonNumber, readJson } from "./json.js";
-import { DIALECTS } from "./sql/dialects.js";
+import { JsonError, readJson } from "./json.js";
 import { checkRequest } from "./stages.js";
 
 /** The spec version this driver targets (`spec/VERSION`); a test keeps the two equal. */
@@ -20,7 +19,7 @@ export function assertSupportedNode(version: string): void {
 
 /** The first line a driver prints (`spec/conformance-runner.md` §2.1). */
 export function helloLine(): string {
-  return JSON.stringify({ hello: { impl: "typescript", specVersion: SPEC_VERSION, backends: [...DIALECTS.keys()], capabilities: ["rejection"] } });
+  return JSON.stringify({ hello: { impl: "typescript", specVersion: SPEC_VERSION, backends: [...BACKENDS.keys()], capabilities: ["rejection"] } });
 }
 
 export type Outcome = { readonly answer: string } | { readonly unanswerable: string };
@@ -32,19 +31,6 @@ function errorLine(id: string, kind: string, message: string, rejection?: { read
     error["reason"] = rejection.reason;
   }
   return { answer: JSON.stringify({ id, error }) };
-}
-
-/** JSON text in which a JsonNumber is written as the digits it was read or built with, so an integer beyond 2^53 is not rounded. */
-function stringify(value: unknown): string {
-  const marks: string[] = [];
-  const text = JSON.stringify(value, (_key, item: unknown) => {
-    if (item instanceof JsonNumber) {
-      marks.push(item.text);
-      return `\u0000number:${marks.length - 1}`;
-    }
-    return item;
-  });
-  return marks.length === 0 ? text : text.replaceAll(/"\\u0000number:(\d+)"/g, (_match, index: string) => marks[Number(index)] ?? "null");
 }
 
 const NO_ID = "it is not a JSON object with a readable string 'id'";
@@ -100,11 +86,11 @@ function recoverLeading(line: string): { id: string; kind: string | undefined } 
 const MALFORMED = { rejectedAt: "requestParsing", reason: "malformed-request" } as const;
 
 /** The harness members of `requestContext` (§3) as parse options. They are read here, in the driver, and never by the library from a wire request. */
-function harnessOf(request: unknown): { options: ParseOptions; countMode: boolean } {
+function harnessOf(request: unknown): { options: CompileOptions; countMode: boolean } {
   const context = isRecord(request) ? request["requestContext"] : undefined;
   if (context === undefined || context === null) return { options: {}, countMode: false };
   if (!isRecord(context)) throw new CompileError("InvalidRequest", "'requestContext' must be a JSON object or null.", MALFORMED);
-  const options: { -readonly [K in keyof ParseOptions]: ParseOptions[K] } = {};
+  const options: { -readonly [K in keyof CompileOptions]: CompileOptions[K] } = {};
   const now = context["now"];
   if (now !== undefined && now !== null) {
     const instant = typeof now === "string" && isIsoInstant(now) ? new Date(now) : undefined;
@@ -118,6 +104,12 @@ function harnessOf(request: unknown): { options: ParseOptions; countMode: boolea
     options.defaultPageSize = whole;
   }
   if (context["allowUnboundedRows"] === true) options.allowUnboundedRows = true;
+  const limit = context["maxQueryTimeMs"];
+  if (limit !== undefined && limit !== null) {
+    const whole = wholeNumber(limit);
+    if (whole === undefined || whole < 1 || whole > 2_147_483_647) throw new CompileError("InvalidRequest", "'requestContext.maxQueryTimeMs' must be a whole number from 1 to 2147483647 (TL-4).", MALFORMED);
+    options.maxQueryTimeMs = whole;
+  }
   const mode = context["compileMode"];
   if (mode !== undefined && mode !== null && mode !== "count") throw new CompileError("InvalidRequest", `'requestContext.compileMode' ${JSON.stringify(mode)} is not supported.`, MALFORMED);
   return { options, countMode: mode === "count" };
@@ -143,9 +135,9 @@ export function answerFor(line: string): Outcome {
     return errorLine(id, "Unsupported", `The request kind ${JSON.stringify(kind)} is not supported by this driver.`);
   }
   const backend = request["backend"];
-  const dialect = typeof backend === "string" ? DIALECTS.get(backend as never) : undefined;
-  if (kind !== "rejection" && dialect === undefined) {
-    return errorLine(id, "Unsupported", `The backend '${String(backend).slice(0, 64)}' is not one this driver declares (${[...DIALECTS.keys()].join(", ")}).`);
+  const compileFor = typeof backend === "string" ? BACKENDS.get(backend) : undefined;
+  if (kind !== "rejection" && compileFor === undefined) {
+    return errorLine(id, "Unsupported", `The backend '${String(backend).slice(0, 64)}' is not one this driver declares (${[...BACKENDS.keys()].join(", ")}).`);
   }
   try {
     const { options, countMode } = harnessOf(request["agGridRequest"]);
@@ -153,7 +145,7 @@ export function answerFor(line: string): Outcome {
       checkRequest(request["schema"], request["agGridRequest"], options, countMode);
       return { answer: JSON.stringify({ id, artifact: { accepted: true } }) };
     }
-    return { answer: stringify({ id, artifact: compile(request["schema"], request["agGridRequest"], options, countMode, dialect) }) };
+    return { answer: writeJson(doc(["id", id], ["artifact", compileFor!(request["schema"], request["agGridRequest"], options, countMode)])) };
   } catch (error) {
     if (error instanceof CompileError) {
       return errorLine(id, error.kind, error.message, kind === "rejection" ? error : undefined);
