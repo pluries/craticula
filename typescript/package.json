@@ -1,0 +1,21 @@
+{
+  "name": "craticula-typescript-skeleton",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Walking skeleton of the Craticula TypeScript port: a conformance driver for the sort-paging family on PostgreSQL. Not published.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test --experimental-test-coverage --test-coverage-include=\"dist/src/**\" --test-coverage-lines=90 \"dist/test/**/*.test.js\"",
+    "conformance": "python3 ../conformance/run.py --driver \"node dist/src/driver.js\" --only \"sort-paging/*#postgres\" && python3 ../conformance/run.py --driver \"node dist/src/driver.js\" --only \"*#rejection\""
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "ajv": "8.20.0",
+    "typescript": "7.0.2"
+  }
+}

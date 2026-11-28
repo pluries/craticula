@@ -1,0 +1,5 @@
+import { outputName, quoteIdentifier } from "./primitives.js";
+
+export function build(table: string, aggregation: { alias?: string }): string {
+  return `SELECT 1 AS ${outputName(aggregation)} FROM ${quoteIdentifier(table)}`;
+}

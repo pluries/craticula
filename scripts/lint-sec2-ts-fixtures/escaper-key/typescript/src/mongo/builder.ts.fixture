@@ -1,0 +1,11 @@
+export function escapeRegex(value: string): string {
+  return value;
+}
+
+export function doc(...entries: [string, unknown][]): Map<string, unknown> {
+  return new Map(entries);
+}
+
+export function build(request: { key: string }): Map<string, unknown> {
+  return doc([escapeRegex(request.key), 1]);
+}

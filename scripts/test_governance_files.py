@@ -486,8 +486,10 @@ class DependabotTests(unittest.TestCase):
         self.assertRegex(text, r"package-ecosystem: github-actions\n\s+directory: /\n\s+schedule:\n\s+interval: weekly")
         self.assertEqual(2, text.count("groups:"))
 
-    def test_the_cooldown_keeps_the_two_week_rule_in_both_ecosystems(self):
-        self.assertEqual(2, len(re.findall(r"cooldown:\n\s+default-days: 14", self.text())))
+    def test_the_cooldown_keeps_the_two_week_rule_in_every_ecosystem(self):
+        # nuget, github-actions and npm (the TypeScript port, feature 012)
+        self.assertEqual(3, len(re.findall(r"package-ecosystem:", self.text())))
+        self.assertEqual(3, len(re.findall(r"cooldown:\n\s+default-days: 14", self.text())))
 
     def test_every_held_package_is_ignored_with_a_scope(self):
         text = self.text()
@@ -508,7 +510,7 @@ class DependabotTests(unittest.TestCase):
             self.skipTest("PyYAML is not installed; the text checks above still run")
         data = yaml.safe_load(self.text())
         ecosystems = {u["package-ecosystem"]: u for u in data["updates"]}
-        self.assertEqual({"nuget", "github-actions"}, set(ecosystems))
+        self.assertEqual({"nuget", "github-actions", "npm"}, set(ecosystems))
         self.assertEqual("/csharp", ecosystems["nuget"]["directory"])
         for update in ecosystems.values():
             self.assertEqual("weekly", update["schedule"]["interval"])

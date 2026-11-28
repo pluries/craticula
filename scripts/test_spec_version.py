@@ -105,6 +105,22 @@ class SpecVersionTests(unittest.TestCase):
         check_matrix(ROOT, read_version(ROOT))
 
 
+class RuntimeSupportTests(unittest.TestCase):
+    """Feature 011, US3-AS1 (ADR-0015): the README says which .NET runs the packages, with the check it rests on."""
+
+    def test_readme_states_the_runtime_support_with_its_check(self):
+        lines = (ROOT / "README.md").read_text(encoding="utf-8").splitlines()
+        start = lines.index("## Compatibility")
+        section = []
+        for ln in lines[start + 1:]:
+            if ln.startswith("## "):
+                break
+            section.append(ln)
+        text = " ".join(section)
+        for needle in ("net10.0", ".NET 11 runtime", "11.0.100", "2026-11-27"):
+            self.assertIn(needle, text)
+
+
 class CheckerNegativeTests(unittest.TestCase):
     def make_repo(self, version="0.1.0"):
         tmp = tempfile.TemporaryDirectory()

@@ -1,0 +1,5 @@
+import { quoteIdentifier } from "./primitives.js";
+
+export function build(table: string, value: string): string {
+  return `SELECT * FROM ${quoteIdentifier(table)} WHERE name = '${value}'`;
+}

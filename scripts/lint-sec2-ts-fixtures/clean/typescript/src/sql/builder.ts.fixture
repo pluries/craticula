@@ -1,0 +1,12 @@
+import { bind, quoteIdentifier } from "./primitives.js";
+
+const KEYWORD = "ASC";
+
+export function build(table: string, value: string, descending: boolean, names: string[]): string {
+  const quoted = quoteIdentifier(table);
+  const columns = names.map((name) => quoteIdentifier(name)).join(", ");
+  const direction = descending ? "DESC" : KEYWORD;
+  let sql = `SELECT ${columns} FROM ${quoted}`;
+  sql += ` WHERE ${quoted} = ${bind(value)} ORDER BY ${quoted} ${direction}`;
+  return sql;
+}

@@ -81,6 +81,49 @@ internal static class RequestCompiler
         };
     }
 
+    /// <summary>
+    /// A rejection request (<c>conformance-runner.md</c> §2.2) names no backend: the refusal comes before any compiler.
+    /// The driver acts as the host does. It checks every sort colId against the schema first, because the library has no
+    /// allowlist stage for them (a compiler is reached only after the host's check, and refuses an undeclared field with a
+    /// <see cref="SqlCompilationException"/> no oracle names), then runs the request through the pinned compile on one
+    /// backend. A request that compiles is answered with its artifact, which the runner fails (§4.1).
+    /// </summary>
+    public static object CompileForRejection(string schemaJson, string agGridRequestJson)
+    {
+        var schema = GridSchema.Parse(schemaJson);
+        RequireDeclaredSortColIds(schema, agGridRequestJson);
+        return Compile(Backends[0], schema, agGridRequestJson);
+    }
+
+    private static void RequireDeclaredSortColIds(GridSchema schema, string agGridRequestJson)
+    {
+        using var document = JsonDocument.Parse(agGridRequestJson, new JsonDocumentOptions { MaxDepth = 1_000 });
+        if (document.RootElement.ValueKind != JsonValueKind.Object
+            || !document.RootElement.TryGetProperty("sortModel", out var sortModel)
+            || sortModel.ValueKind != JsonValueKind.Array)
+        {
+            return;
+        }
+
+        var unknown = sortModel.EnumerateArray()
+            .Where(item => item.ValueKind == JsonValueKind.Object
+                && item.TryGetProperty("colId", out var colId) && colId.ValueKind == JsonValueKind.String)
+            .Select(item => item.GetProperty("colId").GetString()!)
+            .Where(colId => !colId.StartsWith(GroupAutoColumnPrefix, StringComparison.Ordinal)
+                && !schema.Fields.ContainsKey(colId))
+            .Distinct(StringComparer.Ordinal)
+            .Select(colId => new AllowlistViolation(colId, colId, "unknown-field"))
+            .ToArray();
+
+        if (unknown.Length > 0)
+        {
+            throw new UnknownFieldException(unknown);
+        }
+    }
+
+    /// <summary>AG Grid's id prefix for the auto group column; a sort on it is a group sort, not a schema field.</summary>
+    private const string GroupAutoColumnPrefix = "ag-Grid-AutoColumn";
+
     private static SqlQuery CompileSql(Prepared request, ISqlDialect dialect)
     {
         if (request.IsSetValues)

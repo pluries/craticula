@@ -1,0 +1,2 @@
+# an entry that matches nothing
+trust typescript/src/sql/builder.ts.fixture | nothing | a reason

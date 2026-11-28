@@ -1,0 +1,15 @@
+export function quoteIdentifier(identifier: string): string {
+  return identifier.length === 0 ? "" : "q";
+}
+
+export function bind(value: string): string {
+  return value.length === 0 ? "$1" : "$2";
+}
+
+export function escapePattern(value: string): string {
+  return value;
+}
+
+export function outputName(aggregation: { alias?: string }): string {
+  return aggregation.alias ?? "total";
+}

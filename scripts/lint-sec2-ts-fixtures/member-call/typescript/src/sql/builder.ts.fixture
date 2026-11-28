@@ -1,0 +1,7 @@
+import { quoteIdentifier } from "./primitives.js";
+
+export function build(table: string, request: { filter: { field: string } }): string {
+  let sql = `SELECT * FROM ${quoteIdentifier(table)}`;
+  sql += ` WHERE ${request.filter.field.substring(0)} = 1`;
+  return sql;
+}

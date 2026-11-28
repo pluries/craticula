@@ -12,6 +12,64 @@ The two move separately. The compatibility table in the [README](README.md#compa
 `main`, which the next release implements. The notes of each release state the spec version that release was built with.
 The latest published package version is on nuget.org.
 
+## Freezing the specification
+
+The spec version in `spec/VERSION` moves to 1.0.0 only when every criterion below is met. The TypeScript, Python and Go
+ports implement the frozen spec, not the C# code, so these criteria say what a port may rely on. Run
+`python3 scripts/check-spec-freeze.py` to list which criteria are met today; it reads the repository and changes nothing.
+
+| Id | Part of the spec | Criterion |
+|---|---|---|
+| **F-1** | version | `spec/VERSION` reads `MAJOR.MINOR.PATCH`. |
+| **F-2** | IR schema, GridSchema schema | `spec/ir.schema.json` and `spec/grid-schema.schema.json` parse as JSON and declare JSON Schema draft 2020-12. |
+| **F-3** | `semantics.md` | `spec/semantics.md` holds no open `TODO`, `TBD` or `FIXME` marker. |
+| **F-4** | fixtures | Every fixture folder has `description.md`, `agGridRequest.json`, `schema.json` and an `expected/` folder. |
+| **F-5** | fixtures | No fixture folder is an orphan: each has an expected artifact, a rejection, or export bytes to be graded against. |
+| **F-6** | fixtures and runner | The conformance runner grades every fixture content a port can produce without a database: compiled artifacts, rejections (`rejection.json`) and CSV or TSV bytes (`rowStream.json`). Only execution equality (`dataset.json`, `expectedRows.json`) is left to a tier that needs seeded databases. |
+| **F-7** | this document | Every criterion is listed here. |
+
+Spec 1.0.0 was frozen when every criterion above was met. A criterion that is not met is either closed before the freeze, covered by a named test tier, or accepted with a reason
+the maintainer writes down. Each accepted gap states the risk it leaves for a port.
+
+### What a spec version promises
+
+- **Patch** (1.0.1): wording and documentation only. No fixture changes. Every valid request compiles to the same artifact.
+- **Minor** (1.1.0): additions a port can ignore until it wants them: a new fixture family, a new optional request member,
+  a clarified rule. Existing fixtures keep their expected artifacts; a port that passed 1.0.0 still passes them.
+- **Major** (2.0.0): any change that alters the expected artifact of an existing fixture, adds or removes an IR member a
+  compiler must handle, or turns an accepted request into a rejection or the reverse.
+- A port states the spec version it passes. A port that passes spec 1.x passes every fixture of 1.0.0.
+- 1.0.0 does not promise that the spec is free of mistakes. A mistake found after the freeze is corrected in the next
+  version the rule above names, and the correction is recorded in the release notes.
+
+## Changing the specification after the freeze
+
+This applies from spec 1.0.0. The maintainer decides the class of a change with the rule below and changes `spec/VERSION`
+in the same commit. The runner protocol (`spec/conformance-runner.md`) is part of the spec.
+
+- **Patch**: wording and documentation only. No schema, fixture or protocol change, and every valid request compiles to
+  the same artifact. Example: a clarified sentence in `semantics.md`.
+- **Minor**: an addition a port can adopt later and a passing port does not fail on. A port that passed the version before
+  still passes every fixture that existed. Example: a new fixture family for a new filter type; an optional member added
+  to the IR schema or the GridSchema schema that old requests do not need; a new optional capability in the runner
+  protocol.
+- **Major**: any change that can turn a passing port into a failing one. Example: the expected artifact of an existing
+  fixture changes; a rule in `semantics.md` changes what a request compiles to; a required member is added to or removed
+  from the IR schema or the GridSchema schema; an existing request or answer of the runner protocol changes shape;
+  an accepted request becomes a rejection, or the reverse.
+
+By part: the **IR schema** and the **GridSchema schema** follow the lines above through their members; **`semantics.md`**
+through the behaviour a rule pins; the **fixtures** through their expected files; the **runner protocol** through the
+shape of its requests and answers.
+
+- A mistake in a fixture is corrected in the next major: a fixture of a released spec version is never edited in place.
+  A case that only adds coverage is a minor.
+- A port states the exact spec version it passes in the `specVersion` member of its hello. A port that passes spec 1.x
+  passes every fixture of 1.0.0.
+- **Not enforced by tooling yet**: no gate compares a change to the fixture files or the schemas with `spec/VERSION`, and
+  none compares them with the last released version. The class of a change is the maintainer's judgement. A checksum of the
+  fixture tree and a schema comparison in CI are follow-ups, not part of this rule.
+
 ## What drives the package version
 
 - The package version follows the public API of the packages and the spec version they implement.

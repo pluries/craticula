@@ -15,19 +15,22 @@ Adding a language means writing a driver. The runner does not change.
 
 ## 1. What this tier grades, and what it does not
 
-**Graded:** every `expected/<backend>.artifact.json` in the fixture tree, for the backends the driver declares (§6).
+**Graded:** every `expected/<backend>.artifact.json` in the fixture tree, for the backends the driver declares (§6); every
+`expected/rejection.json`, when the driver declares the `rejection` capability (§2.1, §4.1); every `rowStream.json` with its
+`expected/export.csv` or `.tsv`, when the driver declares the `writer` capability (§2.1, §4.2).
 
 **Not graded here**, and listed by the runner as *out of tier* so that nobody mistakes silence for a pass:
 
 | Fixture content | Why not | Graded by |
 |---|---|---|
-| `expected/rejection.json` (SEC-6) | a rejection is not a compiled artifact; it has its own shape and stage | the implementation's own tests today; a later tier |
-| `rowStream.json` + `expected/export.csv` / `.tsv` (EXP-4) | compares writer output bytes, not a compiled query | the implementation's own tests today; a later tier |
 | `dataset.json` / `expectedRows.json` (T-1b, `semantics.md` XEQ-1..XEQ-4) | execution equality needs a seeded database to run | Feature #1624, integration tier |
 
-The listing goes by content, not by directory: a fixture that carries both an expected artifact and writer output has
-its artifact graded and its writer output listed. A fixture directory with none of the graded files is reported as out
-of tier; `schemas/` is not a category and is skipped.
+A driver that does not declare a capability is not graded on that kind: the runner reports those cases as *not graded* with
+their count, never as passed (§6).
+
+The listing goes by content, not by directory: a fixture that carries both an expected artifact and a rejection or writer
+output has each graded. A fixture directory with none of the graded files is reported as out of tier; `schemas/` is not a
+category and is skipped.
 
 ## 2. The protocol
 
@@ -40,12 +43,14 @@ driver wants to log goes to **stderr**, which the runner passes through and neve
 The driver's first stdout line declares what it is and what it can compile:
 
 ```json
-{"hello":{"impl":"csharp","specVersion":"0.1.0","backends":["postgres","mssql","mysql","oracle","sqlite","mongo","search"]}}
+{"hello":{"impl":"csharp","specVersion":"1.0.0","backends":["postgres","mssql","mysql","oracle","sqlite","mongo","search"],"capabilities":["rejection","writer"]}}
 ```
 
 - `impl` — a free label shown in the report.
-- `specVersion` — the version of this spec the implementation claims (TRD P-2). Echoed in the report, not validated:
-  the suite has no version number yet. The version of this spec lives in `spec/VERSION`, and that is the value implementations claim.
+- `specVersion` — the version of this spec the implementation claims (TRD P-2). Echoed in the report, not validated.
+  The version of this spec lives in `spec/VERSION`, and that is the value implementations claim.
+- `capabilities` — optional; absent means none. A subset of the closed set `rejection` (the driver answers rejection
+  requests, §2.2) and `writer` (the driver answers writer requests, §2.2). Any other value is a protocol failure (§2.4).
 - `backends` — a non-empty subset of the closed set `postgres`, `mssql`, `mysql`, `oracle`, `sqlite`, `mongo`, `search`
   (the file stems under `expected/`). `search` is the one shared OpenSearch/Elasticsearch artifact (OQ-7).
 
@@ -72,6 +77,37 @@ The driver answers with exactly one of:
 the same JSON the expected file holds. `error` means the implementation refused or failed to compile; for a graded case
 that is a failure (§6), never a skip.
 
+A request names its **kind** in an optional `kind` member; absent means `compile`, the request above. Two more kinds exist, and
+a driver receives them only if its hello declared the capability (§2.1):
+
+```json
+{"id":"adversarial/001-unknown-colid-filter-model#rejection","kind":"rejection","schema":{…},"agGridRequest":{…}}
+{"id":"page-export/012-csv-writer-delimiter-comma-default#writer","kind":"writer","schema":{…},"agGridRequest":{…},"rowStream":{…},"writerConfig":{…}}
+```
+
+- A **rejection** request carries no `backend`: the refusal happens before any backend sees the request. The driver runs the
+  request through the same pinned inputs as a compile (§3) and answers `error`, with the two extra members
+  `rejectedAt` and `reason` that name the stage and the condition in the vocabulary of
+  `fixtures/schemas/rejection.schema.json`:
+
+  ```json
+  {"id":"adversarial/001-unknown-colid-filter-model#rejection","error":{"kind":"UnknownFieldException","message":"…","rejectedAt":"allowlist","reason":"unknown-field"}}
+  ```
+
+  A driver that compiles the request instead answers with an `artifact`; that fails the case (§4.1).
+- A **writer** request carries `rowStream` and, when the fixture has one, `writerConfig`: the parsed content of the fixture's
+  `rowStream.json` and `writerConfig.json`, unchanged (`fixtures/schemas/row-stream.schema.json`,
+  `writer-config.schema.json`). It carries no `backend`. The driver resolves the output columns from `schema` and
+  `agGridRequest` (EXP-1(b)), writes the rows with the CSV/TSV writer under `writerConfig` (the writer's defaults when
+  absent, EXP-4, EXP-5, EXP-6) and answers with the bytes it wrote, **base64-encoded** so that a byte order mark, CRLF and
+  every UTF-8 byte survive the JSON Lines transport unchanged:
+
+  ```json
+  {"id":"page-export/012-csv-writer-delimiter-comma-default#writer","bytes":"77u/aWQs…"}
+  ```
+
+  or `error` as before. The `rejection` and `writer` ids end in `#rejection` and `#writer`.
+
 ### 2.3 End of session
 
 When every request is answered, the runner closes the driver's stdin. The driver exits with status 0.
@@ -81,7 +117,7 @@ When every request is answered, the runner closes the driver's stdin. The driver
 Each of these stops the run with **exit status 2** (§7) and lists the requests left unanswered (none after a failed
 hello: the graded set depends on the backends the hello declares):
 
-1. no hello, or a first line that is not a valid hello;
+1. no hello, or a first line that is not a valid hello (including a `capabilities` value outside `rejection` and `writer`);
 2. a stdout line that is not a single JSON object;
 3. a response whose `id` is not the one the runner is waiting for (unknown, repeated, or out of order);
 4. no hello within the **timeout** of the driver starting, or no response within the timeout of the request being
@@ -115,9 +151,14 @@ implementation compiles the same thing:
   that entry point; every other request is a row request.
 - **Export** — a request carrying the export wire members (`exportFormat`, with `exportScope` and `exportColumns`,
   EXP-1) compiles with the unpaginated page (EXP-2) and names its output columns (EXP-1(b)), as it would in a host.
-- **Backend** — `backend` picks the compiler and, for SQL, the dialect.
+- **Backend** — `backend` picks the compiler and, for SQL, the dialect. A rejection or writer request names none.
+- **Rejection** — the driver does what a host does before it compiles: the SC-1 allowlist over **every** colId the request
+  names, sort colIds included (a column the schema does not declare is refused as `allowlist` / `unknown-field`, never left
+  to a compiler to trip over), then the limits (SEC-3), the coercion (SEM-5) and the request parsing. The refusal is reported
+  at the stage that first catches it, in the vocabulary of `rejection.schema.json`; an unparseable date text is
+  `typeCoercion` / `uncoercible-value`, not `requestParsing`.
 
-The driver then prints the artifact for that backend. It does not normalise, sort or pretty-print it to look like the
+A rejection or writer request (§2.2) takes the same pinned inputs. The driver then prints the artifact for that backend. It does not normalise, sort or pretty-print it to look like the
 expected file; the runner's comparison (§4) decides what is significant.
 
 ## 4. Equality
@@ -138,15 +179,32 @@ uses; it does not reformat it.
 **ML-3's "modulo parameter naming style"** has no effect on this suite: the canonical rendering fixes each dialect's
 placeholder spelling (`$1`, `@p1`, `:p1`, `?`), so a different spelling is a different `sql` string and fails.
 
+### 4.1 Rejections
+
+A rejection case passes when the driver answers `error` and the answer's `rejectedAt` and `reason` equal the two members of
+the fixture's `expected/rejection.json`, each by exact string. It fails when the driver answers with an `artifact` (the
+request was accepted), when `rejectedAt` or `reason` is absent from the error, or when either differs; the report names
+the expected and the actual pair. The error's `kind` and `message` are free text and are never compared. The fixture's
+`note` is documentation.
+
+### 4.2 Writer bytes
+
+A writer case passes when the driver's `bytes`, decoded from base64, equal the bytes of `expected/export.csv` or
+`expected/export.tsv` (the extension is the request's own `exportFormat`) **byte for byte**. The runner compares bytes,
+never text: a missing byte order mark, an LF where CRLF is expected or a different UTF-8 encoding fails. The report gives the
+offset of the first differing byte and the expected and actual byte values there (or the end of the shorter side).
+A driver `error` answer fails the case (§6).
+
 ## 5. Report
 
 For each failure the runner prints the `id`, the first JSON path where the two sides differ (e.g.
-`$.pipeline[2].$match.status`), and the expected and actual values at that path. It then prints totals per backend:
+`$.pipeline[2].$match.status`), and the expected and actual values at that path. It then prints totals per backend, and one row each for `rejection` and `writer`:
 passed, failed, not graded, and the out-of-tier count. `--json <file>` writes the same content as JSON for tools.
 
 ## 6. Coverage — what counts as a pass
 
-- The **graded set** is every expected artifact whose backend the driver declared.
+- The **graded set** is every expected artifact whose backend the driver declared, every rejection when the driver declared
+  `rejection`, and every writer case when it declared `writer`.
 - A graded case **fails** if the artifact differs (§4) or the driver answered `error`.
 - A backend the driver did not declare is reported as **not graded**, with its case count. It is never counted as passed.
 - The runner only sends cases that have an expected artifact, so an implementation cannot be graded on a case the
@@ -167,14 +225,18 @@ passed, failed, not graded, and the out-of-tier count. `--json <file>` writes th
 In any language, a driver is this loop:
 
 ```text
-print {"hello": {impl, specVersion, backends}}
+print {"hello": {impl, specVersion, backends, capabilities}}
 for each line on stdin:
     req = parse(line)
     try:
-        artifact = compile(req.schema, req.agGridRequest, req.backend)   # §3 inputs pinned
-        print {"id": req.id, "artifact": artifact}
+        if req.kind == "writer":
+            print {"id": req.id, "bytes": base64(write(req.schema, req.agGridRequest, req.rowStream, req.writerConfig))}
+        else:                                                            # "compile", or "rejection": no backend
+            artifact = compile(req.schema, req.agGridRequest, req.backend)   # §3 inputs pinned
+            print {"id": req.id, "artifact": artifact}
     except any failure as e:
-        print {"id": req.id, "error": {"kind": name(e), "message": text(e)}}
+        print {"id": req.id, "error": {"kind": name(e), "message": text(e),
+                                       "rejectedAt": stage(e), "reason": reason(e)}}   # the last two for a rejection
     flush stdout
 exit 0
 ```
@@ -182,11 +244,13 @@ exit 0
 A session, abridged (`→` runner to driver, `←` driver to runner):
 
 ```text
-← {"hello":{"impl":"csharp","specVersion":"0.1.0","backends":["postgres","mongo","search"]}}
+← {"hello":{"impl":"csharp","specVersion":"1.0.0","backends":["postgres","mongo","search"],"capabilities":["rejection","writer"]}}
 → {"id":"operators/001-eq-string#postgres","backend":"postgres","schema":{…},"agGridRequest":{…}}
 ← {"id":"operators/001-eq-string#postgres","artifact":{"dialect":"postgres","sql":"SELECT …","params":["Alice"]}}
 → {"id":"operators/001-eq-string#mongo","backend":"mongo","schema":{…},"agGridRequest":{…}}
 ← {"id":"operators/001-eq-string#mongo","artifact":[{"$match":{…}},…]}
+→ {"id":"adversarial/001-unknown-colid-filter-model#rejection","kind":"rejection","schema":{…},"agGridRequest":{…}}
+← {"id":"adversarial/001-unknown-colid-filter-model#rejection","error":{"kind":"UnknownFieldException","message":"…","rejectedAt":"allowlist","reason":"unknown-field"}}
   (stdin closed; driver exits 0)
 ```
 

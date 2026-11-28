@@ -746,7 +746,9 @@ public static class AgGridRequestParser
             throw new AgGridRequestParseException(
                 "malformed-request",
                 $"Column '{field}': '{propertyName}' value '{raw}' is not one of AG Grid's date-filter wire " +
-                $"formats ('YYYY-MM-DD' or 'YYYY-MM-DD hh:mm:ss').");
+                $"formats ('YYYY-MM-DD' or 'YYYY-MM-DD hh:mm:ss').",
+                rejectedAt: "typeCoercion",
+                rejectionReason: "uncoercible-value");
         }
 
         if (fieldType is FieldType.Datetime)

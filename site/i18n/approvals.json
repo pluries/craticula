@@ -761,46 +761,6 @@
   },
   {
     "language": "fr",
-    "document": "overview",
-    "source_fingerprint": "c3dad5cf6df4a66c49bd0d2e9d8c4a27f6d981379f463a98eadd2a7b96c4a407",
-    "translation_hash": "1d7fcc34db299019a05442a22594a2774700c5d9899ea9a6825730ae4507733c",
-    "approved_by": "Christian Stephan",
-    "approved_on": "2026-11-22"
-  },
-  {
-    "language": "de",
-    "document": "overview",
-    "source_fingerprint": "c3dad5cf6df4a66c49bd0d2e9d8c4a27f6d981379f463a98eadd2a7b96c4a407",
-    "translation_hash": "e266b017fd431337b43282f1fa5ed3b3ca3169332ebf3891e4ce7b550ce1ca65",
-    "approved_by": "Christian Stephan",
-    "approved_on": "2026-11-22"
-  },
-  {
-    "language": "it",
-    "document": "overview",
-    "source_fingerprint": "c3dad5cf6df4a66c49bd0d2e9d8c4a27f6d981379f463a98eadd2a7b96c4a407",
-    "translation_hash": "23bdf95d3491f75ee509315af5726eabfbb6f256708d00f9f2860917684ae13d",
-    "approved_by": "Christian Stephan",
-    "approved_on": "2026-11-22"
-  },
-  {
-    "language": "es",
-    "document": "overview",
-    "source_fingerprint": "c3dad5cf6df4a66c49bd0d2e9d8c4a27f6d981379f463a98eadd2a7b96c4a407",
-    "translation_hash": "a97b5b665216de5a8a1762b2cf0f0a5237e5c479908849226e6667f3daf4f2ae",
-    "approved_by": "Christian Stephan",
-    "approved_on": "2026-11-22"
-  },
-  {
-    "language": "zh",
-    "document": "overview",
-    "source_fingerprint": "c3dad5cf6df4a66c49bd0d2e9d8c4a27f6d981379f463a98eadd2a7b96c4a407",
-    "translation_hash": "314d26f0ff61bb0f3a4a8406e81e73efe30bd395855df9f927aad2453b141532",
-    "approved_by": "Christian Stephan",
-    "approved_on": "2026-11-22"
-  },
-  {
-    "language": "fr",
     "document": "search-adapters",
     "source_fingerprint": "1e0376b06a8003383dd7effa6610d3efd908287637f20d9f94dff2c5a69ef485",
     "translation_hash": "14ae4de7f3ba67622da80dac21cea43e16114b07181cb8e38f1db09e001c86aa",
@@ -878,5 +838,45 @@
     "translation_hash": "3a92daa2e7e7a584da4fdbef48e5804a0c046992b694ec56733136bf4809fc21",
     "approved_by": "Christian Stephan",
     "approved_on": "2026-11-24"
+  },
+  {
+    "language": "fr",
+    "document": "overview",
+    "source_fingerprint": "cb2f7ba8d0a8f913a3ba9325faa592f2848c491ea50ec01ab0f778647e71ecf8",
+    "translation_hash": "93fc85951bb9c992bed3984d5fe2a4f63fc5aaa8ba8c736642dd186d45c3b87f",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-27"
+  },
+  {
+    "language": "de",
+    "document": "overview",
+    "source_fingerprint": "cb2f7ba8d0a8f913a3ba9325faa592f2848c491ea50ec01ab0f778647e71ecf8",
+    "translation_hash": "bd533642f3ee6adcecdd3c8f4788c9fffa8301d5c9168815f3a63628f2a28294",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-27"
+  },
+  {
+    "language": "it",
+    "document": "overview",
+    "source_fingerprint": "cb2f7ba8d0a8f913a3ba9325faa592f2848c491ea50ec01ab0f778647e71ecf8",
+    "translation_hash": "eb2c5c82c07c3f1ceb6ba34cdcd2bce21840cdae4534a60766c2437cd40bb165",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-27"
+  },
+  {
+    "language": "es",
+    "document": "overview",
+    "source_fingerprint": "cb2f7ba8d0a8f913a3ba9325faa592f2848c491ea50ec01ab0f778647e71ecf8",
+    "translation_hash": "4b5196c6610d00d27e1493d197a89c354ea8cfeb83bcf5efcc543398545381b7",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-27"
+  },
+  {
+    "language": "zh",
+    "document": "overview",
+    "source_fingerprint": "cb2f7ba8d0a8f913a3ba9325faa592f2848c491ea50ec01ab0f778647e71ecf8",
+    "translation_hash": "d672c8dcc9361e8c92c0530331f6bd87eb6bedcb0a6cc5f4bdfbd2a40e74c852",
+    "approved_by": "Christian Stephan",
+    "approved_on": "2026-11-27"
   }
 ]

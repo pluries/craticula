@@ -1,0 +1,5 @@
+import { escapePattern, quoteIdentifier } from "./primitives.js";
+
+export function build(table: string, pattern: string): string {
+  return `SELECT * FROM ${quoteIdentifier(table)} WHERE name LIKE '${escapePattern(pattern)}'`;
+}

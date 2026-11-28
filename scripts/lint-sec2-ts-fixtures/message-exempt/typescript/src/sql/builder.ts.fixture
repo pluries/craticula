@@ -1,0 +1,10 @@
+import { quoteIdentifier } from "./primitives.js";
+
+class CompileError extends Error {}
+
+export function build(table: string, value: string): string {
+  if (value.length > 8) {
+    throw new CompileError(`The value '${value}' is too long for ${table}.`);
+  }
+  return `SELECT * FROM ${quoteIdentifier(table)}`;
+}

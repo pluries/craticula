@@ -46,3 +46,8 @@ spec doesn't have, the spec changes first, then the port follows.
 - **`conformance-runner.md`** — how an implementation is graded against `fixtures/` (T-1 tier (a), ML-3): the
   driver protocol every language implements, what a driver pins (limits, clock, entry point), the per-backend
   equality rules by reference, and the runner's report and exit status (#1654).
+
+## When this spec is frozen
+
+`spec/VERSION` becomes 1.0.0 against written criteria, kept in [`VERSIONING.md`](../VERSIONING.md#freezing-the-specification)
+together with what a spec version number promises. `python3 scripts/check-spec-freeze.py` lists which criteria are met.

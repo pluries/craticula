@@ -2,9 +2,9 @@
 translates: overview
 title: 概览
 description: Craticula 是什么、它编译什么，以及目前进展到哪一步。
-source_fingerprint: c3dad5cf6df4a66c49bd0d2e9d8c4a27f6d981379f463a98eadd2a7b96c4a407
+source_fingerprint: cb2f7ba8d0a8f913a3ba9325faa592f2848c491ea50ec01ab0f778647e71ecf8
 drafter: claude
-drafted_on: 2026-11-22
+drafted_on: 2026-11-27
 status: approved
 ---
 # Craticula {#craticula}
@@ -12,7 +12,7 @@ status: approved
 [![CI](https://github.com/pluries/craticula/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/pluries/craticula/actions/workflows/ci.yml)
 [![coverage gate](https://img.shields.io/badge/coverage%20gate-%E2%89%A590%25%20per%20assembly-brightgreen)](https://github.com/pluries/craticula/actions/workflows/ci.yml)
 [![license](https://img.shields.io/github/license/pluries/craticula)](LICENSE)
-[![spec version](https://img.shields.io/badge/spec-0.3.0-blue)](spec/VERSION)
+[![spec version](https://img.shields.io/badge/spec-1.0.0-blue)](spec/VERSION)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/pluries/craticula/badge)](https://scorecard.dev/viewer/?uri=github.com/pluries/craticula)
 
 > 它是编译器，而不是客户端：把 AG Grid Server-Side Row Model 请求翻译成原生、
@@ -134,7 +134,9 @@ MongoDB 读取相同的订单。要自己运行它，需要 Docker、.NET 10 SDK
 
 | 规范版本 | .NET 目标 |
 |---|---|
-| 0.3.0 | net10.0 |
+| 1.0.0 | net10.0 |
+
+这些包以 `net10.0` 为目标。它们也能在 .NET 11 运行时上运行：构建和离线测试在 .NET SDK 11.0.100 上通过（2026-11-27 检查；理由见 ADR-0015）。
 
 规范版本即 [`spec/VERSION`](spec/VERSION) 中的版本；每个包都在自己的 README 中注明它。
 版本如何选定，见 [VERSIONING.md](VERSIONING.md)。

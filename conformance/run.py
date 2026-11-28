@@ -10,6 +10,7 @@ Exit status: 0 every graded case passed, 1 at least one failed, 2 protocol failu
 from __future__ import annotations
 
 import argparse
+import base64
 import fnmatch
 import json
 import os
@@ -24,7 +25,9 @@ from pathlib import Path
 
 BACKENDS = ("postgres", "mssql", "mysql", "oracle", "sqlite", "mongo", "search")
 SQL_BACKENDS = ("postgres", "mssql", "mysql", "oracle", "sqlite")
+KINDS = ("rejection", "writer")  # the two other kinds of case (spec §2.2), graded under a hello capability (§2.1)
 ARTIFACT_SUFFIX = ".artifact.json"
+EXPORT_FILES = ("export.csv", "export.tsv")
 DEFAULT_TIMEOUT = 30.0  # spec §2.4 item 4
 MAX_LISTED = 20
 POSIX = os.name != "nt"
@@ -160,16 +163,22 @@ def compare(backend: str, exp: object, act: object):
 
 def _out_of_tier(d: Path, graded: bool) -> list[str]:
     """What this directory carries that the tier does not grade — by content, even beside a graded artifact."""
-    exp = d / "expected"
-    names = {p.name for p in exp.iterdir()} if exp.is_dir() else set()
     reasons = []
-    if "rejection.json" in names:
-        reasons.append("rejection (SEC-6)")
-    if "export.csv" in names or "export.tsv" in names or (d / "rowStream.json").exists():
-        reasons.append("writer output (EXP-4)")
     if (d / "dataset.json").exists() or (d / "expectedRows.json").exists():
         reasons.append("execution equality (T-1b)")
     return reasons or ([] if graded else ["no graded file"])
+
+
+def case_kinds(d: Path) -> list[str]:
+    """The backends with an expected artifact, then `rejection` and `writer` when the folder carries them (§1)."""
+    exp = d / "expected"
+    stems = sorted(p.name[: -len(ARTIFACT_SUFFIX)] for p in exp.glob("*" + ARTIFACT_SUFFIX)) if exp.is_dir() else []
+    kinds = sorted(stems, key=lambda s: BACKENDS.index(s) if s in BACKENDS else len(BACKENDS))
+    if (exp / "rejection.json").is_file():
+        kinds.append("rejection")
+    if (d / "rowStream.json").is_file() and any((exp / f).is_file() for f in EXPORT_FILES):
+        kinds.append("writer")
+    return kinds
 
 
 def enumerate_fixtures(root: Path, only: list[str]):
@@ -180,16 +189,15 @@ def enumerate_fixtures(root: Path, only: list[str]):
     for cat in sorted(p for p in root.iterdir() if p.is_dir() and p.name != "schemas"):
         for d in sorted(p for p in cat.iterdir() if p.is_dir()):
             fid = f"{cat.name}/{d.name}"
-            exp = d / "expected"
-            stems = sorted(p.name[: -len(ARTIFACT_SUFFIX)] for p in exp.glob("*" + ARTIFACT_SUFFIX)) if exp.is_dir() else []
-            for s in stems:
-                if s not in BACKENDS:
+            kinds = case_kinds(d)
+            for s in kinds:
+                if s not in BACKENDS and s not in KINDS:
                     raise UsageError(f"{fid}: expected/{s}{ARTIFACT_SUFFIX} names a backend outside {', '.join(BACKENDS)}")
-            if only and not any(fnmatch.fnmatchcase(fid, g) or any(fnmatch.fnmatchcase(f"{fid}#{s}", g) for s in stems)
+            if only and not any(fnmatch.fnmatchcase(fid, g) or any(fnmatch.fnmatchcase(f"{fid}#{s}", g) for s in kinds)
                                 for g in only):
                 continue
-            out += [(fid, r) for r in _out_of_tier(d, bool(stems))]
-            for s in sorted(stems, key=BACKENDS.index):
+            out += [(fid, r) for r in _out_of_tier(d, bool(kinds))]
+            for s in kinds:
                 if not only or any(fnmatch.fnmatchcase(fid, g) or fnmatch.fnmatchcase(f"{fid}#{s}", g) for g in only):
                     cases.append((fid, s, d))
     if not cases:  # spec §6: an empty graded set never passes
@@ -278,18 +286,26 @@ class Driver:
                 and all(isinstance(b, str) and b in BACKENDS for b in backends)):
             raise ProtocolFailure("hello needs impl, specVersion and a non-empty backends list from "
                                   + ", ".join(BACKENDS))
-        return {"impl": impl, "specVersion": spec, "backends": list(dict.fromkeys(backends))}
+        caps = h.map.get("capabilities", [])
+        if not (isinstance(caps, list) and all(isinstance(c, str) and c in KINDS for c in caps)):
+            raise ProtocolFailure("hello capabilities must be a list drawn from " + ", ".join(KINDS))
+        return {"impl": impl, "specVersion": spec, "backends": list(dict.fromkeys(backends)),
+                "capabilities": list(dict.fromkeys(caps))}
 
-    def ask(self, request: str, rid: str) -> Obj:
+    def ask(self, request: str, rid: str, kind: str = "compile") -> Obj:
         self.send(request)
         v = self.read(time.monotonic() + self.timeout, "response")
         if v.map.get("id") != rid:
             raise ProtocolFailure(f"response id {show(v.map.get('id', MISSING))} where {rid!r} was awaited")
-        has_a, has_e = "artifact" in v.map, "error" in v.map
+        answer = "bytes" if kind == "writer" else "artifact"
+        has_a, has_e = answer in v.map, "error" in v.map
         err = v.map.get("error")
-        if has_a == has_e or (has_e and not (isinstance(err, Obj) and isinstance(err.map.get("kind"), str)
-                                             and isinstance(err.map.get("message"), str))):
-            raise ProtocolFailure(f"response to {rid!r} has neither a lone artifact nor a valid error")
+        valid_error = has_e and isinstance(err, Obj) and isinstance(err.map.get("kind"), str) \
+            and isinstance(err.map.get("message"), str) \
+            and all(isinstance(err.map.get(m, ""), str) for m in ("rejectedAt", "reason"))
+        valid_bytes = answer != "bytes" or not has_a or isinstance(v.map["bytes"], str)
+        if has_a == has_e or (has_e and not valid_error) or not valid_bytes:
+            raise ProtocolFailure(f"response to {rid!r} has neither a lone {answer} nor a valid error")
         return v
 
     def finish(self) -> None:
@@ -330,6 +346,53 @@ class Driver:
                     pass
 
 
+# ---------------------------------------------------------------- grading by kind (spec §4)
+
+def byte_text(data: bytes, i: int, side: str) -> str:
+    return f"0x{data[i]:02x}" if i < len(data) else f"the end of the {side} bytes"
+
+
+def grade_rejection(rid: str, expected: object, resp: Obj):
+    """spec §4.1: the error's rejectedAt and reason equal the fixture's; an artifact answer means the request was accepted."""
+    if "error" not in resp.map:
+        return {"id": rid, "note": "accepted a request that must be rejected (the driver answered with an artifact)"}
+    e = resp.map["error"].map
+    actual = (e.get("rejectedAt", MISSING), e.get("reason", MISSING))
+    if MISSING in actual:
+        return {"id": rid, "note": f"the error carries no rejectedAt and reason (kind {e['kind']})"}
+    want = (expected.map.get("rejectedAt"), expected.map.get("reason"))
+    if actual != want:
+        return {"id": rid, "path": "rejectedAt/reason", "expected": f"{want[0]}/{want[1]}",
+                "actual": f"{actual[0]}/{actual[1]}"}
+    return None
+
+
+def grade_writer(rid: str, expected: bytes, resp: Obj):
+    """spec §4.2: the decoded bytes equal the expected file byte for byte."""
+    try:
+        actual = base64.b64decode(resp.map["bytes"], validate=True)
+    except ValueError:  # binascii.Error is a ValueError
+        raise ProtocolFailure(f"response to {rid!r}: bytes is not valid base64") from None
+    if actual == expected:
+        return None
+    i = next((n for n, (x, y) in enumerate(zip(expected, actual)) if x != y), min(len(expected), len(actual)))
+    return {"id": rid, "note": f"first differing byte at offset {i}: expected {byte_text(expected, i, 'expected')}, "
+                               f"actual {byte_text(actual, i, 'actual')}"}
+
+
+def grade(rid: str, kind: str, expected: object, resp: Obj):
+    """None when the case passes, else the failure record the report prints (spec §4, §4.1, §4.2, §6)."""
+    if kind == "rejection":
+        return grade_rejection(rid, expected, resp)
+    if "error" in resp.map:
+        e = resp.map["error"].map
+        return {"id": rid, "error": f"{e['kind']}: {e['message']}"}
+    if kind == "writer":
+        return grade_writer(rid, expected, resp)
+    diff = compare(kind, expected, resp.map["artifact"])
+    return diff and {"id": rid, "path": diff[0], "expected": diff[1], "actual": diff[2]}
+
+
 # ---------------------------------------------------------------- run and report
 
 def run(args: argparse.Namespace) -> tuple[int, dict]:
@@ -338,38 +401,50 @@ def run(args: argparse.Namespace) -> tuple[int, dict]:
     report: dict = {"driver": args.driver, "status": "pass", "failures": [], "unanswered": [], "protocolFailure": None,
                     "outOfTier": [{"id": i, "reason": r} for i, r in out], "totals": {}, "hello": None}
     jobs = []  # read every file first: an unreadable fixture is a usage error, never a half-run session
-    for fid, backend, d in cases:
-        rid = f"{fid}#{backend}"
-        request = dumps(Obj([("id", rid), ("backend", backend), ("schema", _read_json(d / "schema.json")),
-                             ("agGridRequest", _read_json(d / "agGridRequest.json"))]))
-        jobs.append((rid, backend, request, _read_json(d / "expected" / f"{backend}{ARTIFACT_SUFFIX}")))
+    for fid, kind, d in cases:
+        rid = f"{fid}#{kind}"
+        members = [("id", rid)]
+        if kind == "rejection":
+            members += [("kind", kind)]
+        elif kind == "writer":
+            members += [("kind", kind)]
+        else:
+            members += [("backend", kind)]
+        members += [("schema", _read_json(d / "schema.json")), ("agGridRequest", _read_json(d / "agGridRequest.json"))]
+        if kind == "writer":
+            members.append(("rowStream", _read_json(d / "rowStream.json")))
+            if (d / "writerConfig.json").is_file():
+                members.append(("writerConfig", _read_json(d / "writerConfig.json")))
+            files = [d / "expected" / f for f in EXPORT_FILES if (d / "expected" / f).is_file()]
+            if len(files) != 1:
+                raise UsageError(f"{fid}: expected/ must hold exactly one of {' and '.join(EXPORT_FILES)}")
+            expected = files[0].read_bytes()
+        elif kind == "rejection":
+            expected = _read_json(d / "expected" / "rejection.json")
+        else:
+            expected = _read_json(d / "expected" / f"{kind}{ARTIFACT_SUFFIX}")
+        jobs.append((rid, kind, dumps(Obj(members)), expected))
     driver = Driver(args.driver, args.timeout)
     graded: list = []
     answered = 0
     try:
         hello = report["hello"] = driver.hello()
-        declared = set(hello["backends"])
-        totals = {b: {"passed": 0, "failed": 0, "notGraded": 0} for b in BACKENDS}
+        declared = set(hello["backends"]) | set(hello["capabilities"])
+        totals = {b: {"passed": 0, "failed": 0, "notGraded": 0} for b in BACKENDS + KINDS}
         report["totals"] = totals
         graded = [j for j in jobs if j[1] in declared]
         for _, b, _r, _e in jobs:
             if b not in declared:
                 totals[b]["notGraded"] += 1
-        for rid, backend, request, expected in graded:
-            resp = driver.ask(request, rid)
+        for rid, kind, request, expected in graded:
+            resp = driver.ask(request, rid, kind)
             answered += 1
-            if "error" in resp.map:
-                e = resp.map["error"].map
-                diff = None
-                failure = {"id": rid, "error": f"{e['kind']}: {e['message']}"}
-            else:
-                diff = compare(backend, expected, resp.map["artifact"])
-                failure = diff and {"id": rid, "path": diff[0], "expected": diff[1], "actual": diff[2]}
+            failure = grade(rid, kind, expected, resp)
             if failure:
-                totals[backend]["failed"] += 1
+                totals[kind]["failed"] += 1
                 report["failures"].append(failure)
             else:
-                totals[backend]["passed"] += 1
+                totals[kind]["passed"] += 1
         driver.finish()
     except ProtocolFailure as e:
         report["status"] = "protocol-failure"
@@ -391,10 +466,13 @@ def render(report: dict) -> str:
     lines: list[str] = []
     h = report["hello"]
     if h:
-        lines.append(f"driver: impl={h['impl']} specVersion={h['specVersion']} backends={','.join(h['backends'])}")
+        caps = f" capabilities={','.join(h['capabilities'])}" if h["capabilities"] else ""
+        lines.append(f"driver: impl={h['impl']} specVersion={h['specVersion']} backends={','.join(h['backends'])}{caps}")
     for f in report["failures"]:
         lines.append(f"FAIL {f['id']}")
-        if "error" in f:
+        if "note" in f:
+            lines.append(f"  {f['note']}")
+        elif "error" in f:
             lines.append(f"  driver answered error {f['error']}")
         else:
             lines += [f"  at       {f['path']}", f"  expected {f['expected']}", f"  actual   {f['actual']}"]

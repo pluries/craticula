@@ -1,0 +1,86 @@
+# SEC-2 lint allowlist for the TypeScript query builders (scripts/lint-sec2-ts.py): the reviewed trust boundaries.
+#
+# Two kinds of entry, one per line ('#' starts a comment):
+#   trust <file> | <expression> | <reason>   the exact expression (whitespace collapsed) is accepted as it stands in that file
+#   skip-file <file> | <reason>               the file builds no query text
+#
+# Add an entry only for a value that is NOT a user value: a quoting or placeholder primitive's own input, a parameter that
+# arrives already quoted from the one function that quotes it, or text that never reaches a query. A user value in query text
+# is a SEC-2 defect to fix, never an entry here. An entry that matches nothing in the run fails it, so this file cannot rot.
+
+# -- Files that build no query text.
+skip-file typescript/src/sql/values.ts | builds the text of a bound datetime value and error messages; the result is a parameter, never query text (SEM-4)
+skip-file typescript/src/sql/escape.ts | escapes a pattern value that is bound as a parameter; escaping does not make it query text (SEM-7, SQL-5)
+
+# -- SQL-1 quoting primitives: the one place an identifier meets its delimiter, which each dialect doubles.
+trust typescript/src/sql/postgres.ts | identifier.replaceAll('"', '""') | the quoting primitive doubles '"' inside "..." (SQL-1)
+trust typescript/src/sql/sqlite.ts | identifier.replaceAll('"', '""') | the quoting primitive doubles '"' inside "..." (SQL-1)
+trust typescript/src/sql/oracle.ts | identifier.replaceAll('"', '""') | the quoting primitive doubles '"' inside "..." (SQL-1)
+trust typescript/src/sql/mysql.ts | identifier.replaceAll("`", "``") | the quoting primitive doubles '`' inside `...` (SQL-1)
+trust typescript/src/sql/mssql.ts | identifier.replaceAll("]", "]]") | the quoting primitive doubles ']' inside [...] (SQL-1)
+
+# -- Placeholder primitives: an ordinal the parameter bag counts, never a value (the value went to the parameter list).
+trust typescript/src/sql/postgres.ts | ordinal + 1 | the 1-based number of $n, from the bag's own parameter count (SEC-2)
+trust typescript/src/sql/mssql.ts | ordinal + 1 | the 1-based number of @pn, from the bag's own parameter count (SEC-2)
+trust typescript/src/sql/oracle.ts | ordinal + 1 | the 1-based number of :pn, from the bag's own parameter count (SEC-2)
+
+# -- The column arrives already quoted: the builder's columnOf is the one function that quotes a schema name and passes it to a dialect.
+trust typescript/src/sql/postgres.ts | column | the dialect methods receive a column quoted by the builder (SQL-1)
+trust typescript/src/sql/mssql.ts | column | the dialect methods receive a column quoted by the builder (SQL-1)
+trust typescript/src/sql/mysql.ts | column | the dialect methods receive a column quoted by the builder (SQL-1)
+trust typescript/src/sql/oracle.ts | column | the dialect methods receive a column quoted by the builder (SQL-1)
+trust typescript/src/sql/sqlite.ts | column | the dialect methods receive a column quoted by the builder (SQL-1)
+trust typescript/src/sql/builder.ts | column | the column is built by columnOf, which quotes it, or passed in by a caller that did (SQL-1)
+
+# -- Conditions the builder rendered itself.
+trust typescript/src/sql/builder.ts | predicate | the parameter of nullInclusive and the local of where: a condition rendered by this builder, already made of placeholders and quoted names
+trust typescript/src/sql/postgres.ts | placeholder | the parameter of the pattern helper and the local of the dialect method: the placeholder bind returned
+trust typescript/src/sql/mssql.ts | placeholder | the parameter of the pattern helper and the local of the dialect method: the placeholder bind returned
+trust typescript/src/sql/mysql.ts | placeholder | the parameter of the pattern helper and the local of the dialect method: the placeholder bind returned
+trust typescript/src/sql/oracle.ts | placeholder | the parameter of the pattern helper and the local of the dialect method: the placeholder bind returned
+trust typescript/src/sql/sqlite.ts | placeholder | the parameter of the pattern and collation helpers: the placeholder bind returned
+
+# -- An output name, quoted by quoteIdentifier wherever it becomes SQL.
+trust typescript/src/sql/grouping.ts | aggregation.field | the default output name is a schema field name plus a function name; the builder quotes it (SQL-1, AGG-2)
+trust typescript/src/sql/grouping.ts | aggregation.func | the aggregation function is one of the closed set sum, min, max, avg, count (AR-8)
+
+# -- SQLite's GLOB escaping: the characters of a pattern VALUE, which is then bound, never spelled into the text.
+trust typescript/src/sql/sqlite.ts | character | escapeGlob wraps a wildcard character of the bound pattern value in brackets (SQL-5)
+
+# -- Document builders (MongoDB, search): files that build no query text of their own.
+skip-file typescript/src/doc/ordered.ts | the JSON writer: it writes keys with JSON.stringify, which escapes them, and values the builders made (MDB-7)
+skip-file typescript/src/mongo/regex.ts | escapes a pattern value that is embedded as a JSON string member (MDB-11)
+skip-file typescript/src/search/escape.ts | escapes a pattern value that is embedded as a JSON string member (OSE-12, SEM-7)
+
+# -- Spreads of objects the builders made themselves (a request record built by compile, a plan, a context, a query being extended): never a wire object.
+trust typescript/src/sql/builder.ts | ...context | the builder's own context record
+trust typescript/src/sql/builder.ts | ...plan | the grouping plan the builder resolved
+trust typescript/src/mongo/builder.ts | ...context | the builder's own context record
+trust typescript/src/mongo/builder.ts | ...plan | the grouping plan the builder resolved
+trust typescript/src/mongo/builder.ts | ...query | the query the builder is extending with a time limit or a count stage
+trust typescript/src/mongo/builder.ts | ...request | the typed request record compile built from the IR
+trust typescript/src/search/builder.ts | ...context | the builder's own context record
+trust typescript/src/search/builder.ts | ...body | the body the builder is extending with a time limit
+trust typescript/src/search/builder.ts | ...counted | the count body the builder is extending
+trust typescript/src/search/builder.ts | ...request | the typed request record compile built from the IR
+
+# -- Names and paths the builders resolved from the schema (SC-4, mongoPath), or built from them.
+trust typescript/src/mongo/builder.ts | path | a field's mongoPath, resolved by pathOf from the schema, or the fixed _id
+trust typescript/src/mongo/builder.ts | name | a declared field name: an export column or a field of the schema (013 checks every export column against it)
+trust typescript/src/mongo/builder.ts | output | an aggregate output name: its alias (identifier pattern, 013) or the field_func default (MDB-10)
+trust typescript/src/mongo/builder.ts | owner | the path of the sort key that claimed a bucket, used in an error message only
+trust typescript/src/mongo/builder.ts | key.path | a sort key's resolved path
+trust typescript/src/mongo/builder.ts | key.bucket | a sort key's bucket name: __<declared field>NullBucket or the reserved group bucket (MDB-8, MDB-10)
+trust typescript/src/mongo/builder.ts | key.exactField | the synthetic exact-tiebreaker field __<declared field>ExactKey (MDB-10)
+trust typescript/src/mongo/builder.ts | key.field | a sort key's declared field name, allowlisted before the compiler
+trust typescript/src/search/builder.ts | target.raw | the field's search name from the schema (SC-4, OSE-6)
+trust typescript/src/search/builder.ts | target.keyword | the field's keyword sub-field from the schema (SC-4, OSE-6)
+trust typescript/src/search/builder.ts | isText ? target.keyword : target.raw | a search name from the schema chosen by the field's type (OSE-6)
+trust typescript/src/search/builder.ts | key | the parameter of termOf: a search name the builder resolved from the schema
+trust typescript/src/search/builder.ts | groupColumn | the declared group column of the level on show
+trust typescript/src/search/builder.ts | node.op | a range operator of the closed set gt, gte, lt, lte, used as the bound's key (OSE-8)
+trust typescript/src/search/builder.ts | query.timeoutMs | the host's whole-number time limit, validated 1 to 2147483647 (TL-4)
+
+# -- A pattern VALUE, already escaped, embedded as a JSON string member of a document (never a key).
+trust typescript/src/mongo/builder.ts | escaped | the parameter of the anchoring helper: the text escapeRegex returned, embedded as the $regex string value (MDB-11)
+trust typescript/src/search/builder.ts | escaped | the parameter of the wildcard helper: the text escapeWildcard returned, embedded as the wildcard string value (OSE-12)

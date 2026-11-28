@@ -1,0 +1,7 @@
+import { quoteIdentifier } from "./primitives.js";
+
+export function build(table: string, request: { group: { groupCols: string[] } }): string {
+  const items = [quoteIdentifier(table)];
+  items.push(request.group.groupCols[0] ?? "");
+  return `SELECT ${items.join(", ")} FROM ${quoteIdentifier(table)}`;
+}
