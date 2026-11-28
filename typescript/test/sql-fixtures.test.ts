@@ -30,29 +30,25 @@ interface Case {
   readonly dir: string;
 }
 
-/** The fixtures with a PostgreSQL artifact that use none of grouping, aggregation, set values or count mode (slice S2 adds those). */
-function slice1Cases(): Case[] {
+/** Every fixture with a PostgreSQL artifact: filters, sorting and paging, grouping, aggregation, count mode, set values, export. */
+function postgresCases(): Case[] {
   const found: Case[] = [];
   for (const category of readdirSync(FIXTURES, { withFileTypes: true })) {
     if (!category.isDirectory() || category.name === "schemas") continue;
     for (const fixture of readdirSync(`${FIXTURES}${category.name}`, { withFileTypes: true })) {
       const dir = `${FIXTURES}${category.name}/${fixture.name}/`;
       if (!fixture.isDirectory() || !readdirSync(`${dir}expected`).includes("postgres.artifact.json")) continue;
-      const request = readJson(compact(`${dir}agGridRequest.json`)) as Record<string, unknown>;
-      const context = (request["requestContext"] ?? {}) as Record<string, unknown>;
-      const empty = (value: unknown) => value === undefined || value === null || (Array.isArray(value) && value.length === 0);
-      if (!empty(request["rowGroupCols"]) || !empty(request["valueCols"]) || request["setValuesRequest"] !== undefined || context["compileMode"] === "count") continue;
       found.push({ name: `${category.name}/${fixture.name}`, dir });
     }
   }
   return found;
 }
 
-describe("US1-AS1: the PostgreSQL artifacts of the ungrouped fixtures", () => {
-  const cases = slice1Cases();
+describe("US1-AS1, US1-AS4, US1-AS5, US3: the PostgreSQL artifact of every fixture", () => {
+  const cases = postgresCases();
 
-  it("finds a large set", () => {
-    assert.ok(cases.length >= 150, `found ${cases.length}`);
+  it("finds the 246 cases", () => {
+    assert.equal(cases.length, 246);
   });
 
   it("compiles each to the expected sql and params", () => {
